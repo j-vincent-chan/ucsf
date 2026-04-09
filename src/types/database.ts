@@ -49,6 +49,8 @@ export interface Database {
           role: ProfileRole;
           created_at: string;
           updated_at: string;
+          /** App login handle (email-style); password is stored as bcrypt in password_hash (server-only column). */
+          login_username: string | null;
         };
         Insert: {
           id: string;
@@ -227,6 +229,18 @@ export interface Database {
           p_published: string | null;
         };
         Returns: string;
+      };
+      profile_password_matches: {
+        Args: { p_username: string; p_plain: string };
+        Returns: string | null;
+      };
+      admin_set_profile_login: {
+        Args: {
+          p_user_id: string;
+          p_username: string;
+          p_plain_password: string;
+        };
+        Returns: undefined;
       };
     };
     Enums: {

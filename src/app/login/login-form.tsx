@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { SignalWordmark } from "@/components/signal-logo";
+import { SignalLoginLockup } from "@/components/signal-logo";
 import { toast } from "sonner";
 
 export function LoginForm() {
@@ -21,14 +20,18 @@ export function LoginForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
     });
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      ok?: boolean;
+    };
     setLoading(false);
-    if (error) {
-      toast.error(error.message);
+    if (!res.ok) {
+      toast.error(payload.error ?? "Sign-in failed");
       return;
     }
     router.replace(next);
@@ -36,10 +39,9 @@ export function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-neutral-50 px-4 dark:bg-neutral-950">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-neutral-200 px-4 dark:bg-neutral-900">
       <Card className="w-full max-w-sm">
-        <SignalWordmark as="h1" size="md" />
-        <p className="mt-1 text-sm text-neutral-500">Sign in with your work email</p>
+        <SignalLoginLockup />
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div>
             <Label htmlFor="email">Email</Label>

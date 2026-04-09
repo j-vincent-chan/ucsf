@@ -50,7 +50,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (pathname.startsWith("/api")) {
-    if (!user) {
+    if (!user && pathname !== "/api/auth/login") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return supabaseResponse;

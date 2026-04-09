@@ -4,18 +4,21 @@ import Image from "next/image";
 export const SIGNAL_SUBTITLE = "Research Intelligence";
 
 /** Red pill — `em` sizing; pair with `[vertical-align:super]` for true superscript. */
+const alphaPillXs =
+  "inline-block rounded border border-red-800/35 bg-red-600 px-[0.14em] py-[0.03em] text-[0.32em] font-bold uppercase leading-none tracking-wide text-white shadow-sm ring-1 ring-inset ring-white/15 dark:border-red-900/50 dark:bg-red-600 dark:text-white";
+
 const alphaPillSm =
   "inline-block rounded border border-red-800/35 bg-red-600 px-[0.18em] py-[0.04em] text-[0.4em] font-bold uppercase leading-none tracking-wide text-white shadow-sm ring-1 ring-inset ring-white/15 dark:border-red-900/50 dark:bg-red-600 dark:text-white";
 
 const alphaPillMd =
   "inline-block rounded-md border border-red-800/35 bg-red-600 px-[0.2em] py-[0.05em] text-[0.34em] font-bold uppercase leading-none tracking-wide text-white shadow-sm ring-1 ring-inset ring-white/15 dark:border-red-900/50 dark:bg-red-600 dark:text-white";
 
-function AlphaMark({ size }: { size: "sm" | "md" }) {
+function AlphaMark({ size }: { size: "xs" | "sm" | "md" }) {
+  const pill =
+    size === "md" ? alphaPillMd : size === "xs" ? alphaPillXs : alphaPillSm;
   return (
     <span
-      className={`ms-0.5 font-sans leading-[1] [vertical-align:super] ${
-        size === "md" ? alphaPillMd : alphaPillSm
-      }`}
+      className={`ms-0.5 font-sans leading-[1] [vertical-align:super] ${pill}`}
     >
       alpha
     </span>
@@ -106,6 +109,40 @@ export function SignalLogo({
           {SIGNAL_SUBTITLE}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** Login: wordmark left, mark right; smaller than nav / md wordmark. */
+export function SignalLoginLockup({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 items-center justify-between gap-3 sm:gap-4 ${className}`.trim()}
+      aria-label={`Signal alpha ${SIGNAL_SUBTITLE}`}
+    >
+      <div className="flex min-w-0 flex-col gap-1">
+        <h1 className="text-[1.625rem] font-bold leading-none tracking-[-0.03em] text-neutral-900 dark:text-neutral-50 sm:text-[2.0625rem]">
+          <span className="inline-block whitespace-nowrap">
+            Signal
+            <AlphaMark size="xs" />
+          </span>
+        </h1>
+        <p className="text-[0.8125rem] font-medium leading-none tracking-[0.02em] text-neutral-500 dark:text-neutral-500 sm:text-[0.9375rem]">
+          {SIGNAL_SUBTITLE}
+        </p>
+      </div>
+      <Image
+        src="/signal-logo.png"
+        alt=""
+        width={332}
+        height={279}
+        className="h-12 w-auto shrink-0 sm:h-[3.5rem]"
+        priority
+      />
     </div>
   );
 }

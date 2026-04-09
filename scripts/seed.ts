@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { resolve } from "path";
 import { tierFromMemberStatus } from "../src/lib/member-tier";
+import type { Database } from "../src/types/database";
 
 config({ path: resolve(process.cwd(), ".env.local") });
 
@@ -20,13 +21,15 @@ if (!url || !serviceRole) {
   process.exit(1);
 }
 
-const admin = createClient(url, serviceRole, {
+const admin = createClient<Database>(url, serviceRole, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 const ADMIN_EMAIL = "admin@community-signal.local";
 const EDITOR_EMAIL = "editor@community-signal.local";
 const DEV_PASSWORD = "CommunitySignal!Dev123";
+/** Profile login_username + bcrypt hash (requires migration + SEED_IMMUNOX_PASSWORD). */
+const IMMUNOX_LOGIN = "ImmunoX@ucsf.edu";
 
 const IDS = {
   e1: "a1000000-0000-4000-8000-000000000001",
@@ -103,9 +106,52 @@ async function ensureUser(email: string, role: "admin" | "editor") {
   return data.user;
 }
 
+async function ensureImmunoxProfileLogin(plainPassword: string) {
+  const { data: page } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  let u =
+    page?.users?.find((x) => x.email?.toLowerCase() === IMMUNOX_LOGIN.toLowerCase()) ??
+    null;
+  if (!u) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email: IMMUNOX_LOGIN,
+      password: plainPassword,
+      email_confirm: true,
+      user_metadata: { full_name: "ImmunoX", role: "admin" },
+    });
+    if (error || !data.user) {
+      throw new Error(`createUser ${IMMUNOX_LOGIN}: ${error?.message}`);
+    }
+    u = data.user;
+    console.log(`Created user: ${IMMUNOX_LOGIN}`);
+  } else {
+    const { error } = await admin.auth.admin.updateUserById(u.id, { password: plainPassword });
+    if (error) {
+      throw new Error(`updateUser ${IMMUNOX_LOGIN}: ${error.message}`);
+    }
+    console.log(`User exists: ${IMMUNOX_LOGIN} (auth password synced)`);
+  }
+  const { error: rpcErr } = await admin.rpc("admin_set_profile_login", {
+    p_user_id: u.id,
+    p_username: IMMUNOX_LOGIN,
+    p_plain_password: plainPassword,
+  });
+  if (rpcErr) {
+    throw new Error(`admin_set_profile_login: ${rpcErr.message}`);
+  }
+  console.log(`Profile credentials stored for ${IMMUNOX_LOGIN}`);
+}
+
 async function main() {
   const adminUser = await ensureUser(ADMIN_EMAIL, "admin");
   const editorUser = await ensureUser(EDITOR_EMAIL, "editor");
+  const immunoxPw = process.env.SEED_IMMUNOX_PASSWORD?.trim();
+  if (immunoxPw) {
+    await ensureImmunoxProfileLogin(immunoxPw);
+  } else {
+    console.log(
+      `Skipping ${IMMUNOX_LOGIN} profile login (set SEED_IMMUNOX_PASSWORD in .env.local)`,
+    );
+  }
   const actor = adminUser.id;
 
   const entities = [
@@ -583,6 +629,11 @@ async function main() {
   console.log("\nSeed complete.");
   console.log(`Admin login:    ${ADMIN_EMAIL} / ${DEV_PASSWORD}`);
   console.log(`Editor login:   ${EDITOR_EMAIL} / ${DEV_PASSWORD}`);
+  if (immunoxPw) {
+    console.log(
+      `ImmunoX login:  ${IMMUNOX_LOGIN} (profile + auth; password from SEED_IMMUNOX_PASSWORD)`,
+    );
+  }
 }
 
 main().catch((e) => {
