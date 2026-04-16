@@ -8,18 +8,18 @@ export function DigestNavSection({ months }: { months: { ym: string; label: stri
   const inDigest = pathname.startsWith("/digest");
 
   return (
-    <div className="px-2 py-1">
+    <div className="px-1 py-1.5">
       <Link
         href="/digest"
-        className={`block rounded-md py-1.5 font-medium ${
+        className={`block rounded-xl px-3 py-2 font-medium transition-colors ${
           inDigest
-            ? "bg-neutral-200/90 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50"
-            : "text-neutral-700 hover:bg-neutral-200/80 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            ? "bg-[color:var(--muted)] text-[color:var(--foreground)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_85%,white)]"
+            : "text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]/70 hover:text-[color:var(--foreground)]"
         }`}
       >
         Digest
       </Link>
-      <div className="mt-1 space-y-0.5 border-l border-neutral-200 pl-2 dark:border-neutral-700">
+      <div className="mt-2 space-y-1 border-l border-[color:var(--border)]/80 pl-3">
         {months.map(({ ym, label }) => {
           const href = `/digest/${ym}`;
           const active = pathname === href;
@@ -27,10 +27,10 @@ export function DigestNavSection({ months }: { months: { ym: string; label: stri
             <Link
               key={ym}
               href={href}
-              className={`block rounded-md py-1 pl-2 text-xs leading-tight ${
+              className={`block rounded-lg px-2.5 py-1.5 text-xs leading-tight transition-colors ${
                 active
-                  ? "bg-neutral-200/90 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50"
-                  : "text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-400 dark:hover:bg-neutral-800/80"
+                  ? "bg-[color:var(--muted)]/85 font-medium text-[color:var(--foreground)]"
+                  : "text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]/55 hover:text-[color:var(--foreground)]"
               }`}
             >
               {label}

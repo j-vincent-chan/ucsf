@@ -15,21 +15,21 @@ import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 /** Subtle card tint per item category — hues match `CategoryTag` in the review queue. */
 const DIGEST_SIGNAL_SURFACE: Record<ItemCategory | "uncategorized", string> = {
   paper:
-    "!bg-indigo-50/90 border-indigo-200/65 dark:!bg-indigo-950/35 dark:border-indigo-900/50",
+    "!bg-[#eef3f7] !border-[#cfdbe5]",
   award:
-    "!bg-yellow-50/90 border-yellow-200/60 dark:!bg-yellow-950/30 dark:border-yellow-900/45",
+    "!bg-[#f7efe6] !border-[#e4ceb1]",
   event:
-    "!bg-rose-50/90 border-rose-200/60 dark:!bg-rose-950/35 dark:border-rose-900/50",
+    "!bg-[#f6ecef] !border-[#dec4ce]",
   media:
-    "!bg-fuchsia-50/90 border-fuchsia-200/60 dark:!bg-fuchsia-950/35 dark:border-fuchsia-900/50",
+    "!bg-[#f7ecee] !border-[#dfc4c9]",
   funding:
-    "!bg-teal-50/90 border-teal-200/60 dark:!bg-teal-950/35 dark:border-teal-900/50",
+    "!bg-[#edf4ef] !border-[#c9d9cc]",
   community_update:
-    "!bg-cyan-50/90 border-cyan-200/60 dark:!bg-cyan-950/35 dark:border-cyan-900/50",
+    "!bg-[#edf4f4] !border-[#c9d8d9]",
   other:
-    "!bg-neutral-100/90 border-neutral-200/75 dark:!bg-neutral-900/45 dark:border-neutral-700/70",
+    "!bg-[#f4eee8] !border-[#d9cdc1]",
   uncategorized:
-    "!bg-neutral-50/95 border-neutral-200/70 dark:!bg-neutral-900/40 dark:border-neutral-800/80",
+    "!bg-[#fcf8f2] !border-[#e2d7cb]",
 };
 
 function digestCardClass(category: ItemCategory | null): string {
@@ -103,19 +103,19 @@ function DigestItemRow({ item }: { item: DigestItemPayload }) {
     <Card className={digestCardClass(item.category)}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="text-base font-semibold leading-snug text-neutral-900 dark:text-neutral-100">
+          <h3 className="text-base font-semibold leading-snug text-[color:var(--foreground)]">
             <Link href={`/items/${item.id}`} className="hover:underline">
               {item.title}
             </Link>
           </h3>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-[color:var(--muted-foreground)]">
             {item.investigator ? (
               profileUrl ? (
                 <a
                   href={profileUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-neutral-700 dark:hover:text-neutral-300"
+                  className="underline underline-offset-2 transition-colors hover:text-[color:var(--foreground)]"
                 >
                   {item.investigator.name}
                 </a>
@@ -128,7 +128,7 @@ function DigestItemRow({ item }: { item: DigestItemPayload }) {
             <span aria-hidden>·</span>
             <SourceTypeTag type={item.source_type} />
             <CategoryTag category={item.category} />
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">{dateLabel}</span>
+            <span className="text-xs text-[color:var(--muted-foreground)]">{dateLabel}</span>
           </div>
           {item.source_url ? (
             <p className="text-sm">
@@ -136,7 +136,7 @@ function DigestItemRow({ item }: { item: DigestItemPayload }) {
                 href={item.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-neutral-700 underline dark:text-neutral-300"
+                className="text-[color:var(--foreground)] underline underline-offset-4"
               >
                 Open source
               </a>
@@ -177,18 +177,18 @@ function DigestItemRow({ item }: { item: DigestItemPayload }) {
         </div>
       </div>
 
-      <div className="mt-4 border-t border-neutral-200 pt-4 dark:border-neutral-800">
+      <div className="mt-4 border-t border-[color:var(--border)]/60 pt-4">
         <button
           type="button"
           onClick={() => setSummaryOpen((o) => !o)}
-          className="text-sm font-medium text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
+          className="text-sm font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:text-[color:var(--foreground)] hover:underline"
         >
           {summaryOpen ? "Hide draft summary" : "Show draft summary"}
         </button>
         {summaryOpen ? (
           <div className="mt-3 space-y-3">
             {summaries.length === 0 ? (
-              <p className="text-sm text-neutral-500">No summary yet — draft one above.</p>
+              <p className="text-sm text-[color:var(--muted-foreground)]">No summary yet — draft one above.</p>
             ) : (
               <SummaryEditor
                 key={summaries[0]!.id}
@@ -213,8 +213,8 @@ export function MonthlyDigestView({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Monthly digest</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-3xl font-semibold tracking-tight">Monthly digest</h1>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
           Approved items for {monthLabel}. Pick a format and draft or regenerate: each platform gets
           its own wording (same facts, different tone and length). Newsletter is longest; Bluesky or X is
           shortest.
@@ -223,7 +223,7 @@ export function MonthlyDigestView({
       {items.length === 0 ? (
         <Card>
           <CardTitle>No approved items this month</CardTitle>
-          <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
             Approve items in the Review Queue (or adjust published dates) so they appear here for this
             month.
           </p>

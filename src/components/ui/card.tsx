@@ -7,7 +7,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-lg border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-950 ${className}`}
+      className={`surface-card rounded-[1.5rem] p-6 ${className}`}
     >
       {children}
     </div>
@@ -16,7 +16,7 @@ export function Card({
 
 export function CardTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+    <h2 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
       {children}
     </h2>
   );

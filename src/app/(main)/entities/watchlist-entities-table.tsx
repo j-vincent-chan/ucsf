@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MemberStatus } from "@/types/database";
 import { tierFromMemberStatus } from "@/lib/member-tier";
@@ -46,23 +46,15 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const selectedList = useMemo(
-    () => rows.filter((r) => selected.has(r.id)),
-    [rows, selected],
+  const rowIds = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
+  const activeSelected = useMemo(
+    () => new Set([...selected].filter((id) => rowIds.has(id))),
+    [selected, rowIds],
   );
-
-  useEffect(() => {
-    const valid = new Set(rows.map((r) => r.id));
-    setSelected((prev) => {
-      let pruned = false;
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (valid.has(id)) next.add(id);
-        else pruned = true;
-      }
-      return pruned ? next : prev;
-    });
-  }, [rows]);
+  const selectedList = useMemo(
+    () => rows.filter((r) => activeSelected.has(r.id)),
+    [activeSelected, rows],
+  );
 
   const toggle = useCallback((id: string) => {
     setSelected((prev) => {
@@ -116,16 +108,16 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
     router.refresh();
   }
 
-  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-  const someSelected = selected.size > 0;
+  const allSelected = rows.length > 0 && rows.every((r) => activeSelected.has(r.id));
+  const someSelected = activeSelected.size > 0;
 
   if (rows.length === 0) {
     return (
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+      <div className="soft-table overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <tbody>
             <tr>
-              <td colSpan={8} className="p-8 text-center text-neutral-500">
+              <td colSpan={8} className="p-10 text-center text-[color:var(--muted-foreground)]">
                 No faculty match. Clear filters or add one.
               </td>
             </tr>
@@ -138,9 +130,9 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
   return (
     <div className="space-y-3">
       {someSelected ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/40">
-          <p className="text-sm text-neutral-700 dark:text-neutral-300">
-            <span className="font-medium tabular-nums">{selected.size}</span> selected
+        <div className="surface-subtle flex flex-wrap items-center justify-between gap-3 rounded-[1.25rem] px-3 py-3">
+          <p className="text-sm text-[color:var(--foreground)]/90">
+            <span className="font-medium tabular-nums">{activeSelected.size}</span> selected
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="ghost" className="h-8 px-2 text-xs" onClick={clearSelection}>
@@ -153,15 +145,15 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
               disabled={bulkDeleting}
               onClick={() => void bulkDelete()}
             >
-              {bulkDeleting ? "Deleting…" : `Delete ${selected.size} selected`}
+              {bulkDeleting ? "Deleting…" : `Delete ${activeSelected.size} selected`}
             </Button>
           </div>
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+      <div className="soft-table overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-neutral-50 dark:bg-neutral-900/50">
+          <thead>
             <tr>
               <th className="w-10 p-3">
                 <input
@@ -184,11 +176,11 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
             {rows.map((e) => {
               const labHref = hrefForLabWebsite(e.lab_website);
               return (
-                <tr key={e.id} className="border-t border-neutral-100 dark:border-neutral-800">
+                <tr key={e.id} className="align-top">
                   <td className="p-3">
                     <input
                       type="checkbox"
-                      checked={selected.has(e.id)}
+                      checked={activeSelected.has(e.id)}
                       onChange={() => toggle(e.id)}
                       aria-label={`Select ${e.name}`}
                     />
@@ -199,7 +191,7 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
                         href={labHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-neutral-900 underline dark:text-neutral-100"
+                        className="text-[color:var(--foreground)] underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2"
                       >
                         {e.name}
                       </a>
@@ -208,16 +200,16 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
                     )}
                   </td>
                   <td className="p-3">{memberLabel(e.member_status)}</td>
-                  <td className="p-3 max-w-[240px] text-neutral-600 dark:text-neutral-400">
+                  <td className="max-w-[240px] p-3 text-[color:var(--muted-foreground)]">
                     {e.institution ?? "—"}
                   </td>
-                  <td className="p-3 font-mono text-xs text-neutral-600 dark:text-neutral-400">
+                  <td className="p-3 font-mono text-xs text-[color:var(--muted-foreground)]">
                     {e.nih_profile_id?.trim() ? (
                       <a
                         href={`https://reporter.nih.gov/person-details/${e.nih_profile_id.trim()}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-neutral-900 underline dark:text-neutral-100"
+                        className="text-[color:var(--foreground)] underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2"
                       >
                         {e.nih_profile_id.trim()}
                       </a>
@@ -231,7 +223,7 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
                     <span className="inline-flex items-center justify-end gap-3">
                       <Link
                         href={`/entities/${e.id}/edit`}
-                        className="text-neutral-900 underline dark:text-neutral-100"
+                        className="text-[color:var(--foreground)] underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2"
                       >
                         Edit
                       </Link>

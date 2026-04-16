@@ -42,7 +42,7 @@ export function DeleteFacultyButton({
       onClick={onDelete}
       disabled={loading}
       title="Delete faculty"
-      className="inline-flex items-center justify-center rounded p-1 text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/50 dark:hover:text-red-300"
+      className="inline-flex items-center justify-center rounded-lg p-1.5 text-[color:var(--muted-foreground)] transition-colors hover:bg-[#f4dfd9] hover:text-[#8f4d45] disabled:opacity-50"
       aria-label={`Delete ${name}`}
     >
       <svg

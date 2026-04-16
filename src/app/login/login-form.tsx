@@ -39,8 +39,8 @@ export function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-neutral-200 px-4 dark:bg-neutral-900">
-      <Card className="w-full max-w-sm">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-[radial-gradient(circle_at_top,rgba(201,125,99,0.16),transparent_28%),linear-gradient(180deg,#fbf7f1,#f3ece3)] px-4">
+      <Card className="w-full max-w-sm border-none">
         <SignalLoginLockup />
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div>

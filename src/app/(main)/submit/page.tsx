@@ -94,16 +94,17 @@ export default function SubmitPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-[color:var(--muted-foreground)]">
           <Link href="/items" className="hover:underline">
             ← Review Queue
           </Link>
         </p>
-        <h1 className="mt-2 text-2xl font-semibold">Manual submission</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Creates a new source item with status “new”
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Manual submission</h1>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
+          Create a new source item with status “new” for signals that need a careful, human-led
+          entry path.
         </p>
       </div>
 

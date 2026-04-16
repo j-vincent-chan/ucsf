@@ -7,8 +7,8 @@ export default async function NewEntityPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Add to watchlist</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-3xl font-semibold tracking-tight">Add to watchlist</h1>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
           Add someone to monitor for the digest
         </p>
       </div>

@@ -117,7 +117,7 @@ export function BulkUploadEntities() {
   return (
     <Card>
       <CardTitle>Bulk upload (CSV)</CardTitle>
-      <p className="mt-1 text-sm text-neutral-500">
+      <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
         Required columns: <code className="text-xs">Last Name</code>,{" "}
         <code className="text-xs">First Name</code>, and member status (header{" "}
         <code className="text-xs">Member status</code> or{" "}
@@ -135,7 +135,7 @@ export function BulkUploadEntities() {
         <code className="text-xs">active</code>. Priority tier is set from member status (Leadership
         1, Member 2, Associate 3).
         Rows upsert by <code className="text-xs">slug</code>; display name is synced in the database.
-        <span className="mt-2 block text-amber-800 dark:text-amber-200">
+        <span className="mt-3 block text-[#8f644f]">
           <strong>First-time Supabase:</strong> run{" "}
           <code className="text-xs">supabase/apply_faculty_schema.sql</code> in the SQL Editor if
           upload fails with a missing <code className="text-xs">first_name</code> column error.
@@ -161,18 +161,18 @@ export function BulkUploadEntities() {
         <button
           type="button"
           onClick={downloadTemplate}
-          className="text-sm text-neutral-600 underline dark:text-neutral-400"
+          className="text-sm text-[color:var(--muted-foreground)] underline underline-offset-4"
         >
           Download template
         </button>
       </div>
       {schemaHint && (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+        <p className="mt-3 rounded-[1rem] border border-[#dbc3ad] bg-[#f6eee4] p-3 text-sm text-[#6d5244]">
           {schemaHint}
         </p>
       )}
       {parseErrors.length > 0 && (
-        <ul className="mt-3 max-h-40 overflow-auto rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+        <ul className="mt-3 max-h-40 overflow-auto rounded-[1rem] border border-[#e3b8b0] bg-[#f9ece9] p-3 text-sm text-[#8b4d47]">
           {parseErrors.map((err, i) => (
             <li key={i}>
               {err.row > 0 ? `Row ${err.row}: ` : ""}

@@ -23,8 +23,8 @@ export default async function EditEntityPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Edit watchlist entry</h1>
-        <p className="mt-1 text-sm text-neutral-500">{entity.name}</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Edit watchlist entry</h1>
+        <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">{entity.name}</p>
       </div>
       <Card>
         <CardTitle>Details</CardTitle>

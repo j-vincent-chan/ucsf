@@ -87,64 +87,64 @@ function FiltersHelpHint() {
     <div className="group relative inline-flex shrink-0">
       <button
         type="button"
-        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-neutral-400 text-[11px] font-bold leading-none text-neutral-600 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-neutral-500 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--card)] text-[11px] font-bold leading-none text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
         aria-label="Discover new items data sources"
       >
         ?
       </button>
       <div
         role="tooltip"
-        className="invisible absolute left-1/2 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-neutral-200 bg-white p-3 text-left text-xs leading-relaxed text-neutral-700 shadow-lg ring-1 ring-black/5 group-hover:visible group-focus-within:visible dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300 dark:ring-white/10 sm:left-0 sm:translate-x-0"
+        className="invisible absolute left-1/2 top-full z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] -translate-x-1/2 rounded-[1.25rem] border border-[color:var(--border)] bg-[color:var(--card)] p-3 text-left text-xs leading-relaxed text-[color:var(--muted-foreground)] shadow-[0_20px_45px_-24px_rgba(89,67,52,0.45)] group-hover:visible group-focus-within:visible sm:left-0 sm:translate-x-0"
       >
-        <p className="font-semibold text-neutral-900 dark:text-neutral-100">
+        <p className="font-semibold text-[color:var(--foreground)]">
           Discover new items sources:
         </p>
-        <ul className="mt-2 list-none space-y-1.5 pl-0 text-neutral-600 dark:text-neutral-400">
+        <ul className="mt-2 list-none space-y-1.5 pl-0 text-[color:var(--muted-foreground)]">
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>NIH PubMed</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>
               NIH RePORTER{" "}
-              <span className="text-neutral-500 dark:text-neutral-500">
+              <span className="text-[color:var(--muted-foreground)]/85">
                 (Discover uses each row&apos;s NIH profile ID)
               </span>
             </span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>ClinicalTrials.gov</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>UCSF News Center</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>Google News Alerts</span>
           </li>
           <li className="flex gap-2">
-            <span className="shrink-0 text-neutral-400" aria-hidden>
+            <span className="shrink-0 text-[color:var(--muted-foreground)]/65" aria-hidden>
               -
             </span>
             <span>PI Lab Websites</span>
           </li>
         </ul>
-        <p className="mt-3 text-neutral-600 dark:text-neutral-400">
+        <p className="mt-3 text-[color:var(--muted-foreground)]">
           Results are de-duplicated before they appear here. Use{" "}
-          <Link href="/submit" className="font-medium text-neutral-900 underline dark:text-neutral-100">
+          <Link href="/submit" className="font-medium text-[color:var(--foreground)] underline">
             Manual Submission
           </Link>{" "}
           for one-off entries.
@@ -171,11 +171,11 @@ function CollapsiblePanelHeader({
       aria-expanded={expanded}
       aria-controls={panelId}
       onClick={onToggle}
-      className="flex w-full items-center justify-between gap-2 rounded-md py-0.5 text-left transition-colors hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:hover:bg-neutral-900/60"
+      className="flex w-full items-center justify-between gap-2 rounded-xl py-1 text-left transition-colors hover:bg-[color:var(--muted)]/55 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
     >
-      <span className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{children}</span>
+      <span className="text-lg font-semibold text-[color:var(--foreground)]">{children}</span>
       <span
-        className="shrink-0 select-none text-sm text-neutral-400 tabular-nums dark:text-neutral-500"
+        className="shrink-0 select-none text-sm tabular-nums text-[color:var(--muted-foreground)]/75"
         aria-hidden
       >
         {expanded ? "▼" : "▶"}
@@ -213,14 +213,14 @@ function SortableTh({
       <button
         type="button"
         onClick={() => onSort(columnKey)}
-        className="group inline-flex w-full min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left font-medium text-neutral-800 hover:bg-neutral-200/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-500 dark:text-neutral-100 dark:hover:bg-neutral-800"
+        className="group inline-flex w-full min-w-0 items-center gap-1 rounded-lg px-1.5 py-1 text-left font-medium text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/80 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
       >
         <span>{label}</span>
         <span
           className={`shrink-0 tabular-nums text-xs ${
             active
-              ? "text-neutral-600 dark:text-neutral-300"
-              : "text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-600"
+              ? "text-[color:var(--muted-foreground)]"
+              : "text-[color:var(--muted-foreground)]/35 opacity-0 transition-opacity group-hover:opacity-100"
           }`}
           aria-hidden
         >
@@ -234,7 +234,7 @@ function SortableTh({
 const FILTER_STORAGE = "csd-items-filters-v1";
 
 const FILTER_SELECT_CLASS =
-  "mt-1.5 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400/25 dark:border-neutral-600 dark:bg-neutral-950 dark:focus:border-neutral-500 dark:focus:ring-neutral-500/20";
+  "mt-1.5 w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--card)]/95 px-3.5 py-2.5 text-sm shadow-[0_8px_18px_-16px_rgba(89,67,52,0.5)] focus:border-[color:var(--accent)] focus:outline-none focus:ring-4 focus:ring-[color:var(--ring)]";
 
 const PUBLISHED_PRESETS: { preset: PublishedRangePreset; label: string }[] = [
   { preset: "current_month", label: "This month" },
@@ -244,7 +244,7 @@ const PUBLISHED_PRESETS: { preset: PublishedRangePreset; label: string }[] = [
 ];
 
 const PRESET_PILL_CLASS =
-  "rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500 dark:hover:bg-neutral-800";
+  "rounded-full border border-[color:var(--border)] bg-[color:var(--card)]/95 px-3 py-1.5 text-xs font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/70 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]";
 
 type Filters = {
   status: string;
@@ -283,11 +283,6 @@ export function ItemsQueue({
   const hydrated = useRef(false);
   const filtersFormRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    setPublishedFrom(initialFilters.from);
-    setPublishedTo(initialFilters.to);
-  }, [initialFilters.from, initialFilters.to]);
-
   function applyPublishedPreset(preset: PublishedRangePreset) {
     const r = rangeForPublishedPreset(preset);
     setPublishedFrom(r.from);
@@ -318,19 +313,11 @@ export function ItemsQueue({
     next.sort((a, b) => compareItems(a, b, sortKey, sortDir));
     return next;
   }, [initialItems, sortKey, sortDir]);
-
-  useEffect(() => {
-    const valid = new Set(initialItems.map((i) => i.id));
-    setSelected((prev) => {
-      let pruned = false;
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (valid.has(id)) next.add(id);
-        else pruned = true;
-      }
-      return pruned ? next : prev;
-    });
-  }, [initialItems]);
+  const visibleItemIds = useMemo(() => new Set(sortedItems.map((item) => item.id)), [sortedItems]);
+  const activeSelected = useMemo(
+    () => new Set([...selected].filter((id) => visibleItemIds.has(id))),
+    [selected, visibleItemIds],
+  );
 
   function onHeaderSort(key: QueueSortKey) {
     if (sortKey !== key) {
@@ -351,7 +338,7 @@ export function ItemsQueue({
   };
 
   const selectAllOnPage = () => {
-    if (selected.size === sortedItems.length) {
+    if (activeSelected.size === sortedItems.length) {
       setSelected(new Set());
     } else {
       setSelected(new Set(sortedItems.map((i) => i.id)));
@@ -419,7 +406,7 @@ export function ItemsQueue({
       archive_reason: string | null;
     }>,
   ): Promise<boolean> {
-    const ids = [...selected];
+    const ids = [...activeSelected];
     if (ids.length === 0) {
       toast.error("Select at least one row");
       return false;
@@ -449,7 +436,7 @@ export function ItemsQueue({
   }
 
   async function bulkDelete() {
-    const ids = [...selected];
+    const ids = [...activeSelected];
     if (ids.length === 0) {
       toast.error("Select at least one row");
       return;
@@ -522,24 +509,24 @@ export function ItemsQueue({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-gradient-to-br from-neutral-50 to-white p-4 shadow-sm dark:border-neutral-800 dark:from-neutral-900/90 dark:to-neutral-950 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+      <div className="surface-card flex flex-col gap-3 rounded-[1.75rem] bg-gradient-to-br from-[color:var(--card)] to-[color:var(--muted)]/45 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-0.5">
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            <h2 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
               Queue actions
             </h2>
             <FiltersHelpHint />
           </div>
-          <p className="mt-3 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <p className="mt-3 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
             {canRunDiscovery ? (
               <>
-                <strong className="font-medium text-neutral-800 dark:text-neutral-200">
+                <strong className="font-medium text-[color:var(--foreground)]">
                   Discover new items
                 </strong>{" "}
                 queries external sources and adds new rows.{" "}
               </>
             ) : null}
-            <strong className="font-medium text-neutral-800 dark:text-neutral-200">Refresh</strong>{" "}
+            <strong className="font-medium text-[color:var(--foreground)]">Refresh</strong>{" "}
             reloads this list from the database{canRunDiscovery ? "" : " (no automated discovery)"}.
           </p>
         </div>
@@ -548,7 +535,7 @@ export function ItemsQueue({
           <Button
             type="button"
             variant="secondary"
-            className="w-full shrink-0 border-neutral-300 bg-white py-2.5 text-sm font-medium shadow-sm dark:border-neutral-600 dark:bg-neutral-950 sm:w-auto sm:min-w-[7.5rem]"
+            className="w-full shrink-0 py-2.5 text-sm font-medium sm:w-auto sm:min-w-[7.5rem]"
             disabled={pending}
             onClick={refreshList}
           >
@@ -569,12 +556,12 @@ export function ItemsQueue({
           <form
             ref={filtersFormRef}
             id="filters-panel"
-            className="mt-4 space-y-5 border-t border-neutral-100 pt-5 dark:border-neutral-800"
+            className="mt-4 space-y-5 border-t border-[color:var(--border)]/60 pt-5"
             method="get"
             action="/items"
           >
-            <div className="rounded-lg border border-neutral-100 bg-neutral-50/90 p-4 dark:border-neutral-800 dark:bg-neutral-900/35">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            <div className="surface-subtle rounded-[1.25rem] p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
                 Match
               </p>
               <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -647,16 +634,16 @@ export function ItemsQueue({
               </div>
             </div>
 
-            <div className="rounded-lg border border-neutral-100 bg-neutral-50/90 p-4 dark:border-neutral-800 dark:bg-neutral-900/35">
+            <div className="surface-subtle rounded-[1.25rem] p-4">
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div>
                   <p
                     id="published-range-label"
-                    className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400"
+                    className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]"
                   >
                     Published date
                   </p>
-                  <p className="mt-1 max-w-md text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="mt-1 max-w-md text-xs text-[color:var(--muted-foreground)]">
                     Presets apply immediately (same as Apply filters). Edit dates for a custom range, then
                     use Apply filters; leave both empty to ignore published date.
                   </p>
@@ -704,26 +691,26 @@ export function ItemsQueue({
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4 dark:border-neutral-800 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-t border-[color:var(--border)]/60 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
               <Button type="submit" disabled={pending}>
                 Apply filters
               </Button>
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-2 text-sm text-neutral-600 dark:text-neutral-400">
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-2 text-sm text-[color:var(--muted-foreground)]">
                 <Button type="button" variant="ghost" className="h-9 px-2" onClick={saveDefaultFilters}>
                   Save as default
                 </Button>
-                <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>
+                <span className="text-[color:var(--muted-foreground)]/35" aria-hidden>
                   ·
                 </span>
                 <Button type="button" variant="ghost" className="h-9 px-2" onClick={loadDefaults}>
                   Load saved
                 </Button>
-                <span className="text-neutral-300 dark:text-neutral-600" aria-hidden>
+                <span className="text-[color:var(--muted-foreground)]/35" aria-hidden>
                   ·
                 </span>
                 <Link
                   href="/items"
-                  className="inline-flex h-9 items-center rounded-md px-2 text-sm text-neutral-600 underline-offset-4 hover:underline dark:text-neutral-400"
+                  className="inline-flex h-9 items-center rounded-xl px-2 text-sm text-[color:var(--muted-foreground)] underline-offset-4 hover:underline"
                 >
                   Clear all
                 </Link>
@@ -742,9 +729,9 @@ export function ItemsQueue({
           Bulk actions
         </CollapsiblePanelHeader>
         {bulkOpen ? (
-          <div id="bulk-panel" className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              {selected.size} selected · Approve, archive with a reason, set category, or permanently delete.
+          <div id="bulk-panel" className="mt-3 border-t border-[color:var(--border)]/60 pt-3">
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {activeSelected.size} selected · Approve, archive with a reason, set category, or permanently delete.
             </p>
             <div className="mt-3 flex flex-col gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -773,13 +760,13 @@ export function ItemsQueue({
                   type="button"
                   variant="secondary"
                   disabled={bulkDeleting || bulkArchivePanelOpen}
-                  className="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/40"
+                  className="border-[#d7b3a9] text-[#8f4d45] hover:bg-[#f4dfd9]"
                   onClick={() => void bulkDelete()}
                 >
                   {bulkDeleting ? "Deleting…" : "Delete permanently"}
                 </Button>
                 <select
-                  className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm dark:border-neutral-600 dark:bg-neutral-950"
+                  className="rounded-xl border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-sm"
                   aria-label="Assign category"
                   onChange={(e) => {
                     const v = e.target.value as ItemCategory | "";
@@ -799,8 +786,8 @@ export function ItemsQueue({
                 </select>
               </div>
               {bulkArchivePanelOpen ? (
-                <div className="max-w-lg space-y-2 rounded-lg border border-neutral-200 bg-neutral-50/90 p-3 dark:border-neutral-700 dark:bg-neutral-900/40">
-                  <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                <div className="surface-subtle max-w-lg space-y-2 rounded-[1.25rem] p-3">
+                  <p className="text-xs font-medium text-[color:var(--foreground)]/85">
                     Why archive?
                   </p>
                   <div className="flex flex-wrap items-end gap-2">
@@ -812,7 +799,7 @@ export function ItemsQueue({
                         id="bulk-archive-reason"
                         value={bulkArchiveReason}
                         onChange={(e) => setBulkArchiveReason(e.target.value)}
-                        className="w-full rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm dark:border-neutral-600 dark:bg-neutral-950"
+                        className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-sm"
                       >
                         <option value="">Choose a reason…</option>
                         {ARCHIVE_REASON_OPTIONS.map(({ value, label }) => (
@@ -841,15 +828,15 @@ export function ItemsQueue({
         ) : null}
       </Card>
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+      <div className="soft-table overflow-x-auto">
         <table className="w-full min-w-[1040px] text-left text-sm">
-          <thead className="bg-neutral-50 dark:bg-neutral-900/50">
+          <thead>
             <tr>
               <th className="w-10 p-2">
                 <input
                   type="checkbox"
                   aria-label="Select all on page"
-                  checked={sortedItems.length > 0 && selected.size === sortedItems.length}
+                  checked={sortedItems.length > 0 && activeSelected.size === sortedItems.length}
                   onChange={selectAllOnPage}
                 />
               </th>
@@ -903,7 +890,7 @@ export function ItemsQueue({
           <tbody>
             {sortedItems.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-neutral-500">
+                  <td colSpan={8} className="p-10 text-center text-[color:var(--muted-foreground)]">
                   No items for these filters.
                 </td>
               </tr>
@@ -915,11 +902,11 @@ export function ItemsQueue({
                   : null;
                 return (
                   <Fragment key={row.id}>
-                <tr className="border-t border-neutral-100 dark:border-neutral-800">
+                <tr className="align-top">
                   <td className="p-2">
                     <input
                       type="checkbox"
-                      checked={selected.has(row.id)}
+                      checked={activeSelected.has(row.id)}
                       onChange={() => toggle(row.id)}
                       aria-label={`Select ${row.title}`}
                     />
@@ -930,17 +917,17 @@ export function ItemsQueue({
                         href={row.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="font-medium text-neutral-900 underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-600 dark:text-neutral-100 dark:decoration-neutral-500 dark:hover:decoration-neutral-400"
+                        className="font-medium text-[color:var(--foreground)] underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2 hover:decoration-[color:var(--accent)]"
                       >
                         {row.title}
                       </a>
                     ) : (
-                      <span className="font-medium text-neutral-800 dark:text-neutral-200" title="No source URL">
+                      <span className="font-medium text-[color:var(--foreground)]/90" title="No source URL">
                         {row.title}
                       </span>
                     )}
                   </td>
-                  <td className="p-2 text-neutral-600 dark:text-neutral-400">
+                  <td className="p-2 text-[color:var(--muted-foreground)]">
                     {!te ? (
                       "—"
                     ) : investigatorProfileUrl ? (
@@ -948,7 +935,7 @@ export function ItemsQueue({
                         href={investigatorProfileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-600 dark:decoration-neutral-500 dark:hover:decoration-neutral-400"
+                        className="underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2 hover:decoration-[color:var(--accent)]"
                       >
                         {te.name}
                       </a>
@@ -959,7 +946,7 @@ export function ItemsQueue({
                   <td className="p-2">
                     <SourceTypeTag type={row.source_type} />
                   </td>
-                  <td className="p-2 text-neutral-600 dark:text-neutral-400">
+                  <td className="p-2 text-[color:var(--muted-foreground)]">
                     {row.published_at
                       ? new Date(row.published_at).toLocaleDateString()
                       : "—"}
@@ -974,7 +961,7 @@ export function ItemsQueue({
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/items/${row.id}`}
-                        className="text-sm font-medium text-neutral-700 underline-offset-2 hover:underline dark:text-neutral-300"
+                        className="rounded-lg px-2 py-1 text-sm font-medium text-[color:var(--muted-foreground)] underline-offset-2 transition-colors hover:bg-[color:var(--muted)]/55 hover:text-[color:var(--foreground)] hover:underline"
                       >
                         Edit
                       </Link>
@@ -988,9 +975,9 @@ export function ItemsQueue({
                           title="Archive this item"
                           aria-label={`Archive ${row.title}`}
                           aria-expanded={rowArchiveId === row.id}
-                          className={`inline-flex shrink-0 rounded p-1 text-neutral-500 transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950/50 dark:hover:text-red-300 ${
+                          className={`inline-flex shrink-0 rounded-lg p-1.5 text-[color:var(--muted-foreground)] transition-colors hover:bg-[#f4dfd9] hover:text-[#8f4d45] ${
                             rowArchiveId === row.id
-                              ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+                              ? "bg-[#f4dfd9] text-[#8f4d45]"
                               : ""
                           }`}
                         >
@@ -1018,9 +1005,9 @@ export function ItemsQueue({
                   </td>
                 </tr>
                     {rowArchiveId === row.id ? (
-                      <tr className="border-t border-neutral-100 bg-neutral-50/95 dark:border-neutral-800 dark:bg-neutral-900/50">
+                      <tr className="bg-[color:var(--muted)]/32">
                         <td colSpan={8} className="px-4 py-3">
-                          <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                          <p className="text-xs font-medium text-[color:var(--foreground)]/85">
                             Archive this item — pick a reason
                           </p>
                           <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -1032,7 +1019,7 @@ export function ItemsQueue({
                                 id={`row-archive-reason-${row.id}`}
                                 value={rowArchiveReason}
                                 onChange={(e) => setRowArchiveReason(e.target.value)}
-                                className="w-full rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm dark:border-neutral-600 dark:bg-neutral-950"
+                                className="w-full rounded-xl border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-sm"
                               >
                                 <option value="">Choose a reason…</option>
                                 {ARCHIVE_REASON_OPTIONS.map(({ value, label }) => (

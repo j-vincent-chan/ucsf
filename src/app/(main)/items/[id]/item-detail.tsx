@@ -81,11 +81,6 @@ export function ItemDetail({
   }, [item.id, router]);
 
   useEffect(() => {
-    setQuickArchiveReason("");
-    setArchivePanelOpen(false);
-  }, [item.id]);
-
-  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;

@@ -3,13 +3,10 @@ import { signOut } from "@/app/actions/auth-actions";
 import { createClient } from "@/lib/supabase/server";
 import type { ProfileRole } from "@/types/database";
 import { SignalLogo } from "@/components/signal-logo";
-import { DigestNavSection } from "@/components/digest-month-nav";
 import { recentYearMonths } from "@/lib/digest-month";
+import { SidebarNav } from "@/components/sidebar-nav";
 
 const digestMonths = recentYearMonths(12);
-
-const navLinkClass =
-  "block rounded-md px-2 py-1.5 text-neutral-700 hover:bg-neutral-200/80 dark:text-neutral-200 dark:hover:bg-neutral-800";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -28,41 +25,35 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-full flex">
-      <aside className="w-52 shrink-0 border-r border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/40">
-        <div className="flex h-full flex-col p-4">
+    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,rgba(201,125,99,0.12),transparent_24%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_92%,white),var(--background))] lg:flex">
+      <aside className="border-b border-[color:var(--border)]/80 bg-[color:var(--background)]/92 lg:min-h-screen lg:w-80 lg:shrink-0 lg:border-r lg:border-b-0">
+        <div className="flex h-full flex-col p-5 lg:p-6">
           <Link
             href="/dashboard"
-            className="mb-6 block shrink-0 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            className="surface-card mb-6 block shrink-0 rounded-[1.6rem] px-4 py-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
           >
             <SignalLogo />
           </Link>
-          <nav className="flex flex-1 flex-col gap-0.5 text-sm">
-            <Link href="/dashboard" className={navLinkClass}>
-              Dashboard
-            </Link>
-            {role === "admin" ? (
-              <Link href="/entities" className={navLinkClass}>
-                Watchlist
-              </Link>
-            ) : null}
-            <Link href="/items" className={navLinkClass}>
-              Review Queue
-            </Link>
-            <Link href="/submit" className={navLinkClass}>
-              Manual Submission
-            </Link>
-            <DigestNavSection months={digestMonths} />
-            <Link href="/readme" className={navLinkClass}>
-              Readme
-            </Link>
-          </nav>
-          <div className="mt-auto border-t border-neutral-200 pt-3 dark:border-neutral-700">
-            <p className="truncate px-2 text-xs text-neutral-500">{user?.email}</p>
+          <div className="surface-subtle mb-4 rounded-[1.25rem] px-3 py-2.5">
+            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Workspace</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">
+              Community Signal
+            </p>
+          </div>
+
+          <SidebarNav role={role} digestMonths={digestMonths} />
+
+          <div className="surface-subtle mt-6 rounded-[1.25rem] px-3 py-3">
+            <p className="truncate px-1 text-xs font-medium text-[color:var(--muted-foreground)]/90">
+              {user?.email}
+            </p>
+            <p className="px-1 pt-1 text-[11px] text-[color:var(--muted-foreground)]/80">
+              Need help? Visit Readme for workflow guidance.
+            </p>
             <form action={signOut}>
               <button
                 type="submit"
-                className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-neutral-600 hover:bg-neutral-200/80 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                className="mt-2 w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/80 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
               >
                 Sign out
               </button>
@@ -70,7 +61,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 p-8">{children}</main>
+      <main className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10">{children}</main>
     </div>
   );
 }

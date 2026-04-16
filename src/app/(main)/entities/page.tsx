@@ -43,8 +43,8 @@ export default async function EntitiesPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Watchlist</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-3xl font-semibold tracking-tight">Watchlist</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
             A list of investigators being monitored across the research community for new and relevant
             signals.
           </p>
@@ -56,7 +56,9 @@ export default async function EntitiesPage({
         <CardTitle>Search & filter</CardTitle>
         <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
           <div className="min-w-[200px] flex-1">
-            <label className="text-xs font-medium text-neutral-500">Search</label>
+            <label className="text-xs font-medium uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+              Search
+            </label>
             <Input
               name="q"
               defaultValue={q}
@@ -64,23 +66,20 @@ export default async function EntitiesPage({
               className="mt-1"
             />
           </div>
-          <div className="flex items-center gap-2 pb-2">
+          <div className="flex items-center gap-2 pb-2 text-[color:var(--muted-foreground)]">
             <input
               id="show_all"
               type="checkbox"
               name="show_all"
               value="1"
               defaultChecked={showAll}
-              className="rounded border-neutral-300"
+              className="rounded border-[color:var(--border)]"
             />
             <label htmlFor="show_all" className="text-sm">
               Include inactive
             </label>
           </div>
-          <button
-            type="submit"
-            className="rounded-md bg-neutral-900 px-3 py-2 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-          >
+          <button type="submit" className="rounded-xl bg-[color:var(--accent)] px-4 py-2.5 text-sm font-medium text-[color:var(--accent-foreground)] shadow-[0_14px_30px_-18px_rgba(141,86,64,0.65)] transition-all hover:-translate-y-px">
             Apply
           </button>
         </form>

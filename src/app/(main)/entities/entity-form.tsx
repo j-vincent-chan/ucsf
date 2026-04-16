@@ -125,7 +125,7 @@ export function EntityForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-w-xl space-y-4">
+    <form onSubmit={onSubmit} className="mx-auto max-w-2xl space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor="first_name">First name</Label>
@@ -184,7 +184,7 @@ export function EntityForm({
           placeholder="e.g. UCSF; Stanford University (synonyms: ; or |)"
           className="mt-1"
         />
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
           Used by Discover to match name + school/org (PubMed affiliation, trial sites).
         </p>
       </div>
@@ -198,7 +198,7 @@ export function EntityForm({
           placeholder="https://pubmed.ncbi.nlm.nih.gov/?term=…"
           className="mt-1 font-mono text-sm"
         />
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
           When set, <strong>Discover</strong> uses the URL’s <code className="text-xs">term=</code> for PubMed. If
           empty, Discover uses last name + first name + institution.
         </p>
@@ -213,7 +213,7 @@ export function EntityForm({
           placeholder="https://lab.ucsf.edu/… — homepage; Discover tries common RSS paths"
           className="mt-1 font-mono text-sm"
         />
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
           When set, <strong>Discover</strong> pulls the lab site RSS when available (items tagged{" "}
           <span className="font-medium">Lab website</span>) alongside Google News.
         </p>
@@ -229,7 +229,7 @@ export function EntityForm({
           placeholder="e.g. 1874447 — numeric ID from reporter.nih.gov person page"
           className="mt-1 font-mono text-sm"
         />
-        <p className="mt-1 text-xs text-neutral-500">
+        <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
           When set, <strong>Discover</strong> pulls NIH awards for this PI via the{" "}
           <a
             href="https://api.reporter.nih.gov/"
@@ -258,7 +258,7 @@ export function EntityForm({
       </div>
       <div>
         <Label>Priority tier</Label>
-        <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
           Tier {tierFromMemberStatus(memberStatus)} — set automatically from member
           status (Leadership 1, Member 2, Associate 3).
         </p>
@@ -273,7 +273,7 @@ export function EntityForm({
           Active
         </label>
       </div>
-      <p className="text-xs text-neutral-500">
+      <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
         Display name is generated as “First Last”. All tracked people are faculty
         in this workspace.
       </p>

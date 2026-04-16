@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/discover-items",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

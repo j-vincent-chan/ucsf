@@ -64,6 +64,7 @@ export default async function ItemDetailPage({
 
   return (
     <ItemDetail
+      key={id}
       item={rest as unknown as SourceItem}
       entityName={entity?.name ?? null}
       summaries={(summaries ?? []) as Summary[]}

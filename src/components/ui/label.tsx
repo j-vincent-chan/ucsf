@@ -8,7 +8,10 @@ export function Label({
   className?: string;
 }) {
   return (
-    <label htmlFor={htmlFor} className={`block text-sm font-medium text-neutral-700 dark:text-neutral-300 ${className}`}>
+    <label
+      htmlFor={htmlFor}
+      className={`block text-sm font-medium text-[color:var(--foreground)]/90 ${className}`}
+    >
       {children}
     </label>
   );

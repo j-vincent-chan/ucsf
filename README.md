@@ -120,6 +120,10 @@ The app expects `tracked_entities.first_name` (and related columns). Run `supaba
 - Never ship `SUPABASE_SERVICE_ROLE_KEY` or `OPENAI_API_KEY` to the browser; keep them server-only.
 - Turn on email confirmation and password policies in Supabase for real deployments.
 - Review RLS policies before production data lands; this app assumes a trusted internal audience.
+- Automated discovery is supported via Vercel Cron:
+  - Set `CRON_SECRET` in your Vercel environment variables.
+  - `vercel.json` schedules `GET /api/discover-items` nightly at `00:00` (UTC).
+  - The endpoint validates `Authorization: Bearer <CRON_SECRET>` and runs discovery with the service-role client.
 
 ## Commands
 

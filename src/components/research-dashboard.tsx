@@ -41,13 +41,13 @@ const RANGES: { id: ChartRange; label: string }[] = [
 ];
 
 const CAT_COLORS: Record<string, string> = {
-  paper: "#2563eb",
-  award: "#d97706",
-  event: "#7c3aed",
-  media: "#e11d48",
-  funding: "#059669",
-  community_update: "#0891b2",
-  other: "#737373",
+  paper: "#7c8fa8",
+  award: "#c9955b",
+  event: "#b47f93",
+  media: "#a66b72",
+  funding: "#7b977f",
+  community_update: "#73979a",
+  other: "#9a8d84",
 };
 
 const CAT_LABEL: Record<string, string> = {
@@ -69,7 +69,7 @@ function RangeToggle({
 }) {
   return (
     <div
-      className="inline-flex rounded-lg border border-neutral-200 bg-neutral-100/80 p-0.5 dark:border-neutral-700 dark:bg-neutral-900"
+      className="inline-flex rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/80 p-1"
       role="group"
       aria-label="Time range"
     >
@@ -80,8 +80,8 @@ function RangeToggle({
           onClick={() => onChange(id)}
           className={`rounded-md px-2.5 py-1 text-xs font-medium transition sm:px-3 sm:text-sm ${
             value === id
-              ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-50"
-              : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200"
+              ? "bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[0_12px_24px_-18px_rgba(89,67,52,0.45)]"
+              : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
           }`}
         >
           {label}
@@ -102,19 +102,19 @@ function ChartTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-950">
-      <p className="mb-1 font-medium text-neutral-900 dark:text-neutral-100">{label}</p>
+    <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-xs shadow-[0_20px_45px_-24px_rgba(89,67,52,0.4)]">
+      <p className="mb-1 font-medium text-[color:var(--foreground)]">{label}</p>
       <ul className="space-y-0.5">
         {payload.map((p) => (
           <li key={String(p.name)} className="flex justify-between gap-4 tabular-nums">
-            <span className="flex items-center gap-1.5 text-neutral-600 dark:text-neutral-400">
+            <span className="flex items-center gap-1.5 text-[color:var(--muted-foreground)]">
               <span
                 className="h-2 w-2 shrink-0 rounded-full"
                 style={{ backgroundColor: p.color }}
               />
               {p.name}
             </span>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+            <span className="font-medium text-[color:var(--foreground)]">
               {p.value?.toLocaleString() ?? 0}
             </span>
           </li>
@@ -125,7 +125,7 @@ function ChartTooltip({
 }
 
 const axisTick = { fill: "currentColor", fontSize: 11 };
-const gridStroke = "rgba(115,115,115,0.15)";
+const gridStroke = "rgba(124, 106, 95, 0.18)";
 
 export function ResearchDashboard({
   data,
@@ -177,11 +177,11 @@ export function ResearchDashboard({
 
   const sourceMix = useMemo(() => {
     return [
-      { name: "PubMed", value: kpis.pubmed, fill: "#2563eb" },
-      { name: "Web / media", value: kpis.web, fill: "#0891b2" },
-      { name: "RePORTER", value: kpis.reporter, fill: "#ea580c" },
-      { name: "Lab website", value: kpis.lab_website, fill: "#059669" },
-      { name: "Manual", value: kpis.manual, fill: "#737373" },
+      { name: "PubMed", value: kpis.pubmed, fill: "#7c8fa8" },
+      { name: "Web / media", value: kpis.web, fill: "#73979a" },
+      { name: "RePORTER", value: kpis.reporter, fill: "#c9955b" },
+      { name: "Lab website", value: kpis.lab_website, fill: "#7b977f" },
+      { name: "Manual", value: kpis.manual, fill: "#9a8d84" },
     ].filter((x) => x.value > 0);
   }, [kpis.pubmed, kpis.web, kpis.reporter, kpis.lab_website, kpis.manual]);
 
@@ -197,33 +197,33 @@ export function ResearchDashboard({
       ar += r.archived;
     }
     return [
-      { name: "New", value: n, fill: "#3b82f6" },
-      { name: "Reviewed", value: rv, fill: "#a855f7" },
-      { name: "Approved", value: ap, fill: "#22c55e" },
-      { name: "Archived", value: ar, fill: "#a3a3a3" },
+      { name: "New", value: n, fill: "#7c8fa8" },
+      { name: "Reviewed", value: rv, fill: "#c9955b" },
+      { name: "Approved", value: ap, fill: "#7b977f" },
+      { name: "Archived", value: ar, fill: "#9a8d84" },
     ].filter((x) => x.value > 0);
   }, [filteredMonthly]);
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8 text-neutral-900 dark:text-neutral-100">
+    <div className="mx-auto max-w-7xl space-y-8 text-[color:var(--foreground)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-1 max-w-2xl text-sm text-neutral-600 dark:text-neutral-400">
+          <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
             Dashboard of research activity across the community, built from curated signals.
           </p>
-          <p className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+          <p className="mt-2 text-xs text-[color:var(--muted-foreground)]/85">
             Updated {new Date(data.snapshotAt).toLocaleString()}
           </p>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
           <RangeToggle value={range} onChange={setRange} />
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
             <input
               type="checkbox"
               checked={showCumulativeLine}
               onChange={(e) => setShowCumulativeLine(e.target.checked)}
-              className="rounded border-neutral-300 dark:border-neutral-600"
+              className="rounded border-[color:var(--border)]"
             />
             Overlay cumulative total (reporting view)
           </label>
@@ -256,12 +256,12 @@ export function ResearchDashboard({
         <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle>Research volume by month</CardTitle>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
               Stacked by signal type — drag range above. Toggle cumulative for growth narrative.
             </p>
           </div>
         </div>
-        <div className="h-[340px] w-full min-w-0 text-neutral-600 dark:text-neutral-400">
+        <div className="h-[340px] w-full min-w-0 text-[color:var(--muted-foreground)]">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={composedVolumeData} margin={{ top: 8, right: showCumulativeLine ? 16 : 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
@@ -297,7 +297,7 @@ export function ResearchDashboard({
                   type="monotone"
                   dataKey="cumulative"
                   name="Cumulative total"
-                  stroke="#171717"
+                  stroke="#6c5a50"
                   strokeWidth={2}
                   dot={false}
                 />
@@ -306,7 +306,7 @@ export function ResearchDashboard({
           </ResponsiveContainer>
         </div>
         {showCumulativeLine ? (
-          <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
             Black line: running total of ingested items across the visible period (resets at the
             start of the selected range).
           </p>
@@ -316,10 +316,10 @@ export function ResearchDashboard({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle>Cumulative signal growth</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             Same range — total items over time (annual-report friendly).
           </p>
-          <div className="mt-4 h-[260px] w-full min-w-0 text-neutral-600 dark:text-neutral-400">
+          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={cumulativeSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
@@ -330,7 +330,7 @@ export function ResearchDashboard({
                   type="monotone"
                   dataKey="cumulative"
                   name="Cumulative items"
-                  stroke="#2563eb"
+                  stroke="#c97d63"
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ r: 4 }}
@@ -342,17 +342,17 @@ export function ResearchDashboard({
 
         <Card>
           <CardTitle>New watchlist members</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             By roster join month (investigator <code className="text-xs">created_at</code>).
           </p>
-          <div className="mt-4 h-[260px] w-full min-w-0 text-neutral-600 dark:text-neutral-400">
+          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={filteredJoins} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
                 <XAxis dataKey="shortLabel" tick={axisTick} interval="preserveStartEnd" minTickGap={20} />
                 <YAxis tick={axisTick} width={36} allowDecimals={false} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="joins" name="New members" fill="#059669" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="joins" name="New members" fill="#7b977f" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -362,14 +362,14 @@ export function ResearchDashboard({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle>Source mix (range)</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             PubMed, web and news RSS, lab-site RSS, and manual entry.
           </p>
-          <div className="mt-4 h-[220px] w-full min-w-0 text-neutral-600 dark:text-neutral-400">
+          <div className="mt-4 h-[220px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 layout="vertical"
-                data={sourceMix.length ? sourceMix : [{ name: "—", value: 0, fill: "#e5e5e5" }]}
+                data={sourceMix.length ? sourceMix : [{ name: "—", value: 0, fill: "#eadfd5" }]}
                 margin={{ top: 8, right: 24, left: 8, bottom: 0 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
@@ -377,7 +377,7 @@ export function ResearchDashboard({
                 <YAxis type="category" dataKey="name" tick={axisTick} width={88} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="value" name="Items" radius={[0, 4, 4, 0]}>
-                  {(sourceMix.length ? sourceMix : [{ fill: "#e5e5e5" }]).map((e, i) => (
+                  {(sourceMix.length ? sourceMix : [{ fill: "#eadfd5" }]).map((e, i) => (
                     <Cell key={i} fill={e.fill} />
                   ))}
                 </Bar>
@@ -388,15 +388,15 @@ export function ResearchDashboard({
 
         <Card>
           <CardTitle>Pipeline (range)</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             Items first seen in period by current workflow status.
           </p>
-          <div className="mt-4 h-[220px] w-full min-w-0 text-neutral-600 dark:text-neutral-400">
+          <div className="mt-4 h-[220px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 layout="vertical"
                 data={
-                  statusMix.length ? statusMix : [{ name: "—", value: 0, fill: "#e5e5e5" }]
+                  statusMix.length ? statusMix : [{ name: "—", value: 0, fill: "#eadfd5" }]
                 }
                 margin={{ top: 8, right: 24, left: 8, bottom: 0 }}
               >
@@ -405,7 +405,7 @@ export function ResearchDashboard({
                 <YAxis type="category" dataKey="name" tick={axisTick} width={72} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="value" name="Items" radius={[0, 4, 4, 0]}>
-                  {(statusMix.length ? statusMix : [{ fill: "#e5e5e5" }]).map((e, i) => (
+                  {(statusMix.length ? statusMix : [{ fill: "#eadfd5" }]).map((e, i) => (
                     <Cell key={i} fill={e.fill} />
                   ))}
                 </Bar>
@@ -418,25 +418,25 @@ export function ResearchDashboard({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle>Top investigators (range)</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             Most ingested signals linked to a watchlist member.
           </p>
           <ul className="mt-4 space-y-2 text-sm">
             {topEntities.length === 0 ? (
-              <li className="text-neutral-500">No linked items in this range.</li>
+              <li className="text-[color:var(--muted-foreground)]">No linked items in this range.</li>
             ) : (
               topEntities.map((e, i) => (
                 <li
                   key={e.id}
-                  className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-2 last:border-0 dark:border-neutral-800"
+                  className="flex items-center justify-between gap-2 border-b border-[color:var(--border)]/60 pb-2 last:border-0"
                 >
-                  <span className="min-w-0 truncate text-neutral-700 dark:text-neutral-300">
-                    <span className="text-neutral-400 dark:text-neutral-500">{i + 1}.</span>{" "}
+                  <span className="min-w-0 truncate text-[color:var(--foreground)]/90">
+                    <span className="text-[color:var(--muted-foreground)]">{i + 1}.</span>{" "}
                     <Link href={`/entities/${e.id}/edit`} className="font-medium hover:underline">
                       {e.name}
                     </Link>
                   </span>
-                  <span className="shrink-0 tabular-nums text-neutral-600 dark:text-neutral-400">
+                  <span className="shrink-0 tabular-nums text-[color:var(--muted-foreground)]">
                     {e.count}
                   </span>
                 </li>
@@ -447,11 +447,11 @@ export function ResearchDashboard({
 
         <Card>
           <CardTitle>Recent activity</CardTitle>
-          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Latest ingested items.</p>
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">Latest ingested items.</p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[320px] text-left text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
+                <tr className="border-b border-[color:var(--border)] text-[color:var(--muted-foreground)]">
                   <th className="pb-2 pr-2 font-medium">Title</th>
                   <th className="pb-2 pr-2 font-medium">Investigator</th>
                   <th className="pb-2 font-medium">Published</th>
@@ -460,20 +460,20 @@ export function ResearchDashboard({
               <tbody>
                 {recentItems.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="py-6 text-neutral-500">
+                    <td colSpan={3} className="py-6 text-[color:var(--muted-foreground)]">
                       No items yet.
                     </td>
                   </tr>
                 ) : (
                   recentItems.map((r) => (
-                    <tr key={r.id} className="border-b border-neutral-100 dark:border-neutral-900">
+                    <tr key={r.id} className="border-b border-[color:var(--border)]/60 last:border-b-0">
                       <td className="py-2 pr-2">
                         <Link href={`/items/${r.id}`} className="line-clamp-2 hover:underline">
                           {r.title}
                         </Link>
                       </td>
-                      <td className="py-2 pr-2 text-neutral-600 dark:text-neutral-400">{r.entityName}</td>
-                      <td className="py-2 text-neutral-600 dark:text-neutral-400">
+                      <td className="py-2 pr-2 text-[color:var(--muted-foreground)]">{r.entityName}</td>
+                      <td className="py-2 text-[color:var(--muted-foreground)]">
                         {r.published_at
                           ? new Date(r.published_at).toLocaleDateString()
                           : "—"}
@@ -513,15 +513,15 @@ function KpiCard({
 }) {
   const inner = (
     <>
-      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{value.toLocaleString()}</p>
-      <p className="mt-0.5 text-[11px] text-neutral-400 dark:text-neutral-500">{sub}</p>
+      <p className="mt-1 text-[11px] text-[color:var(--muted-foreground)]">{sub}</p>
     </>
   );
   if (href) {
     return (
       <Link href={href}>
-        <Card className="h-full transition hover:border-neutral-300 dark:hover:border-neutral-600">
+        <Card className="h-full transition-transform duration-200 hover:-translate-y-0.5">
           {inner}
         </Card>
       </Link>
