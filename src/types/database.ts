@@ -42,11 +42,33 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      communities: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+          slug?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           id: string;
           full_name: string | null;
           role: ProfileRole;
+          /** Tenant: watchlist + items scoped to this community. */
+          community_id: string;
           created_at: string;
           updated_at: string;
           /** App login handle (email-style); password is stored as bcrypt in password_hash (server-only column). */
@@ -56,12 +78,14 @@ export interface Database {
           id: string;
           full_name?: string | null;
           role?: ProfileRole;
+          community_id: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           full_name?: string | null;
           role?: ProfileRole;
+          community_id?: string;
           updated_at?: string;
         };
         Relationships: [];
@@ -69,6 +93,7 @@ export interface Database {
       tracked_entities: {
         Row: {
           id: string;
+          community_id: string;
           name: string;
           slug: string;
           entity_type: EntityType;
@@ -87,6 +112,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          community_id?: string;
           name?: string;
           slug: string;
           entity_type?: EntityType;
@@ -104,6 +130,7 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          community_id?: string;
           name?: string;
           slug?: string;
           entity_type?: EntityType;
@@ -124,6 +151,7 @@ export interface Database {
       source_items: {
         Row: {
           id: string;
+          community_id: string;
           tracked_entity_id: string | null;
           source_type: SourceType;
           title: string;
@@ -144,6 +172,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          community_id?: string;
           tracked_entity_id?: string | null;
           source_type: SourceType;
           title: string;
@@ -163,6 +192,7 @@ export interface Database {
           updated_at?: string;
         };
         Update: {
+          community_id?: string;
           tracked_entity_id?: string | null;
           source_type?: SourceType;
           title?: string;
@@ -259,3 +289,9 @@ export type TrackedEntity = Tables["tracked_entities"]["Row"];
 export type SourceItem = Tables["source_items"]["Row"];
 export type Summary = Tables["summaries"]["Row"];
 export type Profile = Tables["profiles"]["Row"];
+export type Community = Tables["communities"]["Row"];
+
+/** Profile row plus embedded tenant name from `community:communities(...)` selects. */
+export type ProfileWithCommunity = Profile & {
+  community: Pick<Community, "name" | "slug"> | null;
+};

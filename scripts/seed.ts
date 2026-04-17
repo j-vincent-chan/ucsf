@@ -142,6 +142,18 @@ async function ensureImmunoxProfileLogin(plainPassword: string) {
 }
 
 async function main() {
+  const { data: immunoxCommunity, error: commErr } = await admin
+    .from("communities")
+    .select("id")
+    .eq("slug", "immunox")
+    .maybeSingle();
+  if (commErr || !immunoxCommunity) {
+    throw new Error(
+      "ImmunoX community row missing — apply Supabase migrations (communities) before seeding.",
+    );
+  }
+  const COMMUNITY_ID = immunoxCommunity.id;
+
   const adminUser = await ensureUser(ADMIN_EMAIL, "admin");
   const editorUser = await ensureUser(EDITOR_EMAIL, "editor");
   const immunoxPw = process.env.SEED_IMMUNOX_PASSWORD?.trim();
@@ -157,6 +169,7 @@ async function main() {
   const entities = [
     {
       id: IDS.e1,
+      community_id: COMMUNITY_ID,
       first_name: "Maya",
       last_name: "Chen",
       member_status: "member" as const,
@@ -170,6 +183,7 @@ async function main() {
     },
     {
       id: IDS.e2,
+      community_id: COMMUNITY_ID,
       first_name: "Jordan",
       last_name: "Okonkwo",
       member_status: "associate" as const,
@@ -183,6 +197,7 @@ async function main() {
     },
     {
       id: IDS.e3,
+      community_id: COMMUNITY_ID,
       first_name: "Alex",
       last_name: "Kim",
       member_status: "associate" as const,
@@ -196,6 +211,7 @@ async function main() {
     },
     {
       id: IDS.e4,
+      community_id: COMMUNITY_ID,
       first_name: "Riley",
       last_name: "Ng",
       member_status: "leadership_committee" as const,
@@ -209,6 +225,7 @@ async function main() {
     },
     {
       id: IDS.e5,
+      community_id: COMMUNITY_ID,
       first_name: "Elena",
       last_name: "Vasquez",
       member_status: "member" as const,
@@ -222,6 +239,7 @@ async function main() {
     },
     {
       id: IDS.e6,
+      community_id: COMMUNITY_ID,
       first_name: "Taylor",
       last_name: "Brooks",
       member_status: "associate" as const,
@@ -235,6 +253,7 @@ async function main() {
     },
     {
       id: IDS.e7,
+      community_id: COMMUNITY_ID,
       first_name: "Jamie",
       last_name: "Wu",
       member_status: "member" as const,
@@ -248,6 +267,7 @@ async function main() {
     },
     {
       id: IDS.e8,
+      community_id: COMMUNITY_ID,
       first_name: "Samir",
       last_name: "Patel",
       member_status: "associate" as const,
@@ -478,6 +498,7 @@ async function main() {
     },
   ].map((row) => ({
     ...row,
+    community_id: COMMUNITY_ID,
     submitted_by: actor,
   }));
 

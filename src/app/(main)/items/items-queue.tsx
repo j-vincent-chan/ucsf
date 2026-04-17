@@ -575,7 +575,6 @@ export function ItemsQueue({
                   >
                     <option value="">Active queue (hide archived)</option>
                     <option value="new">New</option>
-                    <option value="reviewed">Reviewed</option>
                     <option value="approved">Approved</option>
                     <option value="archived">Archived only</option>
                     <option value="all">All statuses (incl. archived)</option>

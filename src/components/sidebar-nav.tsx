@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { startTransition, useEffect, useRef, useState } from "react";
 import type { ProfileRole } from "@/types/database";
 
 function iconBase() {
@@ -65,6 +66,21 @@ function WatchlistIcon() {
   );
 }
 
+function ChevronDownIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className={`h-4 w-4 shrink-0 text-[color:var(--muted-foreground)] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function itemClass(active: boolean) {
   if (active) {
     return "group flex items-center gap-3 rounded-2xl bg-[color:var(--muted)] px-3.5 py-2.5 text-sm font-medium text-[color:var(--foreground)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_85%,white)] transition-all";
@@ -89,6 +105,16 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
   const inDigest = pathname === "/digest" || pathname.startsWith("/digest/");
+  const [digestOpen, setDigestOpen] = useState(inDigest);
+  const prevInDigest = useRef(false);
+
+  useEffect(() => {
+    startTransition(() => {
+      if (inDigest && !prevInDigest.current) setDigestOpen(true);
+      if (!inDigest && prevInDigest.current) setDigestOpen(false);
+      prevInDigest.current = inDigest;
+    });
+  }, [inDigest]);
 
   return (
     <nav className="flex flex-1 flex-col">
@@ -110,29 +136,44 @@ export function SidebarNav({
 
       <SectionLabel>Publishing</SectionLabel>
       <div className="space-y-1.5">
-        <Link href="/digest" className={itemClass(inDigest)}>
+        <button
+          type="button"
+          onClick={() => setDigestOpen((o) => !o)}
+          className={`${itemClass(inDigest)} w-full`}
+          aria-expanded={digestOpen}
+          aria-controls="sidebar-digest-months"
+          id="sidebar-digest-trigger"
+        >
           <DigestIcon />
-          <span>Digest</span>
-        </Link>
-        <div className="ml-5 space-y-1 border-l border-[color:var(--border)]/75 pl-3">
-          {digestMonths.map(({ ym, label }) => {
-            const href = `/digest/${ym}`;
-            const active = pathname === href;
-            return (
-              <Link
-                key={ym}
-                href={href}
-                className={
-                  active
-                    ? "block rounded-xl bg-[color:var(--muted)]/80 px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-                    : "block rounded-xl px-2.5 py-1.5 text-xs text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/50 hover:text-[color:var(--foreground)]"
-                }
-              >
-                {label}
-              </Link>
-            );
-          })}
-        </div>
+          <span className="min-w-0 flex-1 text-left">Digest</span>
+          <ChevronDownIcon open={digestOpen} />
+        </button>
+        {digestOpen ? (
+          <div
+            id="sidebar-digest-months"
+            role="region"
+            aria-labelledby="sidebar-digest-trigger"
+            className="ml-5 space-y-1 border-l border-[color:var(--border)]/75 pl-3"
+          >
+            {digestMonths.map(({ ym, label }) => {
+              const href = `/digest/${ym}`;
+              const active = pathname === href;
+              return (
+                <Link
+                  key={ym}
+                  href={href}
+                  className={
+                    active
+                      ? "block rounded-xl bg-[color:var(--muted)]/80 px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
+                      : "block rounded-xl px-2.5 py-1.5 text-xs text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/50 hover:text-[color:var(--foreground)]"
+                  }
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
         <Link href="/readme" className={itemClass(pathname.startsWith("/readme"))}>
           <ReadmeIcon />
           <span>Readme</span>

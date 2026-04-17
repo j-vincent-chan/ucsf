@@ -35,6 +35,7 @@ export type DiscoveryRunResult = {
 
 type FacultyRow = {
   id: string;
+  community_id: string;
   first_name: string;
   last_name: string;
   institution: string | null;
@@ -97,7 +98,12 @@ const MAX_FACULTY = 200;
 
 export async function runDiscovery(
   supabase: SupabaseClient<Database>,
-  options: { entityIds?: string[]; daysBack?: number } = {},
+  options: {
+    entityIds?: string[];
+    daysBack?: number;
+    /** When set (e.g. cron with service role), only this tenant's faculty are processed. */
+    communityId?: string;
+  } = {},
 ): Promise<DiscoveryRunResult> {
   const ENABLE_LAB_WEBSITE_SCRAPE = process.env.DISCOVER_LAB_WEBSITE_SCRAPE === "1";
   const note =
@@ -120,11 +126,14 @@ export async function runDiscovery(
   let q = supabase
     .from("tracked_entities")
     .select(
-      "id, first_name, last_name, institution, pubmed_url, lab_website, google_alert_query, nih_profile_id, active, entity_type",
+      "id, community_id, first_name, last_name, institution, pubmed_url, lab_website, google_alert_query, nih_profile_id, active, entity_type",
     )
     .eq("active", true)
     .eq("entity_type", "faculty");
 
+  if (options.communityId) {
+    q = q.eq("community_id", options.communityId);
+  }
   if (options.entityIds?.length) {
     q = q.in("id", options.entityIds);
   }
@@ -342,6 +351,7 @@ export async function runDiscovery(
         dk,
         bucket: b,
         row: {
+          community_id: ent.community_id,
           tracked_entity_id: c.tracked_entity_id,
           title: c.title,
           source_url: c.source_url,

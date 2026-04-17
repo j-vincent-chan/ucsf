@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { ItemsQueue } from "./items-queue";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 import { redirect } from "next/navigation";
+import { rangeForPublishedPreset } from "@/lib/published-date-presets";
 
 /** Always load fresh roster + queue (faculty changes must show up immediately). */
 export const dynamic = "force-dynamic";
@@ -75,6 +76,24 @@ type Params = Promise<{
 export default async function ItemsPage({ searchParams }: { searchParams: Params }) {
   const { profile } = await requireProfile();
   const sp = await searchParams;
+
+  /** Default queue: status New + published this calendar month (same range as “This month” preset). */
+  const statusRaw = sp.status?.trim() ?? "";
+  const fromRaw = sp.from?.trim() ?? "";
+  const toRaw = sp.to?.trim() ?? "";
+  const needsDefaultFilters = statusRaw === "" && fromRaw === "" && toRaw === "";
+  if (needsDefaultFilters) {
+    const r = rangeForPublishedPreset("current_month");
+    const p = new URLSearchParams();
+    p.set("status", "new");
+    p.set("from", r.from);
+    p.set("to", r.to);
+    if (sp.category?.trim()) p.set("category", sp.category.trim());
+    if (sp.source_type?.trim()) p.set("source_type", sp.source_type.trim());
+    if (sp.entity?.trim()) p.set("entity", sp.entity.trim());
+    redirect(`/items?${p.toString()}`);
+  }
+
   const status = parseStatus(sp.status);
   const category = parseCategory(sp.category);
   const sourceType = parseSource(sp.source_type);

@@ -2,6 +2,9 @@ import Link from "next/link";
 import { signOut } from "@/app/actions/auth-actions";
 import { createClient } from "@/lib/supabase/server";
 import type { ProfileRole } from "@/types/database";
+
+const defaultBrandName = () =>
+  process.env.NEXT_PUBLIC_APP_BRAND_NAME?.trim() || "ImmunoX";
 import { SignalLogo } from "@/components/signal-logo";
 import { recentYearMonths } from "@/lib/digest-month";
 import { SidebarNav } from "@/components/sidebar-nav";
@@ -15,13 +18,25 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   } = await supabase.auth.getUser();
 
   let role: ProfileRole | null = null;
+  let communityDisplayName = defaultBrandName();
   if (user) {
-    const { data } = await supabase
+    const { data: prof } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, community_id")
       .eq("id", user.id)
       .maybeSingle();
-    role = data?.role ?? null;
+    role = prof?.role ?? null;
+    if (prof?.community_id) {
+      const { data: com } = await supabase
+        .from("communities")
+        .select("name")
+        .eq("id", prof.community_id)
+        .maybeSingle();
+      const n = com?.name?.trim();
+      if (typeof n === "string" && n.length > 0) {
+        communityDisplayName = n;
+      }
+    }
   }
 
   return (
@@ -37,7 +52,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           <div className="surface-subtle mb-4 rounded-[1.25rem] px-3 py-2.5">
             <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Workspace</p>
             <p className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">
-              Community Signal
+              {communityDisplayName}
             </p>
           </div>
 
