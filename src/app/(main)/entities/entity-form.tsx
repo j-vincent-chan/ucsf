@@ -40,6 +40,7 @@ export function EntityForm({
   const router = useRouter();
   const isEdit = Boolean(initial?.id);
   const [firstName, setFirstName] = useState(initial?.first_name ?? "");
+  const [middleInitial, setMiddleInitial] = useState(initial?.middle_initial ?? "");
   const [lastName, setLastName] = useState(initial?.last_name ?? "");
   const [memberStatus, setMemberStatus] = useState<MemberStatus>(
     coerceMemberStatus(initial?.member_status),
@@ -79,6 +80,7 @@ export function EntityForm({
     e.preventDefault();
     const tier = tierFromMemberStatus(memberStatus);
     const fn = firstName.trim();
+    const mi = middleInitial.trim().slice(0, 1).toUpperCase();
     const ln = lastName.trim();
     const slugVal = slug.trim() || slugify(`${ln}-${fn}`);
     if (!fn) {
@@ -98,6 +100,7 @@ export function EntityForm({
     const supabase = createClient();
     const payload = {
       first_name: fn,
+      middle_initial: mi,
       last_name: ln,
       member_status: memberStatus,
       slug: slugVal,
@@ -126,7 +129,7 @@ export function EntityForm({
 
   return (
     <form onSubmit={onSubmit} className="mx-auto max-w-2xl space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <Label htmlFor="first_name">First name</Label>
           <Input
@@ -135,6 +138,19 @@ export function EntityForm({
             onChange={(e) => onFirstChange(e.target.value)}
             required
             className="mt-1"
+          />
+        </div>
+        <div>
+          <Label htmlFor="middle_initial">Middle initial</Label>
+          <Input
+            id="middle_initial"
+            value={middleInitial}
+            onChange={(e) =>
+              setMiddleInitial(e.target.value.replace(/[^a-z]/gi, "").slice(0, 1).toUpperCase())
+            }
+            maxLength={1}
+            className="mt-1"
+            placeholder="M"
           />
         </div>
         <div>

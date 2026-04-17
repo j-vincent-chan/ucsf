@@ -26,7 +26,7 @@ export default async function EntitiesPage({
 
   if (q) {
     query = query.or(
-      `name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,slug.ilike.%${q}%,institution.ilike.%${q}%,nih_profile_id.ilike.%${q}%`,
+      `name.ilike.%${q}%,first_name.ilike.%${q}%,middle_initial.ilike.%${q}%,last_name.ilike.%${q}%,slug.ilike.%${q}%,institution.ilike.%${q}%,nih_profile_id.ilike.%${q}%`,
     );
   }
   if (!showAll) {
@@ -91,6 +91,9 @@ export default async function EntitiesPage({
         rows={(entities ?? []).map((e) => ({
           id: e.id,
           name: e.name,
+          first_name: e.first_name,
+          middle_initial: e.middle_initial,
+          last_name: e.last_name,
           member_status: e.member_status,
           institution: e.institution,
           nih_profile_id: e.nih_profile_id,

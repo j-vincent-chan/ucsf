@@ -13,12 +13,38 @@ import { toast } from "sonner";
 export type WatchlistEntityRow = {
   id: string;
   name: string;
+  first_name: string;
+  middle_initial: string;
+  last_name: string;
   member_status: MemberStatus | string;
   institution: string | null;
   nih_profile_id: string | null;
   lab_website: string | null;
   active: boolean;
 };
+
+function safeTrim(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function displayName(row: Pick<WatchlistEntityRow, "name" | "first_name" | "middle_initial" | "last_name">): string {
+  let first = safeTrim(row.first_name);
+  let mi = safeTrim(row.middle_initial).slice(0, 1).toUpperCase();
+  const last = safeTrim(row.last_name);
+  // Backward compatibility: older data may have middle initial in first_name ("Abul C").
+  if (!mi && first) {
+    const parts = first.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const maybeMi = parts[parts.length - 1]?.replace(/\./g, "");
+      if (maybeMi && /^[A-Za-z]$/.test(maybeMi)) {
+        mi = maybeMi.toUpperCase();
+        first = parts.slice(0, -1).join(" ");
+      }
+    }
+  }
+  const composed = [first, mi ? `${mi}.` : "", last].filter(Boolean).join(" ").trim();
+  return composed || safeTrim(row.name);
+}
 
 function hrefForLabWebsite(raw: string | null | undefined): string | null {
   let s = raw?.trim();
@@ -175,6 +201,7 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
           <tbody>
             {rows.map((e) => {
               const labHref = hrefForLabWebsite(e.lab_website);
+              const shownName = displayName(e);
               return (
                 <tr key={e.id} className="align-top">
                   <td className="p-3">
@@ -193,10 +220,10 @@ export function WatchlistEntitiesTable({ rows }: { rows: WatchlistEntityRow[] })
                         rel="noopener noreferrer"
                         className="text-[color:var(--foreground)] underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2"
                       >
-                        {e.name}
+                        {shownName}
                       </a>
                     ) : (
-                      e.name
+                      shownName
                     )}
                   </td>
                   <td className="p-3">{memberLabel(e.member_status)}</td>

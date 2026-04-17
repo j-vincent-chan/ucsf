@@ -69,6 +69,7 @@ export function BulkUploadEntities() {
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH).map((r) => ({
         first_name: r.first_name,
+        middle_initial: r.middle_initial,
         last_name: r.last_name,
         member_status: r.member_status,
         slug: r.slug,
@@ -125,6 +126,7 @@ export function BulkUploadEntities() {
         <code className="text-xs">Member</code>, <code className="text-xs">Associate</code>, or{" "}
         <code className="text-xs">Leadership Committee</code> (legacy{" "}
         <code className="text-xs">Full Member</code> is treated as Member). Optional:{" "}
+        <code className="text-xs">Middle Initial</code>,{" "}
         <code className="text-xs">slug</code> (auto from last-first if empty),{" "}
         <code className="text-xs">institution</code> (for discovery disambiguation; synonyms separated by{" "}
         <code className="text-xs">;</code> or <code className="text-xs">|</code>),{" "}

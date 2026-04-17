@@ -98,6 +98,7 @@ export interface Database {
           slug: string;
           entity_type: EntityType;
           first_name: string;
+          middle_initial: string;
           last_name: string;
           member_status: MemberStatus;
           institution: string | null;
@@ -117,6 +118,7 @@ export interface Database {
           slug: string;
           entity_type?: EntityType;
           first_name?: string;
+          middle_initial?: string;
           last_name?: string;
           member_status?: MemberStatus;
           institution?: string | null;
@@ -135,6 +137,7 @@ export interface Database {
           slug?: string;
           entity_type?: EntityType;
           first_name?: string;
+          middle_initial?: string;
           last_name?: string;
           member_status?: MemberStatus;
           institution?: string | null;

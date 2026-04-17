@@ -65,6 +65,9 @@ function canonicalHeader(raw: string): string {
     lastname: "last_name",
     "first name": "first_name",
     firstname: "first_name",
+    "middle initial": "middle_initial",
+    middleinitial: "middle_initial",
+    "middle name": "middle_initial",
     "associate/full member": "member_status",
     "associate full member": "member_status",
     membership: "member_status",
@@ -142,6 +145,7 @@ function parseMemberStatus(raw: string): MemberStatus | null {
 
 export type EntityCsvRowResult = {
   first_name: string;
+  middle_initial: string;
   last_name: string;
   member_status: MemberStatus;
   slug: string;
@@ -165,6 +169,7 @@ export function rowsToEntities(
 
   const iLast = idx("last_name");
   const iFirst = idx("first_name");
+  const iMiddle = idx("middle_initial");
   const iMember = idx("member_status");
   const iSlug = idx("slug");
   const iInst = idx("institution");
@@ -201,6 +206,7 @@ export function rowsToEntities(
 
     const lastName = (cells[iLast] ?? "").trim();
     const firstName = (cells[iFirst] ?? "").trim();
+    const middleInitial = iMiddle >= 0 ? (cells[iMiddle] ?? "").trim().slice(0, 1).toUpperCase() : "";
     if (!lastName) {
       errors.push({ row: lineNum, message: "Last Name is empty" });
       return;
@@ -238,6 +244,7 @@ export function rowsToEntities(
 
     rows.push({
       first_name: firstName,
+      middle_initial: middleInitial,
       last_name: lastName,
       member_status: memberStatus,
       slug,
@@ -266,7 +273,7 @@ export function parseEntityCsv(text: string): {
   return rowsToEntities(data, header);
 }
 
-export const ENTITY_CSV_TEMPLATE = `Last Name,First Name,Member status,slug,institution,pubmed_url,lab_website,google_alert_query,nih_profile_id,active
-Smith,Jane,Associate,jane-smith,UCSF,,,,,true
-Chen,Maya,Member,maya-chen,Stanford University,,,,,true
-Ng,Riley,Leadership Committee,riley-ng,"UCSF; University of California San Francisco",,,,,true`;
+export const ENTITY_CSV_TEMPLATE = `Last Name,First Name,Middle Initial,Member status,slug,institution,pubmed_url,lab_website,google_alert_query,nih_profile_id,active
+Smith,Jane,M,Associate,jane-smith,UCSF,,,,,true
+Chen,Maya,,Member,maya-chen,Stanford University,,,,,true
+Ng,Riley,A,Leadership Committee,riley-ng,"UCSF; University of California San Francisco",,,,,true`;

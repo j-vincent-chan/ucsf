@@ -37,6 +37,7 @@ type FacultyRow = {
   id: string;
   community_id: string;
   first_name: string;
+  middle_initial: string;
   last_name: string;
   institution: string | null;
   pubmed_url: string | null;
@@ -56,18 +57,22 @@ function pubmedSearch(e: FacultyRow): {
 } {
   const ln = e.last_name?.trim() ?? "";
   const fn = e.first_name?.trim() ?? "";
+  const mi = (e.middle_initial ?? "").trim().slice(0, 1).toUpperCase();
   if (!ln || !fn) {
     return { term: (ln || fn).trim(), applyAffiliationInstitution: null };
   }
 
   const parts = fn.split(/\s+/).filter(Boolean);
   const firstInitial = parts[0]?.[0]?.toUpperCase() ?? "";
-  const middleInitial = parts.length > 1 ? (parts[1]?.[0]?.toUpperCase() ?? "") : "";
+  const inferredMiddleInitial = parts.length > 1 ? (parts[1]?.[0]?.toUpperCase() ?? "") : "";
+  const middleInitial = mi || inferredMiddleInitial;
   const initials = `${firstInitial}${middleInitial}`.trim();
 
   const authorInitials = initials ? `"${ln} ${initials}"[Author]` : `"${ln} ${firstInitial}"[Author]`;
-  const authorFull = `"${ln} ${fn}"[Author]`;
-  const term = `(${authorInitials} OR ${authorFull})`;
+  const authorFull = middleInitial
+    ? `"${ln}, ${fn} ${middleInitial}"[Author]`
+    : `"${ln}, ${fn}"[Author]`;
+  const term = `(${authorFull} OR ${authorInitials})`;
 
   // Always disambiguate with UCSF affiliation to avoid ambiguous names.
   const applyAffiliationInstitution = "UCSF; University of California San Francisco";
@@ -126,7 +131,7 @@ export async function runDiscovery(
   let q = supabase
     .from("tracked_entities")
     .select(
-      "id, community_id, first_name, last_name, institution, pubmed_url, lab_website, google_alert_query, nih_profile_id, active, entity_type",
+      "id, community_id, first_name, middle_initial, last_name, institution, pubmed_url, lab_website, google_alert_query, nih_profile_id, active, entity_type",
     )
     .eq("active", true)
     .eq("entity_type", "faculty");
