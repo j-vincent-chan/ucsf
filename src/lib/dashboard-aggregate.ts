@@ -35,8 +35,16 @@ export type DashboardPayload = {
   monthly: MonthlyPoint[];
   memberJoins: MemberJoinPoint[];
   entityNameById: Record<string, string>;
-  /** Minimal rows for client-side “top entities” by selected range */
+  /** Rows for client-side “top entities” and month drill-down on the volume chart */
   itemsForVolume: {
+    id: string;
+    title: string;
+    category: ItemCategory | null;
+    status: ItemStatus;
+    source_url: string | null;
+    source_type: SourceType;
+    source_domain: string | null;
+    raw_summary: string | null;
     tracked_entity_id: string | null;
     published_at: string | null;
     found_at: string;
@@ -58,9 +66,14 @@ type RawEntity = {
 };
 
 type RawItem = {
+  id: string;
+  title: string;
   category: ItemCategory | null;
   status: ItemStatus;
+  source_url: string | null;
   source_type: SourceType;
+  source_domain: string | null;
+  raw_summary: string | null;
   published_at: string | null;
   found_at: string;
   created_at: string;
@@ -72,7 +85,7 @@ function monthKeyFromIso(iso: string): string {
   return iso.slice(0, 7);
 }
 
-function effectiveMonthKey(
+export function effectiveMonthKey(
   item: Pick<RawItem, "published_at" | "found_at" | "created_at">,
 ): string {
   return (
@@ -229,6 +242,14 @@ export function buildDashboardPayload(
     }));
 
   const itemsForVolume = items.map((i) => ({
+    id: i.id,
+    title: i.title,
+    category: i.category,
+    status: i.status,
+    source_url: i.source_url,
+    source_type: i.source_type,
+    source_domain: i.source_domain,
+    raw_summary: i.raw_summary,
     tracked_entity_id: i.tracked_entity_id,
     published_at: i.published_at,
     found_at: i.found_at,

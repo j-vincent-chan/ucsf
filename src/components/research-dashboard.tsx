@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import {
   Area,
   Bar,
@@ -18,7 +19,10 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ButtonLink } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import type { ItemCategory } from "@/types/database";
+import { toast } from "sonner";
 import type {
   ChartRange,
   DashboardPayload,
@@ -26,8 +30,9 @@ import type {
 } from "@/lib/dashboard-aggregate";
 import {
   cumulativeTotalSeries,
-  filterMemberJoinsByRange,
+  effectiveMonthKey,
   filterMonthlyByRange,
+  rangeStartMonth,
   sumMonthlyKpis,
   topEntitiesInRange,
 } from "@/lib/dashboard-aggregate";
@@ -59,6 +64,58 @@ const CAT_LABEL: Record<string, string> = {
   community_update: "Community",
   other: "Other",
 };
+
+const CATEGORY_DRILL_ORDER: ItemCategory[] = [
+  "paper",
+  "award",
+  "event",
+  "media",
+  "funding",
+  "community_update",
+  "other",
+];
+
+function categoryDrillRank(category: ItemCategory | null): number {
+  const key = category ?? "other";
+  const i = CATEGORY_DRILL_ORDER.indexOf(key);
+  return i >= 0 ? i : 99;
+}
+
+/** Long month label for YYYY-MM (UTC calendar month). */
+function formatVolumeMonthTitle(ym: string): string {
+  const [ys, ms] = ym.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return ym;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/** Short label for chart axis / tooltip (full name stays in data for counting). */
+function truncateJournalLabel(value: string, maxLen = 42): string {
+  const s = value.trim();
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function extractJournalLabel(item: DashboardPayload["itemsForVolume"][number]): string | null {
+  if (item.source_type === "pubmed") {
+    const first = (item.raw_summary ?? "").split(" · ")[0]?.trim();
+    if (first) return first;
+    return "PubMed (unknown journal)";
+  }
+  return null;
+}
+
+function extractGrantAgency(item: DashboardPayload["itemsForVolume"][number]): string {
+  const first = (item.raw_summary ?? "").split(" · ")[0]?.trim();
+  if (first) return first;
+  if (item.source_domain === "reporter.nih.gov") return "NIH (unknown institute)";
+  return item.source_domain?.replace(/^www\./, "") ?? "Unknown agency";
+}
 
 function RangeToggle({
   value,
@@ -124,6 +181,138 @@ function ChartTooltip({
   );
 }
 
+type VolumeRow = DashboardPayload["itemsForVolume"][number];
+
+function SourceDrillPanel({
+  title,
+  subtitle,
+  items,
+  entityNameById,
+  deletingIds,
+  onDismiss,
+  onDeleteItem,
+}: {
+  title: string;
+  subtitle: string;
+  items: VolumeRow[];
+  entityNameById: Record<string, string>;
+  deletingIds: Set<string>;
+  onDismiss: () => void;
+  onDeleteItem: (item: VolumeRow) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-2xl border border-[color:var(--border)] bg-[color:var(--muted)]/25 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 pr-2">
+          <p className="line-clamp-2 break-words text-sm font-semibold text-[color:var(--foreground)]">
+            {title}
+          </p>
+          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">{subtitle}</p>
+        </div>
+        <Button type="button" variant="ghost" className="shrink-0 text-xs" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">No rows in this slice.</p>
+      ) : (
+        <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto text-sm">
+          {items.map((it) => (
+            <li
+              key={it.id}
+              className="rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/70 p-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-sm font-medium leading-snug text-[color:var(--foreground)]">
+                    {it.title?.trim() || "(untitled signal)"}
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                    {CAT_LABEL[it.category ?? "other"] ?? "Other"} · {it.status}
+                    {it.tracked_entity_id && entityNameById[it.tracked_entity_id]
+                      ? ` · ${entityNameById[it.tracked_entity_id]}`
+                      : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Link href={`/items/${it.id}`} className="text-xs font-medium underline underline-offset-2">
+                    Edit
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={deletingIds.has(it.id)}
+                    onClick={() => void onDeleteItem(it)}
+                    title="Delete signal"
+                    aria-label={`Delete signal: ${it.title?.trim() || "(untitled)"}`}
+                    className="inline-flex shrink-0 rounded-lg p-1.5 text-[color:var(--muted-foreground)] transition-colors hover:bg-[#f4dfd9] hover:text-[#8f4d45] disabled:pointer-events-none disabled:opacity-45"
+                  >
+                    {deletingIds.has(it.id) ? (
+                      <svg
+                        className="size-[18px] animate-spin"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        aria-hidden
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M3 6h18" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <line x1="10" x2="10" y1="11" y2="17" />
+                        <line x1="14" x2="14" y1="11" y2="17" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function barChartCategoryRowIndex<T extends Record<string, unknown>>(
+  state: { activeTooltipIndex?: number; activeLabel?: string | number },
+  rows: T[],
+  categoryKey: keyof T,
+): number {
+  let idx = state.activeTooltipIndex;
+  if ((idx === undefined || idx < 0) && state.activeLabel != null) {
+    const lab = String(state.activeLabel);
+    idx = rows.findIndex((r) => String(r[categoryKey]) === lab);
+  }
+  if (idx === undefined || idx < 0 || idx >= rows.length) return -1;
+  return idx;
+}
+
 const axisTick = { fill: "currentColor", fontSize: 11 };
 const gridStroke = "rgba(124, 106, 95, 0.18)";
 
@@ -141,17 +330,17 @@ export function ResearchDashboard({
     entityName: string;
   }[];
 }) {
+  const router = useRouter();
   const [range, setRange] = useState<ChartRange>("ytd");
   const [showCumulativeLine, setShowCumulativeLine] = useState(false);
+  const [volumeDrillMonth, setVolumeDrillMonth] = useState<string | null>(null);
+  const [journalDrillJournal, setJournalDrillJournal] = useState<string | null>(null);
+  const [grantDrillAgency, setGrantDrillAgency] = useState<string | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
 
   const filteredMonthly = useMemo(
     () => filterMonthlyByRange(data.monthly, range),
     [data.monthly, range],
-  );
-
-  const filteredJoins = useMemo(
-    () => filterMemberJoinsByRange(data.memberJoins, range),
-    [data.memberJoins, range],
   );
 
   const kpis = useMemo(() => sumMonthlyKpis(filteredMonthly), [filteredMonthly]);
@@ -170,6 +359,67 @@ export function ResearchDashboard({
     [filteredMonthly, cumulativeSeries],
   );
 
+  const handleVolumeChartClick = useCallback(
+    (state: { activeTooltipIndex?: number; activeLabel?: string | number }) => {
+      let idx = state.activeTooltipIndex;
+      if (idx === undefined || idx < 0) {
+        const label = state.activeLabel;
+        if (label != null) {
+          idx = composedVolumeData.findIndex((r) => r.shortLabel === String(label));
+        }
+      }
+      if (idx === undefined || idx < 0) return;
+      const row = composedVolumeData[idx];
+      if (!row?.month) return;
+      setJournalDrillJournal(null);
+      setGrantDrillAgency(null);
+      setVolumeDrillMonth((prev) => (prev === row.month ? null : row.month));
+    },
+    [composedVolumeData],
+  );
+
+  const volumeDrillItems = useMemo(() => {
+    if (!volumeDrillMonth) return [];
+    return data.itemsForVolume
+      .filter((it) => !deletingIds.has(it.id))
+      .filter((it) => effectiveMonthKey(it) === volumeDrillMonth)
+      .sort((a, b) => {
+        const rc = categoryDrillRank(a.category) - categoryDrillRank(b.category);
+        if (rc !== 0) return rc;
+        const at = (a.title ?? "").trim();
+        const bt = (b.title ?? "").trim();
+        return at.localeCompare(bt);
+      });
+  }, [data.itemsForVolume, deletingIds, volumeDrillMonth]);
+
+  const deleteDrillItem = useCallback(
+    async (item: DashboardPayload["itemsForVolume"][number]) => {
+      const title = item.title?.trim() || "(untitled)";
+      if (
+        !confirm(
+          `Permanently delete this signal? This cannot be undone. Any summaries for this item will also be removed.\n\n${title}`,
+        )
+      ) {
+        return;
+      }
+      setDeletingIds((prev) => new Set(prev).add(item.id));
+      const supabase = createClient();
+      const { error } = await supabase.from("source_items").delete().eq("id", item.id);
+      if (error) {
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Signal deleted");
+      router.refresh();
+    },
+    [router],
+  );
+
   const topEntities = useMemo(
     () => topEntitiesInRange(data.itemsForVolume, data.entityNameById, range),
     [data.itemsForVolume, data.entityNameById, range],
@@ -185,24 +435,103 @@ export function ResearchDashboard({
     ].filter((x) => x.value > 0);
   }, [kpis.pubmed, kpis.web, kpis.reporter, kpis.lab_website, kpis.manual]);
 
-  const statusMix = useMemo(() => {
-    let n = 0,
-      rv = 0,
-      ap = 0,
-      ar = 0;
-    for (const r of filteredMonthly) {
-      n += r.new;
-      rv += r.reviewed;
-      ap += r.approved;
-      ar += r.archived;
+  const itemsInRange = useMemo(() => {
+    const start = rangeStartMonth(range);
+    return data.itemsForVolume.filter((it) => {
+      const ym = effectiveMonthKey(it);
+      return !start || ym >= start;
+    });
+  }, [data.itemsForVolume, range]);
+
+  const journalMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of itemsInRange) {
+      if (item.source_type !== "pubmed") continue;
+      const label = extractJournalLabel(item);
+      if (!label) continue;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
     }
-    return [
-      { name: "New", value: n, fill: "#7c8fa8" },
-      { name: "Reviewed", value: rv, fill: "#c9955b" },
-      { name: "Approved", value: ap, fill: "#7b977f" },
-      { name: "Archived", value: ar, fill: "#9a8d84" },
-    ].filter((x) => x.value > 0);
-  }, [filteredMonthly]);
+    const rows = Array.from(counts.entries())
+      .map(([journal, value]) => ({
+        journal,
+        value,
+        fill: "#7c8fa8",
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+    return rows;
+  }, [itemsInRange]);
+
+  const grantMix = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of itemsInRange) {
+      if (item.source_type !== "reporter") continue;
+      const agency = extractGrantAgency(item);
+      counts.set(agency, (counts.get(agency) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([name, value]) => ({ name, value, fill: "#7b977f" }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+  }, [itemsInRange]);
+
+  const journalChartData = useMemo(
+    () =>
+      journalMix.length
+        ? journalMix
+        : [{ journal: "—", value: 0, fill: "#eadfd5" as const }],
+    [journalMix],
+  );
+
+  const grantChartData = useMemo(
+    () =>
+      grantMix.length ? grantMix : [{ name: "—", value: 0, fill: "#eadfd5" as const }],
+    [grantMix],
+  );
+
+  const handleJournalChartClick = useCallback(
+    (state: { activeTooltipIndex?: number; activeLabel?: string | number }) => {
+      const idx = barChartCategoryRowIndex(state, journalChartData, "journal");
+      if (idx < 0) return;
+      const row = journalChartData[idx];
+      if (!row?.journal || row.journal === "—") return;
+      setVolumeDrillMonth(null);
+      setGrantDrillAgency(null);
+      setJournalDrillJournal((prev) => (prev === row.journal ? null : row.journal));
+    },
+    [journalChartData],
+  );
+
+  const handleGrantChartClick = useCallback(
+    (state: { activeTooltipIndex?: number; activeLabel?: string | number }) => {
+      const idx = barChartCategoryRowIndex(state, grantChartData, "name");
+      if (idx < 0) return;
+      const row = grantChartData[idx];
+      if (!row?.name || row.name === "—") return;
+      setVolumeDrillMonth(null);
+      setJournalDrillJournal(null);
+      setGrantDrillAgency((prev) => (prev === row.name ? null : row.name));
+    },
+    [grantChartData],
+  );
+
+  const journalDrillItems = useMemo(() => {
+    if (!journalDrillJournal) return [];
+    return itemsInRange
+      .filter((it) => !deletingIds.has(it.id))
+      .filter((it) => it.source_type === "pubmed")
+      .filter((it) => extractJournalLabel(it) === journalDrillJournal)
+      .sort((a, b) => (a.title ?? "").trim().localeCompare((b.title ?? "").trim()));
+  }, [itemsInRange, journalDrillJournal, deletingIds]);
+
+  const grantDrillItems = useMemo(() => {
+    if (!grantDrillAgency) return [];
+    return itemsInRange
+      .filter((it) => !deletingIds.has(it.id))
+      .filter((it) => it.source_type === "reporter")
+      .filter((it) => extractGrantAgency(it) === grantDrillAgency)
+      .sort((a, b) => (a.title ?? "").trim().localeCompare((b.title ?? "").trim()));
+  }, [itemsInRange, grantDrillAgency, deletingIds]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8 text-[color:var(--foreground)]">
@@ -217,7 +546,15 @@ export function ResearchDashboard({
           </p>
         </div>
         <div className="flex flex-col items-start gap-2 sm:items-end">
-          <RangeToggle value={range} onChange={setRange} />
+          <RangeToggle
+            value={range}
+            onChange={(r) => {
+              setRange(r);
+              setVolumeDrillMonth(null);
+              setJournalDrillJournal(null);
+              setGrantDrillAgency(null);
+            }}
+          />
           <label className="flex cursor-pointer items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
             <input
               type="checkbox"
@@ -257,13 +594,19 @@ export function ResearchDashboard({
           <div>
             <CardTitle>Research volume by month</CardTitle>
             <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-              Stacked by signal type — drag range above. Toggle cumulative for growth narrative.
+              Stacked by signal type — drag range above. Toggle cumulative for growth narrative. Click a month
+              on the chart to list the signals behind that bar.
             </p>
           </div>
         </div>
         <div className="h-[340px] w-full min-w-0 text-[color:var(--muted-foreground)]">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={composedVolumeData} margin={{ top: 8, right: showCumulativeLine ? 16 : 8, left: 0, bottom: 0 }}>
+            <ComposedChart
+              data={composedVolumeData}
+              margin={{ top: 8, right: showCumulativeLine ? 16 : 8, left: 0, bottom: 0 }}
+              className="cursor-pointer [&_*]:outline-none"
+              onClick={handleVolumeChartClick}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
               <XAxis dataKey="shortLabel" tick={axisTick} interval="preserveStartEnd" minTickGap={24} />
               <YAxis yAxisId="left" tick={axisTick} width={40} allowDecimals={false} />
@@ -305,6 +648,17 @@ export function ResearchDashboard({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        {volumeDrillMonth ? (
+          <SourceDrillPanel
+            title={`Signals in ${formatVolumeMonthTitle(volumeDrillMonth)}`}
+            subtitle="Same month assignment as the chart (publication date, or first-seen date if missing)."
+            items={volumeDrillItems}
+            entityNameById={data.entityNameById}
+            deletingIds={deletingIds}
+            onDismiss={() => setVolumeDrillMonth(null)}
+            onDeleteItem={deleteDrillItem}
+          />
+        ) : null}
         {showCumulativeLine ? (
           <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
             Black line: running total of ingested items across the visible period (resets at the
@@ -341,31 +695,11 @@ export function ResearchDashboard({
         </Card>
 
         <Card>
-          <CardTitle>New watchlist members</CardTitle>
-          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            By roster join month (investigator <code className="text-xs">created_at</code>).
-          </p>
-          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredJoins} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} vertical={false} />
-                <XAxis dataKey="shortLabel" tick={axisTick} interval="preserveStartEnd" minTickGap={20} />
-                <YAxis tick={axisTick} width={36} allowDecimals={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="joins" name="New members" fill="#7b977f" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
           <CardTitle>Source mix (range)</CardTitle>
           <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
             PubMed, web and news RSS, lab-site RSS, and manual entry.
           </p>
-          <div className="mt-4 h-[220px] w-full min-w-0 text-[color:var(--muted-foreground)]">
+          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 layout="vertical"
@@ -385,33 +719,117 @@ export function ResearchDashboard({
             </ResponsiveContainer>
           </div>
         </Card>
+      </div>
 
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardTitle>Pipeline (range)</CardTitle>
+          <CardTitle>Top journals (range)</CardTitle>
           <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            Items first seen in period by current workflow status.
+            Publication frequency by journal (PubMed signals in range). Click a bar to list the
+            underlying signals.
           </p>
-          <div className="mt-4 h-[220px] w-full min-w-0 text-[color:var(--muted-foreground)]">
+          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 layout="vertical"
-                data={
-                  statusMix.length ? statusMix : [{ name: "—", value: 0, fill: "#eadfd5" }]
-                }
+                data={journalChartData}
                 margin={{ top: 8, right: 24, left: 8, bottom: 0 }}
+                className="cursor-pointer [&_*]:outline-none"
+                onClick={handleJournalChartClick}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
                 <XAxis type="number" tick={axisTick} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" tick={axisTick} width={72} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="value" name="Items" radius={[0, 4, 4, 0]}>
-                  {(statusMix.length ? statusMix : [{ fill: "#eadfd5" }]).map((e, i) => (
+                <YAxis
+                  type="category"
+                  dataKey="journal"
+                  tick={axisTick}
+                  width={148}
+                  interval={0}
+                  tickFormatter={(v) => truncateJournalLabel(String(v), 40)}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const j = truncateJournalLabel(String(label ?? ""), 96);
+                    return (
+                      <div className="max-w-xs rounded-2xl border border-[color:var(--border)] bg-[color:var(--card)] px-3 py-2 text-xs shadow-[0_20px_45px_-24px_rgba(89,67,52,0.4)]">
+                        <p className="mb-1 font-medium leading-snug text-[color:var(--foreground)]">{j}</p>
+                        <ul className="space-y-0.5">
+                          {payload.map((p) => (
+                            <li
+                              key={String(p.name)}
+                              className="flex justify-between gap-4 tabular-nums"
+                            >
+                              <span className="text-[color:var(--muted-foreground)]">{p.name}</span>
+                              <span className="font-medium text-[color:var(--foreground)]">
+                                {p.value?.toLocaleString() ?? 0}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="value" name="Papers" radius={[0, 4, 4, 0]}>
+                  {journalChartData.map((e, i) => (
                     <Cell key={i} fill={e.fill} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+          {journalDrillJournal ? (
+            <SourceDrillPanel
+              title={`Journal — ${journalDrillJournal}`}
+              subtitle="PubMed signals in the selected range attributed to this journal (same bucketing as the chart)."
+              items={journalDrillItems}
+              entityNameById={data.entityNameById}
+              deletingIds={deletingIds}
+              onDismiss={() => setJournalDrillJournal(null)}
+              onDeleteItem={deleteDrillItem}
+            />
+          ) : null}
+        </Card>
+
+        <Card>
+          <CardTitle>Grant agencies (range)</CardTitle>
+          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+            Most frequently engaged funders (RePORTER-linked funding signals). Click a bar to list
+            the underlying signals.
+          </p>
+          <div className="mt-4 h-[260px] w-full min-w-0 text-[color:var(--muted-foreground)]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                layout="vertical"
+                data={grantChartData}
+                margin={{ top: 8, right: 24, left: 8, bottom: 0 }}
+                className="cursor-pointer [&_*]:outline-none"
+                onClick={handleGrantChartClick}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+                <XAxis type="number" tick={axisTick} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={axisTick} width={180} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="value" name="Grants" radius={[0, 4, 4, 0]}>
+                  {grantChartData.map((e, i) => (
+                    <Cell key={i} fill={e.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {grantDrillAgency ? (
+            <SourceDrillPanel
+              title={`Grant agency — ${grantDrillAgency}`}
+              subtitle="RePORTER-linked funding signals in the selected range attributed to this agency (same bucketing as the chart)."
+              items={grantDrillItems}
+              entityNameById={data.entityNameById}
+              deletingIds={deletingIds}
+              onDismiss={() => setGrantDrillAgency(null)}
+              onDeleteItem={deleteDrillItem}
+            />
+          ) : null}
         </Card>
       </div>
 

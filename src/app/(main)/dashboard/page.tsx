@@ -16,7 +16,7 @@ export default async function DashboardPage() {
     supabase
       .from("source_items")
       .select(
-        "category, status, source_type, published_at, found_at, created_at, tracked_entity_id",
+        "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id",
       )
       .order("created_at", { ascending: false })
       .limit(15000),

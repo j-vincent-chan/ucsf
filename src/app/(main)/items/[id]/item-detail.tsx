@@ -43,6 +43,9 @@ export function ItemDetail({
   const [category, setCategory] = useState(item.category ?? "");
   const [title, setTitle] = useState(item.title);
   const [sourceUrl, setSourceUrl] = useState(item.source_url ?? "");
+  const [publishedDate, setPublishedDate] = useState(() =>
+    isoTimestampToDateInputValue(item.published_at),
+  );
   const [savingMeta, setSavingMeta] = useState(false);
   const [summaries, setSummaries] = useState(initialSummaries);
 
@@ -81,6 +84,10 @@ export function ItemDetail({
   }, [item.id, router]);
 
   useEffect(() => {
+    setPublishedDate(isoTimestampToDateInputValue(item.published_at));
+  }, [item.id, item.published_at]);
+
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
@@ -100,11 +107,18 @@ export function ItemDetail({
     e.preventDefault();
     setSavingMeta(true);
     const supabase = createClient();
+    const publishedAtIso = dateInputValueToUtcMidnightIso(publishedDate);
+    if (publishedDate.trim() && publishedAtIso === null) {
+      setSavingMeta(false);
+      toast.error("Publication date is invalid");
+      return;
+    }
     const { error } = await supabase
       .from("source_items")
       .update({
         title: title.trim(),
         source_url: sourceUrl.trim() || null,
+        published_at: publishedAtIso,
         status,
         category: (category || null) as ItemCategory | null,
         archive_reason:
@@ -318,6 +332,20 @@ export function ItemDetail({
               <Label htmlFor="url">Source URL</Label>
               <Input id="url" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} className="mt-1" />
             </div>
+            <div>
+              <Label htmlFor="published-date">Publication date</Label>
+              <Input
+                id="published-date"
+                type="date"
+                value={publishedDate}
+                onChange={(e) => setPublishedDate(e.target.value)}
+                className="mt-1 max-w-xs"
+              />
+              <p className="mt-1 text-xs text-neutral-500">
+                Uses the calendar day in UTC (same basis as the dashboard month). Leave empty if there is no
+                publication date.
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="status">Status</Label>
@@ -407,4 +435,25 @@ function monthKeyForItem(item: SourceItem): string {
   const y = d.getUTCFullYear();
   const m = d.getUTCMonth() + 1;
   return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+/** `YYYY-MM-DD` for a date input from a timestamptz ISO string. */
+function isoTimestampToDateInputValue(iso: string | null): string {
+  if (!iso || iso.length < 10) return "";
+  return iso.slice(0, 10);
+}
+
+/** Parse date input as midnight UTC so dashboard month keys match the chosen calendar day. */
+function dateInputValueToUtcMidnightIso(value: string): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const [ys, ms, ds] = v.split("-");
+  const y = Number(ys);
+  const m = Number(ms);
+  const d = Number(ds);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return dt.toISOString();
 }

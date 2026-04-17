@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -19,14 +19,24 @@ type DiscoverResponse = {
 export function DiscoverItemsButton() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+
+  function cancel() {
+    abortRef.current?.abort();
+  }
 
   async function run() {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    abortRef.current = new AbortController();
     setBusy(true);
     try {
       const res = await fetch("/api/discover-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
+        signal: abortRef.current.signal,
       });
       const data = (await res.json()) as DiscoverResponse & { error?: string };
       if (!res.ok) {
@@ -66,11 +76,44 @@ export function DiscoverItemsButton() {
         );
       }
       router.refresh();
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        toast.message("Discovery cancelled");
+        return;
+      }
+      if (e instanceof Error && e.name === "AbortError") {
+        toast.message("Discovery cancelled");
+        return;
+      }
       toast.error("Discovery request failed");
     } finally {
+      abortRef.current = null;
+      inFlightRef.current = false;
       setBusy(false);
     }
+  }
+
+  if (busy) {
+    return (
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <Button
+          type="button"
+          variant="primary"
+          className="min-w-0 flex-1 px-5 py-2.5 text-base font-semibold shadow-md sm:flex-none"
+          disabled
+        >
+          Discovering…
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="px-5 py-2.5 text-base font-medium sm:flex-none"
+          onClick={cancel}
+        >
+          Cancel
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -78,10 +121,9 @@ export function DiscoverItemsButton() {
       type="button"
       variant="primary"
       className="w-full px-5 py-2.5 text-base font-semibold shadow-md transition-shadow hover:shadow-lg sm:w-auto"
-      disabled={busy}
       onClick={run}
     >
-      {busy ? "Discovering…" : "Discover new items"}
+      Discover new items
     </Button>
   );
 }
