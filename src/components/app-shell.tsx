@@ -56,7 +56,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </p>
           </div>
 
-          <SidebarNav role={role} digestMonths={digestMonths} />
+          <SidebarNav role={role} digestMonths={digestMonths} workspaceLabel="Workspace" />
 
           <div className="surface-subtle mt-6 rounded-[1.25rem] px-3 py-3">
             <p className="truncate px-1 text-xs font-medium text-[color:var(--muted-foreground)]/90">

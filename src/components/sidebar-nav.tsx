@@ -99,9 +99,11 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function SidebarNav({
   role,
   digestMonths,
+  workspaceLabel = "Workspace",
 }: {
   role: ProfileRole | null;
   digestMonths: { ym: string; label: string }[];
+  workspaceLabel?: string;
 }) {
   const pathname = usePathname();
   const inDigest = pathname === "/digest" || pathname.startsWith("/digest/");
@@ -118,7 +120,7 @@ export function SidebarNav({
 
   return (
     <nav className="flex flex-1 flex-col">
-      <SectionLabel>Workspace</SectionLabel>
+      <SectionLabel>{workspaceLabel}</SectionLabel>
       <div className="space-y-1.5">
         <Link href="/dashboard" className={itemClass(pathname === "/dashboard")}>
           <DashboardIcon />
