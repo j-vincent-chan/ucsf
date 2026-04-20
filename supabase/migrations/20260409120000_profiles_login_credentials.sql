@@ -1,3 +1,5 @@
+
+grant execute on function public.admin_set_profile_login(uuid, text, text) to service_role;
 -- App login identifiers + bcrypt hashes on profiles (pgcrypto).
 -- Plain passwords are never stored; verify with crypt(plain, password_hash).
 -- Supabase often installs pgcrypto in schema "extensions"; SECURITY DEFINER
@@ -77,4 +79,3 @@ end;
 $$;
 
 revoke all on function public.admin_set_profile_login(uuid, text, text) from public;
-grant execute on function public.admin_set_profile_login(uuid, text, text) to service_role;

@@ -52,7 +52,6 @@ export type DashboardPayload = {
   }[];
   snapshotAt: string;
   /** Current snapshot KPIs (not range-dependent) */
-  watchlistActive: number;
   watchlistFaculty: number;
 };
 
@@ -161,7 +160,6 @@ export function buildDashboardPayload(
     entityNameById[e.id] = e.name;
   }
 
-  const watchlistActive = entities.filter((e) => e.active !== false).length;
   const watchlistFaculty = entities.filter(
     (e) => e.active !== false && e.entity_type === "faculty",
   ).length;
@@ -262,7 +260,6 @@ export function buildDashboardPayload(
     entityNameById,
     itemsForVolume,
     snapshotAt: new Date().toISOString(),
-    watchlistActive,
     watchlistFaculty,
   };
 }

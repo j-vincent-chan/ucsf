@@ -568,7 +568,6 @@ export function ResearchDashboard({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <KpiCard label="Watchlist (active)" value={data.watchlistActive} sub="Tracked investigators" />
         <KpiCard label="Faculty tracked" value={data.watchlistFaculty} sub="ImmunoX roster" />
         <KpiCard
           label="Publications"

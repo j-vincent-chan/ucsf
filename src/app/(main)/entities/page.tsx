@@ -13,7 +13,7 @@ export default async function EntitiesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  await requireAdmin();
+  const { profile } = await requireAdmin();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const showAll = sp.show_all === "1";
@@ -85,7 +85,7 @@ export default async function EntitiesPage({
         </form>
       </Card>
 
-      <BulkUploadEntities />
+      <BulkUploadEntities communityId={profile.community_id} />
 
       <WatchlistEntitiesTable
         rows={(entities ?? []).map((e) => ({

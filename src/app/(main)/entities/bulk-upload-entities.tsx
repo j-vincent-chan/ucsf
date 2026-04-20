@@ -23,7 +23,7 @@ function looksLikeMissingFacultyColumns(message: string): boolean {
   );
 }
 
-export function BulkUploadEntities() {
+export function BulkUploadEntities({ communityId }: { communityId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [parseErrors, setParseErrors] = useState<EntityCsvError[]>([]);
@@ -62,12 +62,18 @@ export function BulkUploadEntities() {
 
     setSchemaHint(null);
     setUploading(true);
+    if (!communityId) {
+      toast.error("Could not determine your community. Refresh and try again.");
+      setUploading(false);
+      return;
+    }
     const supabase = createClient();
     let inserted = 0;
     let stopped = false;
 
     for (let i = 0; i < rows.length; i += BATCH) {
       const batch = rows.slice(i, i + BATCH).map((r) => ({
+        community_id: communityId,
         first_name: r.first_name,
         middle_initial: r.middle_initial,
         last_name: r.last_name,
@@ -84,7 +90,7 @@ export function BulkUploadEntities() {
       }));
 
       const { error } = await supabase.from("tracked_entities").upsert(batch, {
-        onConflict: "slug",
+        onConflict: "community_id,slug",
       });
 
       if (error) {
@@ -108,7 +114,9 @@ export function BulkUploadEntities() {
 
     setUploading(false);
     if (!stopped) {
-      toast.success(`Imported ${inserted} row(s) (upsert by slug)`);
+      toast.success(
+        `Imported ${inserted} row(s) (matched by slug in your community)`,
+      );
       setParseErrors([]);
       setSchemaHint(null);
       router.refresh();
@@ -136,7 +144,8 @@ export function BulkUploadEntities() {
         <code className="text-xs">nih_profile_id</code> (NIH profile ID → Discover funding),{" "}
         <code className="text-xs">active</code>. Priority tier is set from member status (Leadership
         1, Member 2, Associate 3).
-        Rows upsert by <code className="text-xs">slug</code>; display name is synced in the database.
+        Rows upsert by <code className="text-xs">slug</code> within your community (no need to put
+        community in the CSV); display name is synced in the database.
         <span className="mt-3 block text-[#8f644f]">
           <strong>First-time Supabase:</strong> run{" "}
           <code className="text-xs">supabase/apply_faculty_schema.sql</code> in the SQL Editor if
