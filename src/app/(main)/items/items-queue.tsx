@@ -534,13 +534,13 @@ export function ItemsQueue({
             reloads this list from the database{canRunDiscovery ? "" : " (no automated discovery)"}.
           </p>
         </div>
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:max-w-md sm:flex-row sm:items-stretch">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-nowrap sm:items-stretch sm:justify-end">
           {canRunDiscovery ? <DiscoverItemsButton /> : null}
           {canMergeDuplicates ? <MergeDuplicateSignalsButton /> : null}
           <Button
             type="button"
             variant="secondary"
-            className="w-full shrink-0 py-2.5 text-sm font-medium sm:w-auto sm:min-w-[7.5rem]"
+            className="w-full shrink-0 whitespace-nowrap py-2.5 text-sm font-medium sm:w-auto sm:min-w-[7.5rem]"
             disabled={pending}
             onClick={refreshList}
           >

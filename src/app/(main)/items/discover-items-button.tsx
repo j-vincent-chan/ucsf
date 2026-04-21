@@ -99,11 +99,11 @@ export function DiscoverItemsButton() {
 
   if (busy) {
     return (
-      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <div className="flex w-full flex-nowrap items-center gap-2 sm:w-auto">
         <Button
           type="button"
           variant="primary"
-          className="min-w-0 flex-1 px-5 py-2.5 text-base font-semibold shadow-md sm:flex-none"
+          className="min-w-0 flex-1 whitespace-nowrap px-5 py-2.5 text-sm font-semibold shadow-md sm:flex-none"
           disabled
         >
           Discovering…
@@ -111,7 +111,7 @@ export function DiscoverItemsButton() {
         <Button
           type="button"
           variant="secondary"
-          className="px-5 py-2.5 text-base font-medium sm:flex-none"
+          className="shrink-0 whitespace-nowrap px-5 py-2.5 text-sm font-medium sm:flex-none"
           onClick={cancel}
         >
           Cancel
@@ -124,7 +124,7 @@ export function DiscoverItemsButton() {
     <Button
       type="button"
       variant="primary"
-      className="w-full px-5 py-2.5 text-base font-semibold shadow-md transition-shadow hover:shadow-lg sm:w-auto"
+      className="w-full whitespace-nowrap px-5 py-2.5 text-sm font-semibold shadow-md transition-shadow hover:shadow-lg sm:w-auto"
       onClick={run}
     >
       Discover new items

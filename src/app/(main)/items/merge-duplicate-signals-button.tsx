@@ -36,7 +36,7 @@ export function MergeDuplicateSignalsButton() {
     <Button
       type="button"
       variant="secondary"
-      className="w-full shrink-0 py-2.5 text-sm font-medium sm:w-auto"
+      className="w-full shrink-0 whitespace-nowrap py-2.5 text-sm font-medium sm:w-auto"
       disabled={busy}
       onClick={() => void run()}
       title="Merge duplicate rows that point at the same article (same URL or same title + date)"
