@@ -9,4 +9,6 @@ export type DiscoveryCandidate = {
   raw_summary: string | null;
   source_type: SourceType;
   category: ItemCategory;
+  /** NIH RePORTER `ProjectNum` — used to collapse subprojects/cores onto one overall grant row */
+  nih_project_num?: string;
 };

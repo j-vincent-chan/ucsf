@@ -20,22 +20,57 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Last name (word boundary) and, when first name has 2+ chars, first name (word boundary). */
+/**
+ * True when the article text plausibly refers to this person by name.
+ * Requires an adjacent "First … Last" or "Last, First" style mention — not independent
+ * occurrences of first and last name (which false-positive on different people named James and Lee).
+ */
 export function facultyMentionedInPlaintext(
   firstName: string,
   lastName: string,
   textLower: string,
+  options?: { middleInitial?: string | null },
 ): boolean {
   const ln = lastName.trim().toLowerCase();
   const fn = firstName.trim().toLowerCase();
-  if (!ln) return false;
+  if (!ln || !fn) return false;
+
   if (!new RegExp(`\\b${escapeRegExp(ln)}\\b`, "i").test(textLower)) {
     return false;
   }
-  if (fn.length >= 2) {
-    return new RegExp(`\\b${escapeRegExp(fn)}\\b`, "i").test(textLower);
+
+  const mi = (options?.middleInitial ?? "").trim().slice(0, 1).toLowerCase();
+
+  if (mi && /^[a-z]$/i.test(mi)) {
+    const withMiddle = new RegExp(
+      `\\b${escapeRegExp(fn)}\\s+${escapeRegExp(mi)}\\.?\\s+\\b${escapeRegExp(ln)}\\b`,
+      "i",
+    );
+    if (withMiddle.test(textLower)) return true;
   }
-  return true;
+
+  if (fn.length >= 2) {
+    const adjacent = new RegExp(
+      `\\b${escapeRegExp(fn)}\\s+(?:[a-z]\\.?\\s+){0,2}\\b${escapeRegExp(ln)}\\b`,
+      "i",
+    );
+    if (adjacent.test(textLower)) return true;
+
+    const inverted = new RegExp(
+      `\\b${escapeRegExp(ln)}\\s*,\\s*${escapeRegExp(fn)}\\b(?:\\s+[a-z]\\.?)?`,
+      "i",
+    );
+    if (inverted.test(textLower)) return true;
+  }
+
+  if (fn.length === 1) {
+    return new RegExp(
+      `\\b${escapeRegExp(fn)}\\s+\\b${escapeRegExp(ln)}\\b`,
+      "i",
+    ).test(textLower);
+  }
+
+  return false;
 }
 
 function extractTag(block: string, tag: string): string | null {
@@ -283,6 +318,7 @@ export function ucsfArticlesToCandidates(
   opts: {
     firstName: string;
     lastName: string;
+    middleInitial?: string | null;
     trackedEntityId: string;
     maxResults: number;
   },
@@ -293,7 +329,12 @@ export function ucsfArticlesToCandidates(
 
   for (const a of articles) {
     if (candidates.length >= opts.maxResults) break;
-    if (!facultyMentionedInPlaintext(fn, ln, a.textLower)) continue;
+    if (
+      !facultyMentionedInPlaintext(fn, ln, a.textLower, {
+        middleInitial: opts.middleInitial,
+      })
+    )
+      continue;
     candidates.push({
       tracked_entity_id: opts.trackedEntityId,
       title: a.title,

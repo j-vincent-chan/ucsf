@@ -186,6 +186,8 @@ export interface Database {
           duplicate_of: string | null;
           /** community + title + pub date (no entity); cross-investigator dedup key */
           signal_group_key: string | null;
+          /** NIH RePORTER ProjectNum when source_type=reporter */
+          nih_project_num: string | null;
           status: ItemStatus;
           category: ItemCategory | null;
           archive_reason: string | null;
@@ -208,6 +210,7 @@ export interface Database {
           duplicate_key?: string | null;
           duplicate_of?: string | null;
           signal_group_key?: string | null;
+          nih_project_num?: string | null;
           status?: ItemStatus;
           category?: ItemCategory | null;
           archive_reason?: string | null;
@@ -219,6 +222,7 @@ export interface Database {
           tracked_entity_id?: string | null;
           source_type?: SourceType;
           title?: string;
+          nih_project_num?: string | null;
           source_url?: string | null;
           source_domain?: string | null;
           published_at?: string | null;

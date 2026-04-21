@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { SourceType } from "@/types/database";
+import { canonicalNihProjectNumForDedup } from "@/lib/nih-project-num";
 
 /** Strip fragment + query; lowercase — must match Postgres normalize_source_url_for_dedup. */
 export function normalizeSourceUrlForDedup(url: string): string | null {
@@ -18,6 +20,7 @@ function utcCalendarDay(publishedAt: string | null): string {
 
 /**
  * Match Postgres public.compute_signal_group_key:
+ * RePORTER + ProjectNum: community|nih:<normalized ProjectNum>
  * URL path: community|url:<md5 hex of UTF-8 normalized URL>
  * Else: community|normalized title|UTC calendar day
  */
@@ -26,7 +29,13 @@ export function computeSignalGroupKey(
   title: string,
   publishedAt: string | null,
   sourceUrl?: string | null,
+  sourceType?: SourceType | null,
+  nihProjectNum?: string | null,
 ): string {
+  if (sourceType === "reporter" && nihProjectNum?.trim()) {
+    return `${communityId}|nih:${canonicalNihProjectNumForDedup(nihProjectNum)}`;
+  }
+
   const nu = sourceUrl ? normalizeSourceUrlForDedup(sourceUrl) : null;
   if (nu && /^https?:\/\//i.test(nu)) {
     const h = createHash("md5").update(nu, "utf8").digest("hex");

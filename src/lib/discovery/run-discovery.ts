@@ -15,8 +15,10 @@ import {
 import { fetchLabWebsiteHtmlCandidates } from "./lab-website-html";
 import {
   fetchNihReporterFundingCandidates,
+  isNihReporterSubprojectOrCoreTitle,
   isValidNihProfileId,
   NIH_REPORTER_THROTTLE_MS,
+  normalizeNihProjectNum,
 } from "./nih-reporter";
 import type { DiscoveryCandidate } from "./types";
 import { computeSignalGroupKey } from "@/lib/signal-group-key";
@@ -61,22 +63,24 @@ function pubmedSearch(e: FacultyRow): {
 } {
   const ln = e.last_name?.trim() ?? "";
   const fn = e.first_name?.trim() ?? "";
-  const mi = (e.middle_initial ?? "").trim().slice(0, 1).toUpperCase();
+  const miRaw = (e.middle_initial ?? "").trim().slice(0, 1);
   if (!ln || !fn) {
     return { term: (ln || fn).trim(), applyAffiliationInstitution: null };
   }
 
-  const parts = fn.split(/\s+/).filter(Boolean);
-  const firstInitial = parts[0]?.[0]?.toUpperCase() ?? "";
-  const inferredMiddleInitial = parts.length > 1 ? (parts[1]?.[0]?.toUpperCase() ?? "") : "";
-  const middleInitial = mi || inferredMiddleInitial;
-  const initials = `${firstInitial}${middleInitial}`.trim();
-
-  const authorInitials = initials ? `"${ln} ${initials}"[Author]` : `"${ln} ${firstInitial}"[Author]`;
-  const authorFull = middleInitial
-    ? `"${ln}, ${fn} ${middleInitial}"[Author]`
-    : `"${ln}, ${fn}"[Author]`;
-  const term = `(${authorFull} OR ${authorInitials})`;
+  // Phrase search as "Lastname Firstname" or "Lastname Firstname M" (MEDLINE-style order).
+  // Do not OR with "Lastname FS"[Author] — that matches other people with the same last name
+  // and first initial (e.g. Siyu Feng, Sophie Feng when looking for Sandy Feng).
+  const parts = [ln, fn];
+  if (miRaw && /^[a-zA-Z]$/.test(miRaw)) {
+    parts.push(miRaw.toUpperCase());
+  }
+  const inner = parts
+    .join(" ")
+    .replace(/"/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const term = `"${inner}"[Author]`;
 
   // Always disambiguate with UCSF affiliation to avoid ambiguous names.
   const applyAffiliationInstitution = "UCSF; University of California San Francisco";
@@ -225,12 +229,29 @@ export async function runDiscovery(
   if (communityIds.length > 0) {
     const { data: sgRows } = await supabase
       .from("source_items")
-      .select("id, signal_group_key")
+      .select("id, signal_group_key, community_id, source_type, nih_project_num")
       .in("community_id", communityIds)
-      .not("signal_group_key", "is", null);
+      .or("signal_group_key.not.is.null,nih_project_num.not.is.null");
     for (const r of sgRows ?? []) {
       if (r.signal_group_key && !sgkToItemId.has(r.signal_group_key)) {
         sgkToItemId.set(r.signal_group_key, r.id);
+      }
+      if (
+        r.source_type === "reporter" &&
+        r.nih_project_num?.trim() &&
+        r.community_id
+      ) {
+        const nihKey = computeSignalGroupKey(
+          r.community_id,
+          "",
+          null,
+          null,
+          "reporter",
+          r.nih_project_num,
+        );
+        if (!sgkToItemId.has(nihKey)) {
+          sgkToItemId.set(nihKey, r.id);
+        }
       }
     }
   }
@@ -370,6 +391,7 @@ export async function runDiscovery(
         ...ucsfArticlesToCandidates(u.articles, {
           firstName: ent.first_name,
           lastName: ent.last_name,
+          middleInitial: ent.middle_initial,
           trackedEntityId: ent.id,
           maxResults: MAX_PER_SOURCE,
         }),
@@ -382,6 +404,7 @@ export async function runDiscovery(
       bucket: string;
     }[] = [];
     const batchDk = new Set<string>();
+    const primaryEntityByItemId = new Map<string, string | null>();
 
     for (const c of collected) {
       const dk = computeDuplicateKey(
@@ -389,19 +412,32 @@ export async function runDiscovery(
         c.tracked_entity_id,
         c.published_at,
       );
-      if (seen.has(dk) || batchDk.has(dk)) {
-        skippedDuplicates += 1;
-        continue;
-      }
 
       const sgk = computeSignalGroupKey(
         ent.community_id,
         c.title,
         c.published_at,
         c.source_url,
+        c.source_type,
+        c.nih_project_num,
       );
       const existingItemId = sgkToItemId.get(sgk);
       if (existingItemId) {
+        let primaryId = primaryEntityByItemId.get(existingItemId);
+        if (primaryId === undefined) {
+          const { data: canon } = await supabase
+            .from("source_items")
+            .select("tracked_entity_id")
+            .eq("id", existingItemId)
+            .maybeSingle();
+          primaryId = canon?.tracked_entity_id ?? null;
+          primaryEntityByItemId.set(existingItemId, primaryId);
+        }
+        if (primaryId === ent.id) {
+          skippedDuplicates += 1;
+          continue;
+        }
+
         const { error: linkErr } = await supabase
           .from("source_item_tracked_entities")
           .insert({
@@ -421,6 +457,27 @@ export async function runDiscovery(
         } else {
           linkedInvestigators += 1;
           seen.add(dk);
+          if (
+            c.source_type === "reporter" &&
+            c.nih_project_num?.trim()
+          ) {
+            const { data: cur } = await supabase
+              .from("source_items")
+              .select("title")
+              .eq("id", existingItemId)
+              .maybeSingle();
+            const curTitle = cur?.title ?? "";
+            if (
+              curTitle &&
+              isNihReporterSubprojectOrCoreTitle(curTitle) &&
+              !isNihReporterSubprojectOrCoreTitle(c.title)
+            ) {
+              await supabase
+                .from("source_items")
+                .update({ title: c.title })
+                .eq("id", existingItemId);
+            }
+          }
           const b =
             c.source_type === "lab_website"
               ? "lab_website"
@@ -429,6 +486,11 @@ export async function runDiscovery(
                 : bucketFromDomain(c.source_domain);
           bySource[b] = (bySource[b] ?? 0) + 1;
         }
+        continue;
+      }
+
+      if (seen.has(dk) || batchDk.has(dk)) {
+        skippedDuplicates += 1;
         continue;
       }
 
@@ -453,6 +515,11 @@ export async function runDiscovery(
           source_type: c.source_type,
           category: c.category,
           status: "new",
+          ...(c.source_type === "reporter" && c.nih_project_num?.trim()
+            ? {
+                nih_project_num: normalizeNihProjectNum(c.nih_project_num),
+              }
+            : {}),
         },
       });
     }
@@ -479,8 +546,28 @@ export async function runDiscovery(
       seen.add(x.dk);
       bySource[x.bucket] = (bySource[x.bucket] ?? 0) + 1;
       const ins = insertedRows?.[i];
-      if (ins?.signal_group_key && ins.id) {
-        sgkToItemId.set(ins.signal_group_key, ins.id);
+      const row = x.row;
+      if (ins?.id) {
+        if (ins.signal_group_key) {
+          sgkToItemId.set(ins.signal_group_key, ins.id);
+        }
+        if (
+          row.source_type === "reporter" &&
+          row.nih_project_num?.trim() &&
+          row.community_id
+        ) {
+          const nk = computeSignalGroupKey(
+            row.community_id,
+            "",
+            null,
+            null,
+            "reporter",
+            row.nih_project_num,
+          );
+          if (!sgkToItemId.has(nk)) {
+            sgkToItemId.set(nk, ins.id);
+          }
+        }
       }
     }
   }
