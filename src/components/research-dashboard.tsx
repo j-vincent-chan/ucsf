@@ -229,9 +229,19 @@ function SourceDrillPanel({
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
                     {CAT_LABEL[it.category ?? "other"] ?? "Other"} · {it.status}
-                    {it.tracked_entity_id && entityNameById[it.tracked_entity_id]
-                      ? ` · ${entityNameById[it.tracked_entity_id]}`
-                      : ""}
+                    {(() => {
+                      const ids =
+                        it.tracked_entity_ids?.length && it.tracked_entity_ids.length > 0
+                          ? it.tracked_entity_ids
+                          : it.tracked_entity_id
+                            ? [it.tracked_entity_id]
+                            : [];
+                      const names = ids
+                        .map((eid) => entityNameById[eid])
+                        .filter(Boolean)
+                        .join(" · ");
+                      return names ? ` · ${names}` : "";
+                    })()}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

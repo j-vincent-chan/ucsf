@@ -20,7 +20,7 @@ const ITEM_SELECT = `
   category,
   source_type,
   source_url,
-  tracked_entities ( name, first_name, last_name ),
+  tracked_entities!tracked_entity_id ( name, first_name, last_name ),
   summaries ( * )
 `;
 

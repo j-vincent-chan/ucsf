@@ -41,6 +41,7 @@ export async function GET(req: Request) {
   }[] = [];
   let inserted = 0;
   let skippedDuplicates = 0;
+  let linkedInvestigators = 0;
   const errors: { source: string; entityId: string; message: string }[] = [];
   const bySource: Record<string, number> = {};
   let facultyProcessed = 0;
@@ -53,6 +54,7 @@ export async function GET(req: Request) {
     communitiesOut.push({ id: c.id, slug: c.slug, name: c.name, result });
     inserted += result.inserted;
     skippedDuplicates += result.skippedDuplicates;
+    linkedInvestigators += result.linkedInvestigators;
     errors.push(...result.errors);
     for (const [k, v] of Object.entries(result.bySource)) {
       bySource[k] = (bySource[k] ?? 0) + v;
@@ -66,6 +68,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     inserted,
     skippedDuplicates,
+    linkedInvestigators,
     bySource,
     errors,
     facultyProcessed,

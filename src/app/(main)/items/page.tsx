@@ -4,6 +4,7 @@ import { ItemsQueue } from "./items-queue";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 import { redirect } from "next/navigation";
 import { rangeForPublishedPreset } from "@/lib/published-date-presets";
+import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 
 /** Always load fresh roster + queue (faculty changes must show up immediately). */
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export type ItemRow = {
   found_at: string;
   duplicate_key: string | null;
   archive_reason: string | null;
+  /** Primary investigator on the row (legacy); prefer `investigators` for display */
   tracked_entities: {
     id: string;
     name: string;
@@ -26,6 +28,14 @@ export type ItemRow = {
     last_name: string;
     lab_website: string | null;
   } | null;
+  /** All investigators linked to this signal (primary + junction) */
+  investigators: {
+    id: string;
+    name: string;
+    first_name: string;
+    last_name: string;
+    lab_website: string | null;
+  }[];
 };
 
 const statuses: ItemStatus[] = ["new", "reviewed", "approved", "archived"];
@@ -124,7 +134,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
         found_at,
         duplicate_key,
         archive_reason,
-        tracked_entities ( id, name, first_name, last_name, lab_website )
+        tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
        `,
         )
         .order("found_at", { ascending: false })
@@ -139,10 +149,58 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
       }
       if (category) q = q.eq("category", category);
       if (sourceType) q = q.eq("source_type", sourceType);
-      if (entityId) q = q.eq("tracked_entity_id", entityId);
+      if (entityId) {
+        const { data: linkRows } = await supabase
+          .from("source_item_tracked_entities")
+          .select("source_item_id")
+          .eq("tracked_entity_id", entityId);
+        const fromJunction = (linkRows ?? []).map((r) => r.source_item_id);
+        const orParts = [`tracked_entity_id.eq.${entityId}`];
+        if (fromJunction.length > 0) {
+          orParts.push(`id.in.(${fromJunction.join(",")})`);
+        }
+        q = q.or(orParts.join(","));
+      }
       if (from) q = q.gte("published_at", `${from}T00:00:00.000Z`);
       if (to) q = q.lte("published_at", `${to}T23:59:59.999Z`);
-      return q;
+
+      const base = await q;
+      if (base.error) return base;
+
+      const rows = base.data ?? [];
+      const itemIds = rows.map((r) => r.id);
+      const junctionByItem = new Map<string, unknown[]>();
+
+      if (itemIds.length > 0) {
+        const { data: junctionRows, error: jErr } = await supabase
+          .from("source_item_tracked_entities")
+          .select(
+            `
+            source_item_id,
+            tracked_entity_id,
+            tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
+          `,
+          )
+          .in("source_item_id", itemIds);
+
+        if (jErr) {
+          return { data: null, error: jErr };
+        }
+
+        for (const row of junctionRows ?? []) {
+          const sid = row.source_item_id;
+          const arr = junctionByItem.get(sid) ?? [];
+          arr.push(row);
+          junctionByItem.set(sid, arr);
+        }
+      }
+
+      const merged = rows.map((r) => ({
+        ...r,
+        source_item_tracked_entities: junctionByItem.get(r.id) ?? [],
+      }));
+
+      return { data: merged, error: null };
     })(),
   ]);
 
@@ -176,6 +234,9 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
               lab_website: string | null;
             })
         : null;
+    const junction = (r as { source_item_tracked_entities?: unknown })
+      .source_item_tracked_entities;
+    const investigators = investigatorsFromSourceItemRow(te, junction);
     return {
       id: r.id,
       title: r.title,
@@ -196,6 +257,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
             lab_website: ent.lab_website ?? null,
           }
         : null,
+      investigators,
     };
   });
 
@@ -225,6 +287,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
           canRunDiscovery={
             profile.role === "admin" || profile.role === "editor"
           }
+          canMergeDuplicates={profile.role === "admin"}
           initialFilters={{
             status: sp.status ?? "",
             category: sp.category ?? "",

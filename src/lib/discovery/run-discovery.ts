@@ -19,10 +19,14 @@ import {
   NIH_REPORTER_THROTTLE_MS,
 } from "./nih-reporter";
 import type { DiscoveryCandidate } from "./types";
+import { computeSignalGroupKey } from "@/lib/signal-group-key";
 
 export type DiscoveryRunResult = {
   inserted: number;
+  /** New source_item rows created */
   skippedDuplicates: number;
+  /** Same publication matched an existing signal; investigator linked via junction */
+  linkedInvestigators: number;
   bySource: Record<string, number>;
   errors: { source: string; entityId: string; message: string }[];
   facultyProcessed: number;
@@ -126,6 +130,7 @@ export async function runDiscovery(
   const bySource: Record<string, number> = {};
   let skippedDuplicates = 0;
   let inserted = 0;
+  let linkedInvestigators = 0;
   let labWebsiteCandidates = 0;
 
   let q = supabase
@@ -148,6 +153,7 @@ export async function runDiscovery(
     return {
       inserted: 0,
       skippedDuplicates: 0,
+      linkedInvestigators: 0,
       bySource: {},
       errors: [{ source: "setup", entityId: "-", message: facErr.message }],
       facultyProcessed: 0,
@@ -162,6 +168,7 @@ export async function runDiscovery(
     return {
       inserted: 0,
       skippedDuplicates: 0,
+      linkedInvestigators: 0,
       bySource: {},
       errors: [],
       facultyProcessed: 0,
@@ -186,6 +193,47 @@ export async function runDiscovery(
       .map((r) => r.duplicate_key)
       .filter((k): k is string => Boolean(k)),
   );
+
+  const { data: linkRows } = await supabase
+    .from("source_item_tracked_entities")
+    .select("tracked_entity_id, source_item_id")
+    .in("tracked_entity_id", facultyIds);
+
+  const linkItemIds = [...new Set((linkRows ?? []).map((r) => r.source_item_id))];
+  const { data: itemsForLinks } =
+    linkItemIds.length > 0
+      ? await supabase
+          .from("source_items")
+          .select("id, title, published_at")
+          .in("id", linkItemIds)
+      : { data: [] as { id: string; title: string; published_at: string | null }[] };
+
+  const itemById = new Map(
+    (itemsForLinks ?? []).map((r) => [r.id, r] as const),
+  );
+
+  for (const lr of linkRows ?? []) {
+    const row = itemById.get(lr.source_item_id);
+    if (!row?.title) continue;
+    seen.add(
+      computeDuplicateKey(row.title, lr.tracked_entity_id, row.published_at),
+    );
+  }
+
+  const communityIds = [...new Set(rows.map((r) => r.community_id))];
+  const sgkToItemId = new Map<string, string>();
+  if (communityIds.length > 0) {
+    const { data: sgRows } = await supabase
+      .from("source_items")
+      .select("id, signal_group_key")
+      .in("community_id", communityIds)
+      .not("signal_group_key", "is", null);
+    for (const r of sgRows ?? []) {
+      if (r.signal_group_key && !sgkToItemId.has(r.signal_group_key)) {
+        sgkToItemId.set(r.signal_group_key, r.id);
+      }
+    }
+  }
 
   const trialMinPost = new Date(now);
   trialMinPost.setDate(trialMinPost.getDate() - daysBack);
@@ -345,6 +393,45 @@ export async function runDiscovery(
         skippedDuplicates += 1;
         continue;
       }
+
+      const sgk = computeSignalGroupKey(
+        ent.community_id,
+        c.title,
+        c.published_at,
+        c.source_url,
+      );
+      const existingItemId = sgkToItemId.get(sgk);
+      if (existingItemId) {
+        const { error: linkErr } = await supabase
+          .from("source_item_tracked_entities")
+          .insert({
+            source_item_id: existingItemId,
+            tracked_entity_id: ent.id,
+          });
+        if (linkErr) {
+          if (linkErr.code === "23505") {
+            skippedDuplicates += 1;
+          } else {
+            errors.push({
+              source: "database",
+              entityId: ent.id,
+              message: linkErr.message,
+            });
+          }
+        } else {
+          linkedInvestigators += 1;
+          seen.add(dk);
+          const b =
+            c.source_type === "lab_website"
+              ? "lab_website"
+              : c.source_type === "reporter"
+                ? "nih_reporter"
+                : bucketFromDomain(c.source_domain);
+          bySource[b] = (bySource[b] ?? 0) + 1;
+        }
+        continue;
+      }
+
       batchDk.add(dk);
       const b =
         c.source_type === "lab_website"
@@ -372,9 +459,10 @@ export async function runDiscovery(
 
     if (batch.length === 0) continue;
 
-    const { error: insErr } = await supabase
+    const { data: insertedRows, error: insErr } = await supabase
       .from("source_items")
-      .insert(batch.map((x) => x.row));
+      .insert(batch.map((x) => x.row))
+      .select("id, signal_group_key");
 
     if (insErr) {
       errors.push({
@@ -386,15 +474,21 @@ export async function runDiscovery(
     }
 
     inserted += batch.length;
-    for (const x of batch) {
+    for (let i = 0; i < batch.length; i++) {
+      const x = batch[i]!;
       seen.add(x.dk);
       bySource[x.bucket] = (bySource[x.bucket] ?? 0) + 1;
+      const ins = insertedRows?.[i];
+      if (ins?.signal_group_key && ins.id) {
+        sgkToItemId.set(ins.signal_group_key, ins.id);
+      }
     }
   }
 
   return {
     inserted,
     skippedDuplicates,
+    linkedInvestigators,
     bySource,
     errors,
     facultyProcessed: rows.length,

@@ -151,6 +151,23 @@ export interface Database {
         };
         Relationships: [];
       };
+      source_item_tracked_entities: {
+        Row: {
+          source_item_id: string;
+          tracked_entity_id: string;
+          created_at: string;
+        };
+        Insert: {
+          source_item_id: string;
+          tracked_entity_id: string;
+          created_at?: string;
+        };
+        Update: {
+          tracked_entity_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       source_items: {
         Row: {
           id: string;
@@ -167,6 +184,8 @@ export interface Database {
           submitted_by: string | null;
           duplicate_key: string | null;
           duplicate_of: string | null;
+          /** community + title + pub date (no entity); cross-investigator dedup key */
+          signal_group_key: string | null;
           status: ItemStatus;
           category: ItemCategory | null;
           archive_reason: string | null;
@@ -188,6 +207,7 @@ export interface Database {
           submitted_by?: string | null;
           duplicate_key?: string | null;
           duplicate_of?: string | null;
+          signal_group_key?: string | null;
           status?: ItemStatus;
           category?: ItemCategory | null;
           archive_reason?: string | null;
@@ -274,6 +294,10 @@ export interface Database {
           p_plain_password: string;
         };
         Returns: undefined;
+      };
+      merge_duplicate_source_items_by_signal_group: {
+        Args: Record<string, never>;
+        Returns: number;
       };
     };
     Enums: {

@@ -29,7 +29,7 @@ export default async function DashboardPage() {
         status,
         category,
         published_at,
-        tracked_entities ( name )
+        tracked_entities!tracked_entity_id ( name )
       `,
       )
       .order("created_at", { ascending: false })
@@ -47,7 +47,31 @@ export default async function DashboardPage() {
   }
 
   const entities = (entitiesRes.data ?? []) as RawEntity[];
-  const items = (itemsRes.data ?? []) as RawItem[];
+  const rawItems = (itemsRes.data ?? []) as RawItem[];
+  const itemIds = rawItems.map((r) => r.id);
+  let linksByItem = new Map<string, string[]>();
+  if (itemIds.length > 0) {
+    const { data: linkRows } = await supabase
+      .from("source_item_tracked_entities")
+      .select("source_item_id, tracked_entity_id")
+      .in("source_item_id", itemIds);
+    for (const row of linkRows ?? []) {
+      const arr = linksByItem.get(row.source_item_id) ?? [];
+      arr.push(row.tracked_entity_id);
+      linksByItem.set(row.source_item_id, arr);
+    }
+  }
+  const items: RawItem[] = rawItems.map((r) => {
+    const extra = linksByItem.get(r.id) ?? [];
+    const set = new Set<string>();
+    if (r.tracked_entity_id) set.add(r.tracked_entity_id);
+    for (const e of extra) set.add(e);
+    const tracked_entity_ids = [...set];
+    return {
+      ...r,
+      tracked_entity_ids: tracked_entity_ids.length > 0 ? tracked_entity_ids : undefined,
+    };
+  });
 
   const payload = buildDashboardPayload(entities, items);
 

@@ -46,6 +46,8 @@ export type DashboardPayload = {
     source_domain: string | null;
     raw_summary: string | null;
     tracked_entity_id: string | null;
+    /** All investigators on this signal (merged multi-PI); falls back to primary id when absent */
+    tracked_entity_ids: string[];
     published_at: string | null;
     found_at: string;
     created_at: string;
@@ -77,6 +79,8 @@ type RawItem = {
   found_at: string;
   created_at: string;
   tracked_entity_id: string | null;
+  /** Populated by dashboard loader from junction table */
+  tracked_entity_ids?: string[];
 };
 
 function monthKeyFromIso(iso: string): string {
@@ -239,20 +243,29 @@ export function buildDashboardPayload(
       joins,
     }));
 
-  const itemsForVolume = items.map((i) => ({
-    id: i.id,
-    title: i.title,
-    category: i.category,
-    status: i.status,
-    source_url: i.source_url,
-    source_type: i.source_type,
-    source_domain: i.source_domain,
-    raw_summary: i.raw_summary,
-    tracked_entity_id: i.tracked_entity_id,
-    published_at: i.published_at,
-    found_at: i.found_at,
-    created_at: i.created_at,
-  }));
+  const itemsForVolume = items.map((i) => {
+    const tracked_entity_ids =
+      i.tracked_entity_ids?.length && i.tracked_entity_ids.length > 0
+        ? i.tracked_entity_ids
+        : i.tracked_entity_id
+          ? [i.tracked_entity_id]
+          : [];
+    return {
+      id: i.id,
+      title: i.title,
+      category: i.category,
+      status: i.status,
+      source_url: i.source_url,
+      source_type: i.source_type,
+      source_domain: i.source_domain,
+      raw_summary: i.raw_summary,
+      tracked_entity_id: i.tracked_entity_id,
+      tracked_entity_ids,
+      published_at: i.published_at,
+      found_at: i.found_at,
+      created_at: i.created_at,
+    };
+  });
 
   return {
     monthly,
@@ -354,9 +367,15 @@ export function topEntitiesInRange(
   for (const item of items) {
     const ym = effectiveMonthKey(item);
     if (start && ym < start) continue;
-    const id = item.tracked_entity_id;
-    if (!id) continue;
-    counts.set(id, (counts.get(id) ?? 0) + 1);
+    const ids =
+      item.tracked_entity_ids?.length && item.tracked_entity_ids.length > 0
+        ? item.tracked_entity_ids
+        : item.tracked_entity_id
+          ? [item.tracked_entity_id]
+          : [];
+    for (const id of ids) {
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
   }
   return Array.from(counts.entries())
     .map(([id, count]) => ({

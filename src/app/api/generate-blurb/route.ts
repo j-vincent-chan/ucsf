@@ -111,7 +111,7 @@ export async function POST(req: Request) {
   const { data: item, error: itemErr } = await supabase
     .from("source_items")
     .select(
-      "id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entities ( name )",
+      "id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entities!tracked_entity_id ( name )",
     )
     .eq("id", source_item_id)
     .maybeSingle();

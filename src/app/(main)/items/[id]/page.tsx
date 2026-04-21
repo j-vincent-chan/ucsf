@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { ItemDetail } from "./item-detail";
 import type { SourceItem, Summary } from "@/types/database";
+import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 
 export default async function ItemDetailPage({
   params,
@@ -18,13 +19,25 @@ export default async function ItemDetailPage({
     .select(
       `
       *,
-      tracked_entities ( id, name )
+      tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
     `,
     )
     .eq("id", id)
     .maybeSingle();
 
   if (error || !item) notFound();
+
+  const { data: junctionRows, error: jErr } = await supabase
+    .from("source_item_tracked_entities")
+    .select(
+      `
+      tracked_entity_id,
+      tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
+    `,
+    )
+    .eq("source_item_id", id);
+
+  if (jErr) notFound();
 
   const { data: summaries } = await supabase
     .from("summaries")
@@ -55,18 +68,13 @@ export default async function ItemDetailPage({
 
   const raw = item as Record<string, unknown>;
   const { tracked_entities: te, ...rest } = raw;
-  const entity =
-    te && typeof te === "object" && !Array.isArray(te)
-      ? (te as { name?: string })
-      : Array.isArray(te)
-        ? (te[0] as { name?: string } | undefined)
-        : null;
+  const investigators = investigatorsFromSourceItemRow(te, junctionRows ?? []);
 
   return (
     <ItemDetail
       key={id}
       item={rest as unknown as SourceItem}
-      entityName={entity?.name ?? null}
+      investigators={investigators}
       summaries={(summaries ?? []) as Summary[]}
       duplicates={duplicates}
       duplicateOf={duplicateOf}

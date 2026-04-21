@@ -21,6 +21,7 @@ import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import type { ItemRow } from "./page";
 import { DiscoverItemsButton } from "./discover-items-button";
+import { MergeDuplicateSignalsButton } from "./merge-duplicate-signals-button";
 import {
   rangeForPublishedPreset,
   type PublishedRangePreset,
@@ -53,8 +54,8 @@ function compareItems(
     case "title":
       return a.title.localeCompare(b.title, undefined, { sensitivity: "base" }) * d;
     case "entity": {
-      const na = a.tracked_entities?.name ?? "";
-      const nb = b.tracked_entities?.name ?? "";
+      const na = a.investigators.map((i) => i.name).join(" ") || "";
+      const nb = b.investigators.map((i) => i.name).join(" ") || "";
       return na.localeCompare(nb, undefined, { sensitivity: "base" }) * d;
     }
     case "source":
@@ -260,11 +261,14 @@ export function ItemsQueue({
   entities,
   initialFilters,
   canRunDiscovery = false,
+  canMergeDuplicates = false,
 }: {
   initialItems: ItemRow[];
   entities: { id: string; name: string }[];
   initialFilters: Filters;
   canRunDiscovery?: boolean;
+  /** Admin: show one-click merge for rows sharing the same dedupe key */
+  canMergeDuplicates?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -532,6 +536,7 @@ export function ItemsQueue({
         </div>
         <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:max-w-md sm:flex-row sm:items-stretch">
           {canRunDiscovery ? <DiscoverItemsButton /> : null}
+          {canMergeDuplicates ? <MergeDuplicateSignalsButton /> : null}
           <Button
             type="button"
             variant="secondary"
@@ -895,10 +900,7 @@ export function ItemsQueue({
               </tr>
             ) : (
               sortedItems.map((row) => {
-                const te = row.tracked_entities;
-                const investigatorProfileUrl = te
-                  ? ucsfProfilesUrl(te.first_name, te.last_name)
-                  : null;
+                const invs = row.investigators;
                 return (
                   <Fragment key={row.id}>
                 <tr className="align-top">
@@ -927,19 +929,33 @@ export function ItemsQueue({
                     )}
                   </td>
                   <td className="p-2 text-[color:var(--muted-foreground)]">
-                    {!te ? (
+                    {invs.length === 0 ? (
                       "—"
-                    ) : investigatorProfileUrl ? (
-                      <a
-                        href={investigatorProfileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2 hover:decoration-[color:var(--accent)]"
-                      >
-                        {te.name}
-                      </a>
                     ) : (
-                      <span>{te.name}</span>
+                      <ul className="list-none space-y-1">
+                        {invs.map((te) => {
+                          const investigatorProfileUrl = ucsfProfilesUrl(
+                            te.first_name,
+                            te.last_name,
+                          );
+                          return (
+                            <li key={te.id}>
+                              {investigatorProfileUrl ? (
+                                <a
+                                  href={investigatorProfileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline decoration-[color:var(--muted-foreground)]/55 underline-offset-2 hover:decoration-[color:var(--accent)]"
+                                >
+                                  {te.name}
+                                </a>
+                              ) : (
+                                <span>{te.name}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
                   </td>
                   <td className="p-2">

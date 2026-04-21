@@ -8,6 +8,7 @@ import { toast } from "sonner";
 type DiscoverResponse = {
   inserted: number;
   skippedDuplicates: number;
+  linkedInvestigators?: number;
   bySource?: Record<string, number>;
   errors?: { source: string; entityId: string; message: string }[];
   facultyProcessed?: number;
@@ -46,6 +47,9 @@ export function DiscoverItemsButton() {
       const parts = [
         `Added ${data.inserted} item(s)`,
         `${data.skippedDuplicates} duplicate(s) skipped`,
+        ...(data.linkedInvestigators
+          ? [`${data.linkedInvestigators} investigator link(s) to existing signal(s)`]
+          : []),
         `${data.facultyProcessed ?? 0} faculty scanned`,
       ];
       const by = data.bySource;

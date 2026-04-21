@@ -3,12 +3,15 @@ import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import type { ProfileWithCommunity } from "@/types/database";
 import { redirect } from "next/navigation";
 
+/** Resolves the current user via Supabase Auth (JWT verified server-side). Prefer over getSession(). */
 export async function getSessionUser() {
   const supabase = await createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  return session?.user ?? null;
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  if (error || !user) return null;
+  return user;
 }
 
 export async function getProfile(): Promise<ProfileWithCommunity | null> {

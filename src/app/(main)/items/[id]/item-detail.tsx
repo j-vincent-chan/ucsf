@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -19,16 +20,18 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import type { InvestigatorChip } from "@/lib/source-item-investigators";
+import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 
 export function ItemDetail({
   item,
-  entityName,
+  investigators,
   summaries: initialSummaries,
   duplicates,
   duplicateOf,
 }: {
   item: SourceItem;
-  entityName: string | null;
+  investigators: InvestigatorChip[];
   summaries: Summary[];
   duplicates: Pick<SourceItem, "id" | "title" | "status" | "duplicate_key">[];
   duplicateOf: Pick<SourceItem, "id" | "title"> | null;
@@ -190,7 +193,31 @@ export function ItemDetail({
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-snug">{item.title}</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              {entityName ?? "Unassigned"} · {sourceTypeDisplayLabel(item.source_type)}
+              {investigators.length === 0 ? (
+                <>Unassigned</>
+              ) : (
+                investigators.map((inv, i) => {
+                  const profileUrl = ucsfProfilesUrl(inv.first_name, inv.last_name);
+                  return (
+                    <Fragment key={inv.id}>
+                      {i > 0 ? <span className="text-neutral-400"> · </span> : null}
+                      {profileUrl ? (
+                        <a
+                          href={profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-neutral-600 underline decoration-neutral-400/60 underline-offset-2 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                        >
+                          {inv.name}
+                        </a>
+                      ) : (
+                        <span>{inv.name}</span>
+                      )}
+                    </Fragment>
+                  );
+                })
+              )}{" "}
+              · {sourceTypeDisplayLabel(item.source_type)}
               {item.published_at
                 ? ` · ${new Date(item.published_at).toLocaleDateString()}`
                 : ""}
