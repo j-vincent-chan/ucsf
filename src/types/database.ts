@@ -8,7 +8,7 @@ export type ItemStatus = "new" | "reviewed" | "approved" | "archived";
 export type ItemArchiveReason =
   | "not_accurate"
   | "not_relevant"
-  | "low_signal"
+  | "minor_signal"
   | "duplicate"
   | "wrong_investigator"
   | "outdated"

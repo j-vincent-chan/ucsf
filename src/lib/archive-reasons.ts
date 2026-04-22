@@ -6,7 +6,7 @@ import type { ItemArchiveReason } from "@/types/database";
  */
 export const ARCHIVE_REASON_OPTIONS: { value: ItemArchiveReason; label: string }[] = [
   { value: "not_relevant", label: "Not relevant" },
-  { value: "low_signal", label: "Low signal" },
+  { value: "minor_signal", label: "Minor signal" },
   { value: "wrong_investigator", label: "Wrong investigator" },
   { value: "duplicate", label: "Duplicate or already captured" },
   { value: "outdated", label: "Outdated or superseded" },
