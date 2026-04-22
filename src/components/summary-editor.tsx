@@ -15,6 +15,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 
+/** Fold legacy `why_it_matters` into `blurb` so the UI is one paragraph (no label). */
+function mergeWhyIntoBlurb(c: BlurbContent): BlurbContent {
+  const b = c.blurb?.trim() ?? "";
+  const w = c.why_it_matters?.trim() ?? "";
+  if (!w) return { ...c, blurb: b, why_it_matters: "" };
+  const merged = b ? `${b.trimEnd()} ${w}` : w;
+  return { ...c, blurb: merged, why_it_matters: "" };
+}
+
 function CopyIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -44,12 +53,14 @@ export function SummaryEditor({
   onSaved: () => Promise<void>;
 }) {
   const rawText = summary.edited_text ?? summary.generated_text;
-  const initial = parseBlurbJson(rawText) ?? {
-    headline: "",
-    blurb: rawText,
-    why_it_matters: "",
-    confidence_notes: "",
-  };
+  const initial = mergeWhyIntoBlurb(
+    parseBlurbJson(rawText) ?? {
+      headline: "",
+      blurb: rawText,
+      why_it_matters: "",
+      confidence_notes: "",
+    },
+  );
   const [content, setContent] = useState<BlurbContent>(initial);
   const [saving, setSaving] = useState(false);
   const [lengthDeltaWords, setLengthDeltaWords] = useState(0); // negative shorter, positive longer
@@ -60,27 +71,27 @@ export function SummaryEditor({
   useEffect(() => {
     const raw = summary.edited_text ?? summary.generated_text;
     const p = parseBlurbJson(raw);
-    setContent(p ?? { headline: "", blurb: raw, why_it_matters: "", confidence_notes: "" });
+    setContent(
+      mergeWhyIntoBlurb(
+        p ?? { headline: "", blurb: raw, why_it_matters: "", confidence_notes: "" },
+      ),
+    );
     setChatPrompt("");
     setLengthDeltaWords(0);
   }, [summary]);
 
-  function combinedSummary(): string {
-    const s = content.blurb?.trim() ?? "";
-    const w = content.why_it_matters?.trim() ?? "";
-    if (!w) return s;
-    if (!s) return `Why it matters: ${w}`;
-    return `${s}\n\nWhy it matters: ${w}`;
+  function summaryBody(): string {
+    return content.blurb?.trim() ?? "";
   }
 
-  function applyCombinedSummary(raw: string) {
+  function applySummaryBody(raw: string) {
     const t = raw.trimEnd();
-    const marker = "\n\nWhy it matters:";
-    const idx = t.toLowerCase().lastIndexOf(marker.toLowerCase());
+    const legacy = "\n\nWhy it matters:";
+    const idx = t.toLowerCase().lastIndexOf(legacy.toLowerCase());
     if (idx >= 0) {
       const blurbPart = t.slice(0, idx).trim();
-      const whyPart = t.slice(idx + marker.length).trim();
-      setContent((c) => ({ ...c, blurb: blurbPart, why_it_matters: whyPart }));
+      const whyPart = t.slice(idx + legacy.length).trim();
+      setContent((c) => mergeWhyIntoBlurb({ ...c, blurb: blurbPart, why_it_matters: whyPart }));
       return;
     }
     setContent((c) => ({ ...c, blurb: t.trim(), why_it_matters: "" }));
@@ -100,27 +111,6 @@ export function SummaryEditor({
     await onSaved();
   }
 
-  async function finalize() {
-    const text =
-      `${content.headline}\n\n${combinedSummary()}`.trim();
-    setSaving(true);
-    const supabase = createClient();
-    const { error } = await supabase
-      .from("summaries")
-      .update({
-        final_text: text,
-        edited_text: stringifyBlurbContent(content),
-      })
-      .eq("id", summary.id);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success("Final copy saved");
-    await onSaved();
-  }
-
   function wordCount(s: string): number {
     const t = s.trim();
     if (!t) return 0;
@@ -128,7 +118,7 @@ export function SummaryEditor({
   }
 
   function baseCopyText(): string {
-    return `${content.headline}\n\n${combinedSummary()}`.trim();
+    return `${content.headline}\n\n${summaryBody()}`.trim();
   }
 
   async function copyText() {
@@ -142,7 +132,7 @@ export function SummaryEditor({
   }
 
   async function adjustLength() {
-    const base = combinedSummary().trim();
+    const base = summaryBody().trim();
     if (!base) {
       toast.error("Nothing to adjust yet");
       return;
@@ -165,7 +155,7 @@ export function SummaryEditor({
       if (!res.ok || !data.text) {
         throw new Error(data.error ?? "Adjust failed");
       }
-      applyCombinedSummary(data.text);
+      applySummaryBody(data.text);
       toast.success("Adjusted");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Adjust failed");
@@ -191,7 +181,7 @@ export function SummaryEditor({
       if (!res.ok || !data.content) {
         throw new Error(data.error ?? "Request failed");
       }
-      setContent(data.content);
+      setContent(mergeWhyIntoBlurb(data.content));
       setChatPrompt("");
       toast.success("Applied");
     } catch (e) {
@@ -212,7 +202,7 @@ export function SummaryEditor({
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-[color:var(--muted-foreground)]">
           {wordCount(
-            `${content.headline} ${combinedSummary()}`.trim(),
+            `${content.headline} ${summaryBody()}`.trim(),
           )}{" "}
           words
         </span>
@@ -263,8 +253,8 @@ export function SummaryEditor({
           <Label>Summary</Label>
           <Textarea
             className="mt-1 min-h-[176px]"
-            value={combinedSummary()}
-            onChange={(e) => applyCombinedSummary(e.target.value)}
+            value={summaryBody()}
+            onChange={(e) => applySummaryBody(e.target.value)}
           />
         </div>
         <div className="surface-subtle rounded-[1rem] p-3">
@@ -307,9 +297,6 @@ export function SummaryEditor({
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={saveEdits} disabled={saving}>
             Save edits
-          </Button>
-          <Button type="button" onClick={finalize} disabled={saving}>
-            Finalize
           </Button>
         </div>
       </div>

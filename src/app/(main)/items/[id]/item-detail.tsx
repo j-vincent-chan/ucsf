@@ -188,7 +188,7 @@ export function ItemDetail({
           <div>
             <p className="text-sm text-neutral-500">
               <Link href="/items" className="hover:underline">
-                ← Review Queue
+                ← Signals
               </Link>
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-snug">{item.title}</h1>

@@ -58,7 +58,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content:
-            "You edit structured summary fields. Preserve factual claims; do not invent facts. Keep JSON valid and match schema exactly.",
+            "You edit structured summary fields. Preserve factual claims; do not invent facts. Keep JSON valid and match schema exactly. Do not use possessive framing like his team/her team for co-authors; prefer colleagues, co-authors, or neutral parallel naming.",
         },
         {
           role: "user",

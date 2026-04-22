@@ -8,8 +8,9 @@ const defaultBrandName = () =>
 import { SignalLogo } from "@/components/signal-logo";
 import { recentYearMonths } from "@/lib/digest-month";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { ThemeToggle } from "@/components/theme-toggle";
 
-const digestMonths = recentYearMonths(12);
+const digestMonths = recentYearMonths(10);
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -56,23 +57,37 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             </p>
           </div>
 
-          <SidebarNav role={role} digestMonths={digestMonths} workspaceLabel="Workspace" />
+          <SidebarNav role={role} digestMonths={digestMonths} workspaceLabel="Monitor" />
 
-          <div className="surface-subtle mt-6 rounded-[1.25rem] px-3 py-3">
-            <p className="truncate px-1 text-xs font-medium text-[color:var(--muted-foreground)]/90">
-              {user?.email}
-            </p>
-            <p className="px-1 pt-1 text-[11px] text-[color:var(--muted-foreground)]/80">
-              Need help? Visit Readme for workflow guidance.
-            </p>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="mt-2 w-full rounded-xl px-3 py-2 text-left text-sm font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/80 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
-              >
-                Sign out
-              </button>
-            </form>
+          <div className="mt-auto space-y-3 pt-6">
+            <div className="rounded-[1.1rem] border border-[color:var(--border)]/75 bg-[color:var(--card)]/55 p-3">
+              <p className="truncate text-xs font-medium text-[color:var(--foreground)]/90">{user?.email}</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Link
+                  href="/readme"
+                  className="rounded-lg border border-[color:var(--border)]/75 bg-[color:var(--muted)]/32 px-2.5 py-1.5 text-center text-xs font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/6 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
+                >
+                  Help
+                </Link>
+                <form action={signOut}>
+                  <button
+                    type="submit"
+                    className="w-full rounded-lg border border-[color:var(--border)]/75 bg-[color:var(--muted)]/32 px-2.5 py-1.5 text-center text-xs font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/72 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
+                  >
+                    Sign out
+                  </button>
+                </form>
+              </div>
+            </div>
+            <ThemeToggle label="Dark mode" />
+            <a
+              href="https://ocr.ucsf.edu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block rounded-xl border border-[color:var(--border)]/75 bg-[color:var(--muted)]/24 px-3 py-2 text-[11px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/5 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)]"
+            >
+              Powered by UCSF Office of Collaborative Research
+            </a>
           </div>
         </div>
       </aside>

@@ -191,6 +191,8 @@ export interface Database {
           status: ItemStatus;
           category: ItemCategory | null;
           archive_reason: string | null;
+          /** Newsletter / social illustration: URL from PMC page or inline AI image JSON */
+          digest_cover: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -214,6 +216,7 @@ export interface Database {
           status?: ItemStatus;
           category?: ItemCategory | null;
           archive_reason?: string | null;
+          digest_cover?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -233,6 +236,7 @@ export interface Database {
           status?: ItemStatus;
           category?: ItemCategory | null;
           archive_reason?: string | null;
+          digest_cover?: Json | null;
           updated_at?: string;
         };
         Relationships: [];

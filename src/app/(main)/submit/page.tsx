@@ -98,10 +98,10 @@ export default function SubmitPage() {
       <div>
         <p className="text-sm text-[color:var(--muted-foreground)]">
           <Link href="/items" className="hover:underline">
-            ← Review Queue
+            ← Signals
           </Link>
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Manual submission</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">Add Signal</h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
           Create a new source item with status “new” for signals that need a careful, human-led
           entry path.

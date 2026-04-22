@@ -3,6 +3,10 @@ import OpenAI from "openai";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
 import { blurbJsonSchema } from "@/lib/blurb-content";
+import {
+  fetchPubmedLastAuthorFullNameByPmid,
+  isPubmedStyleAbbrevAuthor,
+} from "@/lib/discovery/pubmed-last-author-full";
 import type { SummaryStyle } from "@/types/database";
 import { z } from "zod";
 
@@ -15,12 +19,12 @@ const bodySchema = z.object({
     "concise",
     "linkedin",
     "bluesky_x",
-    "instagram",
   ]),
   model: z.string().min(1).optional(),
 });
 
-const PROMPT_VERSION = "v2";
+const PROMPT_VERSION = "v3.5";
+const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
 const GLOBAL_RULES = `You write platform-specific versions of the same research update for an oncology immunotherapy community (ImmunoX / OCR context).
 
@@ -29,6 +33,8 @@ Output valid JSON only, matching the schema exactly: headline, blurb, why_it_mat
 Cross-platform rules:
 - This version is for ONE channel only. Do not reuse the same sentences or parallel "template" wording you would use on another platform; each channel must read like distinct copy, not a resized draft of the same text.
 - Keep facts aligned with the source; never invent claims. If something is uncertain, note it briefly in confidence_notes.
+- Co-authorship: do not imply other named investigators belong to one person. Avoid possessive "his team", "her team", "his lab", "her lab", or similar for mixed authorship. Prefer neutral wording ("colleagues", "co-authors", "the authors") or name people in parallel without subordinating them to someone else's "team".
+- When the user message gives a publication last author, do not attribute sole "conducted by", "led by", "headed by", or "spearheaded by" to a different person (first author in abstract, watchlist order, or "Tracked investigator") unless the source clearly identifies that other person as the same individual as the last author.
 
 Field roles:
 - headline: a channel-appropriate hook (length and tone match the platform below).
@@ -49,12 +55,7 @@ const PLATFORM = {
 - Lead with a clear insight or takeaway (in headline or opening of blurb).
 - Short paragraphs or line breaks mentally OK in the single blurb string. At most 1–2 hashtags only if they feel natural; no hashtag stuffing.`,
 
-  instagram: `CHANNEL: Instagram (visual-first caption).
-- Aim ~40–75 words in blurb: shorter, simpler, accessible language.
-- Write as if the post sits beside a visual—evocative but factual; emphasize one key takeaway and shareability.
-- Optional 1–3 relevant hashtags at the end of blurb if appropriate; keep tone human.`,
-
-  bluesky_x: `CHANNEL: Bluesky or X (shortest version).
+  bluesky_x: `CHANNEL: Social media — short posts (e.g. Bluesky, X).
 - One idea per post. Blurb is the post: aim under 260 characters when possible (hard cap 280). Sharp, immediate, zero fluff.
 - Prefer plain language. At most one hashtag if it clearly helps; often none.
 - Headline: optional 3–8 word stake in the ground that does not duplicate the blurb verbatim. why_it_matters: one short clause (not a second post).`,
@@ -67,10 +68,103 @@ const PLATFORM = {
 
   concise: `CHANNEL: Concise (legacy).
 - One tight paragraph; blurb under ~55 words.`,
-} satisfies Record<SummaryStyle, string>;
+} satisfies Record<Exclude<SummaryStyle, "instagram">, string>;
 
-function systemPrompt(style: SummaryStyle): string {
-  return `${GLOBAL_RULES}\n\n${PLATFORM[style]}`;
+/** True if publication last author matches a People / watchlist display name (order-insensitive). */
+function publicationLeadOnPeopleList(lead: string, peopleNames: string[]): boolean {
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[.,]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const L = norm(lead);
+  if (!L) return false;
+  for (const p of peopleNames) {
+    const P = norm(p);
+    if (!P) continue;
+    if (L === P) return true;
+    const lt = L.split(" ").filter(Boolean).sort().join(" ");
+    const pt = P.split(" ").filter(Boolean).sort().join(" ");
+    if (lt === pt) return true;
+  }
+  return false;
+}
+
+function systemPrompt(
+  style: Exclude<SummaryStyle, "instagram">,
+  publicationLead: string | null,
+  leadOnPeopleList: boolean,
+): string {
+  const lead = publicationLead?.trim() || null;
+  const publicationLeadRules = lead
+    ? leadOnPeopleList
+      ? `Publication lead / senior investigator (last author) — on People list; follow when this block appears:
+- The publication last author to treat as senior/lead for narrative framing is: "${lead}".
+- Open the headline and the blurb by centering this person as the lead or principal investigator (e.g. "Justin Eyquem and colleagues…" / "In work led by …"). Do not open by featuring the first author or another co-author as the primary lead unless they are the same person as this last author. If you use sole "conducted by" / "led by" with one name, it must be "${lead}"—not a different watchlist investigator. When naming co-authors, never use "his team" / "her team"—other investigators are not their subordinates; use "colleagues" or list names without possessive team framing.
+- If the string is in PubMed-style "LastName initials" form, expand to the fullest name that appears with that surname in the supplied author list, Summary, or Full text.
+- In headline and blurb, always write this person using their full given name(s) and surname (for example "Jingjing Li"). Never use surname plus bare initials alone (do not write "Li J").
+- Still mention every other linked watchlist investigator by name naturally in the copy where it fits (unless tight character limits force abbreviation).
+
+`
+      : `Publication last author — not on People list; follow when this block appears:
+- The publication last author for factual context is: "${lead}". They are not on the provided People / watchlist names—do not use their name in the headline and do not make them the headline hook (no "Name leads…" / solo billing).
+- Headline: Focus on the science, impact, or the research community in general terms (ImmunoX / UCSF / OCR context is fine). You may refer vaguely to investigators in the community (e.g. work involving our watchlist researchers, community-linked investigators, the team) without centering the non-listed last author.
+- Blurb: There is no single People-list lead—treat all named investigators as peers. List everyone you name from the linked watchlist (and the publication last author "${lead}" when you credit authorship) together in one neutral run: same grammatical level, e.g. "Alexis J. Combes, Adrian Erlebacher, Tippi C. MacKenzie, and Robert Blelloch report…" or "In work by X, Y, Z, and W, …". Do not write one investigator as the main subject and the others only as "and colleagues" / "and his or her colleagues" / "along with". Never use "his team" / "her team" / "his lab" for co-authors. If only one person is named, keep a neutral clause; if no watchlist names are provided, open with the science or journal framing without a hierarchical author hook.
+- Wrong conductorship: Never open with "Conducted by [Name]…" / "Led by [Name]…" using only a watchlist-linked name when that person is not "${lead}" (the publication last author). Open study-first ("In a Nature study, …") or use one balanced author list that includes "${lead}" alongside watchlist names—never incorrect sole credit to a non-last author.
+- If the string is in PubMed-style "LastName initials" form, expand to the fullest name from the supplied author list, Summary, or Full text.
+
+`
+    : "";
+
+  return `${GLOBAL_RULES}
+
+${publicationLeadRules}When the source is a paper/publication and linked watchlist investigators are provided, mention all linked investigators by name naturally in the copy (unless character limits force abbreviation; if so, keep at least key names and avoid inventing any). 
+
+${PLATFORM[style]}`;
+}
+
+function parsePubmedLastAuthor(rawSummary: string | null): string | null {
+  if (!rawSummary) return null;
+  const part = rawSummary
+    .split(" · ")
+    .map((x) => x.trim())
+    .find((x) => x.toLowerCase().startsWith("last_author:"));
+  if (!part) return null;
+  const v = part.slice("last_author:".length).trim();
+  return v || null;
+}
+
+function extractPubmedPmidFromUrl(url: string | null): string | null {
+  if (!url) return null;
+  const m = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
+  return m?.[1] ?? null;
+}
+
+async function fetchPubmedLastAuthorByPmid(pmid: string): Promise<string | null> {
+  const apiKey = process.env.NCBI_API_KEY?.trim();
+  const keyParam = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
+  try {
+    const res = await fetch(
+      `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${encodeURIComponent(pmid)}${keyParam}`,
+      { headers: { "User-Agent": "CommunitySignalDigest/1.0 (blurb-gen)" } },
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      result?: Record<string, unknown> & { uids?: string[] };
+    };
+    const record = json.result?.[pmid] as { authors?: { name?: string }[] } | undefined;
+    const names = Array.isArray(record?.authors)
+      ? record.authors
+          .map((a) => (typeof a?.name === "string" ? a.name.trim() : ""))
+          .filter(Boolean)
+      : [];
+    return names.length > 0 ? (names[names.length - 1] ?? null) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -111,7 +205,7 @@ export async function POST(req: Request) {
   const { data: item, error: itemErr } = await supabase
     .from("source_items")
     .select(
-      "id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entities!tracked_entity_id ( name )",
+      "id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entity_id, signal_group_key, tracked_entities!tracked_entity_id ( name )",
     )
     .eq("id", source_item_id)
     .maybeSingle();
@@ -136,9 +230,84 @@ export async function POST(req: Request) {
       ? te.name
       : undefined;
 
+  const relatedItemIds = new Set<string>([source_item_id]);
+  const investigatorIds = new Set<string>();
+  if (typeof item.tracked_entity_id === "string" && item.tracked_entity_id) {
+    investigatorIds.add(item.tracked_entity_id);
+  }
+
+  if (item.signal_group_key) {
+    const { data: siblingItems } = await supabase
+      .from("source_items")
+      .select("id, tracked_entity_id")
+      .eq("signal_group_key", item.signal_group_key)
+      .limit(200);
+    for (const row of siblingItems ?? []) {
+      relatedItemIds.add(row.id);
+      if (row.tracked_entity_id) investigatorIds.add(row.tracked_entity_id);
+    }
+  }
+
+  const { data: linkedRows } = await supabase
+    .from("source_item_tracked_entities")
+    .select("tracked_entity_id")
+    .in("source_item_id", [...relatedItemIds]);
+  for (const row of linkedRows ?? []) {
+    if (row.tracked_entity_id) investigatorIds.add(row.tracked_entity_id);
+  }
+
+  const { data: linkedInvestigators } = investigatorIds.size
+    ? await supabase
+        .from("tracked_entities")
+        .select("name")
+        .in("id", [...investigatorIds])
+    : { data: [] as { name: string }[] };
+
+  const linkedInvestigatorNames = [
+    ...(entityName ? [entityName] : []),
+    ...((linkedInvestigators ?? [])
+      .map((r) => r.name?.trim() ?? "")
+      .filter(Boolean) as string[]),
+  ].filter((v, i, arr) => arr.indexOf(v) === i);
+
+  const pmid =
+    item.source_type === "pubmed" ? extractPubmedPmidFromUrl(item.source_url ?? null) : null;
+
+  let publicationLastAuthor: string | null =
+    parsePubmedLastAuthor(item.raw_summary ?? null) ?? null;
+  if (!publicationLastAuthor && pmid) {
+    publicationLastAuthor = await fetchPubmedLastAuthorByPmid(pmid);
+  }
+  if (pmid) {
+    const full = await fetchPubmedLastAuthorFullNameByPmid(pmid);
+    if (full && (!publicationLastAuthor || isPubmedStyleAbbrevAuthor(publicationLastAuthor))) {
+      publicationLastAuthor = full;
+    }
+  }
+
+  const leadOnPeopleList = publicationLastAuthor
+    ? publicationLeadOnPeopleList(publicationLastAuthor, linkedInvestigatorNames)
+    : false;
+
+  const trackedName = entityName?.trim() ?? "";
+  const trackedIsPublicationLast =
+    Boolean(trackedName && publicationLastAuthor) &&
+    publicationLeadOnPeopleList(publicationLastAuthor as string, [trackedName]);
+
   const userContent = [
     `Title: ${item.title}`,
+    publicationLastAuthor
+      ? `Publication last author: ${publicationLastAuthor}. On People/watchlist (name match): ${leadOnPeopleList ? "yes" : "no"}. If no: do not name them in the headline (science / community framing). In the blurb, list all named linked investigators—and the last author when crediting authorship—in one neutral comma-style group, not one name plus "and colleagues" for the rest.`
+      : "",
+    trackedName && publicationLastAuthor && !trackedIsPublicationLast
+      ? `Important: Workspace "Tracked investigator" (${trackedName}) is not the publication last author (${publicationLastAuthor}). Do not use "${trackedName}" alone in "conducted by", "led by", or similar—those constructions would misstate authorship.`
+      : "",
     entityName ? `Tracked investigator: ${entityName}` : "",
+    linkedInvestigatorNames.length && publicationLastAuthor
+      ? `Linked watchlist investigators (not manuscript authorship order): ${linkedInvestigatorNames.join(", ")}. Do not pick who "conducted" or "led" the study from this list order or from the first author in the abstract unless that person is the publication last author.`
+      : linkedInvestigatorNames.length
+        ? `Linked watchlist investigators: ${linkedInvestigatorNames.join(", ")}`
+        : "",
     item.source_url ? `URL: ${item.source_url}` : "",
     item.published_at ? `Published: ${item.published_at}` : "",
     item.raw_summary ? `Summary: ${item.raw_summary}` : "",
@@ -162,7 +331,10 @@ export async function POST(req: Request) {
     const completion = await openai.chat.completions.parse({
       model,
       messages: [
-        { role: "system", content: systemPrompt(style) },
+        {
+          role: "system",
+          content: systemPrompt(style, publicationLastAuthor, leadOnPeopleList),
+        },
         {
           role: "user",
           content: `Generate the ${style} version only (structured fields) from this source item:\n\n${userContent}`,
@@ -197,7 +369,7 @@ export async function POST(req: Request) {
       m.includes("invalid enum")
     ) {
       return [
-        "This database is missing newer summary format values (e.g. LinkedIn, Bluesky or X, Instagram).",
+        "This database is missing newer summary format values (e.g. LinkedIn, social media / bluesky_x).",
         "Apply pending Supabase migrations (including enum extensions and `20260408160000_drop_newsletters_rename_blurbs.sql`), or run `supabase db push`.",
       ].join(" ");
     }

@@ -19,7 +19,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardTitle } from "@/components/ui/card";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory } from "@/types/database";
 import { toast } from "sonner";
@@ -914,15 +914,6 @@ export function ResearchDashboard({
         </Card>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <ButtonLink href="/submit">Manual submission</ButtonLink>
-        <ButtonLink href="/items" variant="secondary">
-          Open review queue
-        </ButtonLink>
-        <ButtonLink href="/digest" variant="secondary">
-          Monthly digest
-        </ButtonLink>
-      </div>
     </div>
   );
 }

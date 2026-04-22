@@ -25,6 +25,13 @@ export function formatMonthHeading(year: number, month: number): string {
   });
 }
 
+/** e.g. `2026-04` → `April 2026` (UTC calendar month, matches digest filters). */
+export function formatYearMonthLabel(ym: string): string {
+  const p = parseYearMonth(ym);
+  if (!p) return "";
+  return formatMonthHeading(p.year, p.month);
+}
+
 export function currentYearMonth(): string {
   const d = new Date();
   const y = d.getUTCFullYear();

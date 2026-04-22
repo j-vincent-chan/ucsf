@@ -99,7 +99,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export function SidebarNav({
   role,
   digestMonths,
-  workspaceLabel = "Workspace",
+  workspaceLabel = "Monitor",
 }: {
   role: ProfileRole | null;
   digestMonths: { ym: string; label: string }[];
@@ -128,15 +128,15 @@ export function SidebarNav({
         </Link>
         <Link href="/items" className={itemClass(pathname.startsWith("/items"))}>
           <QueueIcon />
-          <span>Review Queue</span>
+          <span>Signals</span>
         </Link>
         <Link href="/submit" className={itemClass(pathname === "/submit")}>
           <SubmitIcon />
-          <span>Manual Submission</span>
+          <span>Add Signal</span>
         </Link>
       </div>
 
-      <SectionLabel>Publishing</SectionLabel>
+      <SectionLabel>Publish</SectionLabel>
       <div className="space-y-1.5">
         <button
           type="button"
@@ -147,7 +147,7 @@ export function SidebarNav({
           id="sidebar-digest-trigger"
         >
           <DigestIcon />
-          <span className="min-w-0 flex-1 text-left">Digest</span>
+          <span className="min-w-0 flex-1 text-left">Monthly Digest</span>
           <ChevronDownIcon open={digestOpen} />
         </button>
         {digestOpen ? (
@@ -178,17 +178,17 @@ export function SidebarNav({
         ) : null}
         <Link href="/readme" className={itemClass(pathname.startsWith("/readme"))}>
           <ReadmeIcon />
-          <span>Readme</span>
+          <span>Help</span>
         </Link>
       </div>
 
       {role === "admin" ? (
         <>
-          <SectionLabel>Administration</SectionLabel>
+          <SectionLabel>Admin</SectionLabel>
           <div className="space-y-1.5">
             <Link href="/entities" className={itemClass(pathname.startsWith("/entities"))}>
               <WatchlistIcon />
-              <span>Watchlist</span>
+              <span>People</span>
             </Link>
           </div>
         </>

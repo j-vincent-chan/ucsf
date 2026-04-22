@@ -43,7 +43,7 @@ export default async function EntitiesPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Watchlist</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">People</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
             A list of investigators being monitored across the research community for new and relevant
             signals.

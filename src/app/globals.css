@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
-:root {
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root,
+:root[data-theme="light"] {
   --background: #f6f1ea;
   --foreground: #43362d;
   --card: #fffdf9;
@@ -29,8 +32,23 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root[data-theme="dark"] {
+  --background: #221b18;
+  --foreground: #f4ede5;
+  --card: #2b221e;
+  --card-foreground: #f6efe8;
+  --muted: #352a25;
+  --muted-foreground: #c4b3a6;
+  --border: #4a3b33;
+  --accent: #d29078;
+  --accent-foreground: #fff8f3;
+  --accent-secondary: #97b09c;
+  --ring: color-mix(in srgb, var(--accent) 55%, black);
+  --shadow-soft: 0 22px 50px -30px rgba(0, 0, 0, 0.55);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --background: #221b18;
     --foreground: #f4ede5;
     --card: #2b221e;
@@ -77,6 +95,30 @@ body {
   border: 1px solid color-mix(in srgb, var(--border) 86%, white);
 }
 
+:root[data-theme="dark"] .surface-card {
+  background: color-mix(in srgb, var(--card) 88%, black);
+  border: 1px solid color-mix(in srgb, var(--border) 78%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .surface-card {
+    background: color-mix(in srgb, var(--card) 88%, black);
+    border: 1px solid color-mix(in srgb, var(--border) 78%, black);
+  }
+}
+
+:root[data-theme="dark"] .surface-subtle {
+  background: color-mix(in srgb, var(--muted) 78%, black);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .surface-subtle {
+    background: color-mix(in srgb, var(--muted) 78%, black);
+    border: 1px solid color-mix(in srgb, var(--border) 72%, black);
+  }
+}
+
 .soft-table {
   border: 1px solid color-mix(in srgb, var(--border) 92%, white);
   border-radius: 1.25rem;
@@ -91,6 +133,38 @@ body {
 
 .soft-table tbody tr {
   border-top: 1px solid color-mix(in srgb, var(--border) 72%, white);
+}
+
+:root[data-theme="dark"] .soft-table {
+  border: 1px solid color-mix(in srgb, var(--border) 78%, black);
+  background: color-mix(in srgb, var(--card) 92%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .soft-table {
+    border: 1px solid color-mix(in srgb, var(--border) 78%, black);
+    background: color-mix(in srgb, var(--card) 92%, black);
+  }
+}
+
+:root[data-theme="dark"] .soft-table thead {
+  background: color-mix(in srgb, var(--muted) 72%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .soft-table thead {
+    background: color-mix(in srgb, var(--muted) 72%, black);
+  }
+}
+
+:root[data-theme="dark"] .soft-table tbody tr {
+  border-top: 1px solid color-mix(in srgb, var(--border) 68%, black);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .soft-table tbody tr {
+    border-top: 1px solid color-mix(in srgb, var(--border) 68%, black);
+  }
 }
 
 .soft-focus {

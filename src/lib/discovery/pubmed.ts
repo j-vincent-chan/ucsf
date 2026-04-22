@@ -44,6 +44,17 @@ function parseSortPubDate(sortpubdate: string | undefined): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T12:00:00.000Z`;
 }
 
+function extractLastAuthorName(art: Record<string, unknown>): string | null {
+  const authors = Array.isArray(art.authors)
+    ? (art.authors as { name?: string }[])
+    : [];
+  const names = authors
+    .map((a) => (typeof a?.name === "string" ? a.name.trim() : ""))
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  return names[names.length - 1] ?? null;
+}
+
 export type PubMedFetchOptions = {
   /** Base query (from PubMed URL term= or author-style fallback) */
   term: string;
@@ -130,6 +141,7 @@ export async function fetchPubMedCandidates(
           )
         : undefined;
       const doi = doiEntry?.value;
+      const lastAuthor = extractLastAuthorName(art);
 
       candidates.push({
         tracked_entity_id: opts.trackedEntityId,
@@ -137,7 +149,7 @@ export async function fetchPubMedCandidates(
         source_url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
         source_domain: "pubmed.ncbi.nlm.nih.gov",
         published_at: published,
-        raw_summary: [journal, doi ? `doi:${doi}` : null]
+        raw_summary: [journal, doi ? `doi:${doi}` : null, lastAuthor ? `last_author:${lastAuthor}` : null]
           .filter(Boolean)
           .join(" · ") || null,
         source_type: "pubmed",

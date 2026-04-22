@@ -5,7 +5,7 @@ import { requireProfile } from "@/lib/auth";
 import { ReadmeFigure } from "./readme-figure";
 
 export const metadata: Metadata = {
-  title: "Readme",
+  title: "Help",
 };
 
 function hasReadmeAsset(filename: string): boolean {
@@ -49,9 +49,7 @@ export default async function ReadmePage() {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="text-center md:text-left">
-        <h1 className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
-          How to use Signal
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">Help</h1>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[color:var(--muted-foreground)] md:mx-0">
           Real in-app screenshots live in{" "}
           <code className="rounded bg-[color:var(--muted)] px-1 py-0.5 text-xs">
@@ -101,9 +99,9 @@ export default async function ReadmePage() {
 
       <div className="mt-14 space-y-16">
         <Section
-          title="Watchlist"
+          title="People"
           src="watchlist.png"
-          alt="Signal watchlist of investigators"
+          alt="Signal People list of investigators"
           figureOnLeft
         >
           <p>
@@ -112,7 +110,7 @@ export default async function ReadmePage() {
           </p>
         </Section>
 
-        <Section title="Review Queue" src="review-queue.png" alt="Signal review queue with filters">
+        <Section title="Signals" src="review-queue.png" alt="Signals queue with filters">
           <ul className="list-inside list-disc space-y-1.5 marker:text-[color:var(--muted-foreground)]/70">
             <li>Filters: status, source, category, investigator, dates + presets.</li>
             <li>Row links: source title, investigator Profiles, Edit, quick archive.</li>
@@ -121,15 +119,19 @@ export default async function ReadmePage() {
         </Section>
 
         <Section
-          title="Manual Submission"
+          title="Add Signal"
           src="manual-submit.png"
-          alt="Signal manual submission form"
+          alt="Signal Add Signal form"
           figureOnLeft
         >
           <p>Add a one-off signal when it did not import automatically.</p>
         </Section>
 
-        <Section title="Digest" src="digest.png" alt="Signal monthly digest with format and draft tools">
+        <Section
+          title="Monthly Digest"
+          src="digest.png"
+          alt="Signal Monthly Digest with format and draft tools"
+        >
           <ul className="list-inside list-disc space-y-1.5 marker:text-[color:var(--muted-foreground)]/70">
             <li>Approved items for the month; fix publish dates if needed.</li>
             <li>Format + Agent, then Draft or Regenerate (one draft per item).</li>

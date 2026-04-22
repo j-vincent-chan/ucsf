@@ -7,9 +7,9 @@ export default async function NewEntityPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Add to watchlist</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">People</h1>
         <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-          Add someone to monitor for the digest
+          Add someone to the watchlist for the digest
         </p>
       </div>
       <Card>

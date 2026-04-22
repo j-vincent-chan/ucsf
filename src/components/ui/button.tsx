@@ -6,9 +6,9 @@ const base =
 
 const variants = {
   primary:
-    "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_14px_30px_-18px_rgba(141,86,64,0.65)] hover:-translate-y-px hover:brightness-[1.03]",
+    "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_14px_30px_-18px_rgba(141,86,64,0.65)] hover:-translate-y-px hover:brightness-[1.03] dark:shadow-[0_16px_34px_-22px_rgba(0,0,0,0.72)]",
   secondary:
-    "border border-[color:var(--border)] bg-[color:var(--card)]/95 text-[color:var(--foreground)] shadow-[0_12px_24px_-20px_rgba(89,67,52,0.55)] hover:-translate-y-px hover:bg-[color:var(--muted)]/55",
+    "border border-[color:var(--border)] bg-[color:var(--card)]/95 text-[color:var(--foreground)] shadow-[0_12px_24px_-20px_rgba(89,67,52,0.55)] hover:-translate-y-px hover:bg-[color:var(--muted)]/55 dark:shadow-[0_14px_28px_-22px_rgba(0,0,0,0.68)]",
   ghost:
     "text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]/70 hover:text-[color:var(--foreground)]",
   danger:
