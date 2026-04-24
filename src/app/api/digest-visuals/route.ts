@@ -3,16 +3,20 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { parseDigestVisualBundleFromDb, bundleToJson } from "@/lib/digest-visual-types";
 import {
+  applyCandidateImageEditInPlace,
+  applyCroppedSnapshot,
   generateSchematicOptions,
   generateIllustrationOptions,
   generateStockOptions,
   mergeCandidates,
   removeAiCandidates,
   removeCandidateById,
+  revertCandidateImageEdit,
   runDiscoverSourceOnly,
   runFullVisualPipeline,
   setSelected,
 } from "@/lib/digest-visual-pipeline";
+import type { DigestVisualEditMetadata } from "@/lib/digest-visual-types";
 import type { Json } from "@/types/database";
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -49,6 +53,51 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("clear_ai"),
     source_item_id: z.string().uuid(),
+  }),
+  z.object({
+    action: z.literal("save_cropped"),
+    source_item_id: z.string().uuid(),
+    mime: z.string().min(8).max(64).default("image/png"),
+    base64: z.string().min(100).max(25_000_000),
+    /** When saving from the chooser, apply crop to this candidate (becomes selected snapshot). */
+    for_candidate_id: z.string().uuid().optional(),
+  }),
+  z.object({
+    action: z.literal("save_digest_image_edit"),
+    source_item_id: z.string().uuid(),
+    source_candidate_id: z.string().min(1),
+    mime: z.string().min(8).max(64),
+    base64: z.string().min(100).max(25_000_000),
+    edit_metadata: z.object({
+      v: z.literal(1),
+      originalCandidateId: z.string().min(1),
+      aspectPreset: z.enum(["original", "16:9", "1:1", "4:5", "freeform"]).optional(),
+      cropPixels: z.object({
+        x: z.number(),
+        y: z.number(),
+        w: z.number().positive(),
+        h: z.number().positive(),
+      }),
+      resizePixels: z.object({
+        w: z.number().int().positive(),
+        h: z.number().int().positive(),
+      }),
+      lockAspect: z.boolean(),
+      adjustments: z.object({
+        brightness: z.number(),
+        contrast: z.number(),
+        saturation: z.number(),
+        warmth: z.number(),
+        sharpness: z.number(),
+      }),
+      filterId: z.string(),
+      editedAt: z.string(),
+    }),
+  }),
+  z.object({
+    action: z.literal("revert_digest_candidate_image"),
+    source_item_id: z.string().uuid(),
+    candidate_id: z.string().min(1),
   }),
 ]);
 
@@ -156,6 +205,37 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "No visual bundle." }, { status: 400 });
         }
         bundle = removeAiCandidates(bundle);
+        break;
+      }
+      case "save_cropped": {
+        if (!bundle) {
+          return NextResponse.json({ error: "No visual bundle." }, { status: 400 });
+        }
+        const base =
+          body.for_candidate_id != null ? setSelected(bundle, body.for_candidate_id) : bundle;
+        bundle = applyCroppedSnapshot(base, { base64: body.base64, mime: body.mime });
+        break;
+      }
+      case "save_digest_image_edit": {
+        if (!bundle) {
+          return NextResponse.json({ error: "No visual bundle." }, { status: 400 });
+        }
+        if (body.edit_metadata.originalCandidateId !== body.source_candidate_id) {
+          return NextResponse.json({ error: "edit_metadata must reference source_candidate_id" }, { status: 400 });
+        }
+        bundle = applyCandidateImageEditInPlace(bundle, {
+          candidateId: body.source_candidate_id,
+          base64: body.base64,
+          mime: body.mime,
+          editMetadata: body.edit_metadata as DigestVisualEditMetadata,
+        });
+        break;
+      }
+      case "revert_digest_candidate_image": {
+        if (!bundle) {
+          return NextResponse.json({ error: "No visual bundle." }, { status: 400 });
+        }
+        bundle = revertCandidateImageEdit(bundle, body.candidate_id);
         break;
       }
       default:

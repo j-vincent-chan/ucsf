@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DigestImageEditorModal, type EditorToolTab } from "@/components/digest-image-editor-modal";
+import type { DigestVisualEditMetadata } from "@/lib/digest-visual-types";
 import type { DigestVisualBundle, DigestVisualCandidate, VisualCandidateType } from "@/lib/digest-visual-types";
 import { activeVisualImageDataUrl, getActiveCandidate } from "@/lib/digest-visual-types";
 
@@ -18,19 +20,19 @@ function typeLabel(t: VisualCandidateType): string {
       return "Stock";
     case "abstract":
     default:
-      return "AI";
+      return "Illustration";
   }
 }
 
-function rightsLabel(r: DigestVisualCandidate["rights"]): string {
+function rightsLine(r: DigestVisualCandidate["rights"], source: boolean): string {
   switch (r) {
     case "open_access":
-      return "Open access / PMC";
+      return source ? "Rights: Source-provided (open access — verify reuse)" : "Rights: Source-provided";
     case "verify":
-      return "Needs verification";
+      return "Rights: Needs verification";
     case "unknown":
     default:
-      return "Unknown";
+      return "Rights: Unknown";
   }
 }
 
@@ -46,10 +48,24 @@ function tabLabel(tab: VisualTab): string {
   return "Illustration";
 }
 
-function selectedVisualDescriptor(candidate: DigestVisualCandidate): string {
-  if (candidate.type === "source") return "Image from source material";
-  if (candidate.type === "stock") return "Stock-style editorial visual";
-  return "AI-generated scientific schematic";
+function selectedKindLine(candidate: DigestVisualCandidate): string {
+  const edited =
+    Boolean(candidate.editedFromId) ||
+    Boolean(candidate.editOriginal) ||
+    Boolean(candidate.editMetadata);
+  if (candidate.type === "source") return edited ? "Edited source image" : "Source image";
+  if (candidate.type === "stock") return edited ? "Edited stock-style visual" : "Stock-style visual";
+  return edited ? "Edited AI-generated illustration" : "AI-generated illustration";
+}
+
+function selectedKindDetail(candidate: DigestVisualCandidate): string {
+  if (candidate.type === "source") {
+    return "From source page. Verify rights before use.";
+  }
+  if (candidate.type === "stock") {
+    return "Verify license and source before publication.";
+  }
+  return "Generated from article-derived visual brief. Review for scientific accuracy.";
 }
 
 function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandidate[] {
@@ -57,58 +73,145 @@ function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandid
   return [...candidates].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
 }
 
+function TrashIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
+
+function PreviewIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 function CandidateCard({
   candidate,
   selected,
   onSelect,
   onPreview,
+  canDiscard,
+  onDiscard,
+  discardBusy,
 }: {
   candidate: DigestVisualCandidate;
   selected: boolean;
   onSelect: () => void;
   onPreview: () => void;
+  canDiscard?: boolean;
+  onDiscard?: () => void;
+  discardBusy?: boolean;
 }) {
   const src = activeVisualImageDataUrl(candidate);
   return (
     <div
-      className={`overflow-hidden rounded-xl border bg-[color:var(--card)]/95 shadow-sm transition-all ${
+      className={`overflow-hidden rounded-lg border transition-all ${
         selected
-          ? "border-[color:var(--accent)]/75 ring-2 ring-[color:var(--accent)]/30"
-          : "border-[color:var(--border)]/70 hover:border-[color:var(--accent)]/40"
+          ? "border-[color:var(--accent)]/55 bg-[color:var(--accent)]/6 ring-1 ring-[color:var(--accent)]/25"
+          : "border-[color:var(--border)]/50 bg-[color:var(--background)]/70 hover:border-[color:var(--border)]/80"
       }`}
     >
-      <button type="button" onClick={onPreview} className="block w-full text-left" title="Preview larger">
-        <div className="relative aspect-[4/3] w-full overflow-hidden bg-[color:var(--muted)]/30">
-          {src ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={src} alt="" className="h-full w-full object-cover object-center" />
-          ) : (
-            <div className="flex h-full items-center justify-center p-2 text-center text-[10px] text-[color:var(--muted-foreground)]">
-              No image
-            </div>
-          )}
-        </div>
-      </button>
-      <div className="space-y-2 p-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="inline-flex rounded-md border border-[color:var(--border)]/75 bg-[color:var(--muted)]/30 px-1.5 py-0.5 text-[10px] font-semibold text-[color:var(--foreground)]">
+      <div className="relative aspect-video w-full min-w-0 overflow-hidden bg-[#faf6ef]">
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt=""
+            className="box-border h-full w-full object-contain object-center"
+            decoding="async"
+          />
+        ) : (
+          <div className="flex min-h-[5.5rem] w-full items-center justify-center p-2 text-center text-[10px] text-[color:var(--muted-foreground)]">
+            No image
+          </div>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-[color:var(--muted-foreground)]">
             {typeLabel(candidate.type)}
           </span>
-          <div className="flex gap-1.5">
-            <Button type="button" className="h-7 px-2 text-[10px]" onClick={onSelect} disabled={selected}>
-              {selected ? "Selected" : "Select"}
-            </Button>
-            <Button type="button" variant="secondary" className="h-7 px-2 text-[10px]" onClick={onPreview}>
-              Preview
-            </Button>
-          </div>
+          {candidate.editedFromId || candidate.editOriginal || candidate.editMetadata ? (
+            <span className="rounded bg-[color:var(--accent)]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[color:var(--foreground)]">
+              Edited
+            </span>
+          ) : null}
         </div>
-        <details className="text-[10px] text-[color:var(--muted-foreground)]">
-          <summary className="cursor-pointer select-none">Details</summary>
-          <p className="mt-1 line-clamp-2">{candidate.rationale}</p>
-          <p className="mt-1">{rightsLabel(candidate.rights)}</p>
-        </details>
+        <div className="ml-auto flex items-center gap-1.5">
+          {selected ? (
+            <span className="rounded-md bg-[color:var(--accent)]/18 px-2 py-1 text-[10px] font-semibold text-[color:var(--foreground)]">
+              Selected
+            </span>
+          ) : (
+            <Button type="button" className="h-8 px-2.5 text-[11px]" onClick={onSelect}>
+              Select
+            </Button>
+          )}
+          <button
+            type="button"
+            title="Preview"
+            aria-label="Preview image"
+            onClick={onPreview}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/50 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)]"
+          >
+            <PreviewIcon />
+          </button>
+          {canDiscard && onDiscard ? (
+            <button
+              type="button"
+              title="Remove this option"
+              aria-label="Remove candidate"
+              disabled={discardBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDiscard();
+              }}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/50 text-[color:var(--muted-foreground)] transition-colors hover:border-[#b95d54]/45 hover:bg-[#f2dfd9]/80 hover:text-[#8f4d45] disabled:opacity-40"
+            >
+              <TrashIcon />
+            </button>
+          ) : null}
+        </div>
       </div>
+      {selected ? (
+        <details className="border-t border-[color:var(--border)]/40 px-2 py-1.5 text-[10px] text-[color:var(--muted-foreground)]">
+          <summary className="cursor-pointer select-none font-medium text-[color:var(--foreground)]/80">Details</summary>
+          <p className="mt-1 line-clamp-3">{candidate.rationale}</p>
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -120,6 +223,7 @@ export function DigestVisualPanel({
   onStarted,
   onComplete,
   disabled,
+  digestQueueLayout = false,
 }: {
   sourceItemId: string;
   bundle: DigestVisualBundle | null;
@@ -127,10 +231,15 @@ export function DigestVisualPanel({
   onStarted: () => void;
   onComplete: () => void;
   disabled: boolean;
+  /** When true (expanded digest card), show acquisition modes and candidates without folding behind “Choose image”. */
+  digestQueueLayout?: boolean;
 }) {
-  const [preview, setPreview] = useState<DigestVisualCandidate | null>(null);
+  const [imageEditor, setImageEditor] = useState<{
+    candidate: DigestVisualCandidate;
+    initialMode: EditorToolTab;
+  } | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(digestQueueLayout);
   const [activeTab, setActiveTab] = useState<VisualTab>("schematic");
   const [optimisticSelectedId, setOptimisticSelectedId] = useState<string | null>(null);
   const [localBundle, setLocalBundle] = useState<DigestVisualBundle | null>(bundle);
@@ -139,16 +248,53 @@ export function DigestVisualPanel({
     setLocalBundle(bundle);
   }, [bundle]);
 
+  useEffect(() => {
+    if (digestQueueLayout) setSelectorOpen(true);
+  }, [digestQueueLayout]);
+
   async function api(
-    action: "refresh_all" | "select" | "clear_ai" | "discover_source" | "generate_illustration",
-    extra?: { candidate_id?: string },
+    action:
+      | "refresh_all"
+      | "select"
+      | "discard"
+      | "clear_ai"
+      | "discover_source"
+      | "generate_illustration"
+      | "save_cropped"
+      | "save_digest_image_edit"
+      | "revert_digest_candidate_image",
+    extra?: {
+      candidate_id?: string;
+      base64?: string;
+      mime?: string;
+      for_candidate_id?: string;
+      source_candidate_id?: string;
+      edit_metadata?: DigestVisualEditMetadata;
+    },
   ) {
     setActionBusy(action);
     onStarted();
     try {
       const body: Record<string, unknown> = { action, source_item_id: sourceItemId };
       if (extra?.candidate_id) {
-        if (action === "select") body.candidate_id = extra.candidate_id;
+        if (
+          action === "select" ||
+          action === "discard" ||
+          action === "revert_digest_candidate_image"
+        ) {
+          body.candidate_id = extra.candidate_id;
+        }
+      }
+      if (action === "save_cropped" && extra?.base64 && extra?.mime) {
+        body.base64 = extra.base64;
+        body.mime = extra.mime;
+        if (extra.for_candidate_id) body.for_candidate_id = extra.for_candidate_id;
+      }
+      if (action === "save_digest_image_edit" && extra?.base64 && extra?.mime && extra.edit_metadata != null) {
+        body.base64 = extra.base64;
+        body.mime = extra.mime;
+        body.source_candidate_id = extra.source_candidate_id;
+        body.edit_metadata = extra.edit_metadata;
       }
       const res = await fetch("/api/digest-visuals", {
         method: "POST",
@@ -162,6 +308,10 @@ export function DigestVisualPanel({
       }
       onComplete();
       if (action === "select") toast.success("Visual selected for digest");
+      else if (action === "discard") toast.success("Image option removed");
+      else if (action === "save_cropped") toast.success("Image snapshot saved");
+      else if (action === "save_digest_image_edit") toast.success("Image saved");
+      else if (action === "revert_digest_candidate_image") toast.success("Restored original image");
       else if (action === "clear_ai") toast.success("AI-generated images cleared");
       else if (action === "discover_source") toast.success("Source images updated");
       else if (action === "generate_illustration") toast.success("Illustration options updated");
@@ -196,124 +346,180 @@ export function DigestVisualPanel({
   }, [effectiveBundle?.selectedId, optimisticSelectedId]);
 
   useEffect(() => {
-    if (!preview) return;
-    const stillExists = sorted.some((candidate) => candidate.id === preview.id);
-    if (!stillExists) setPreview(null);
-  }, [preview, sorted]);
+    if (!imageEditor) return;
+    const stillExists = sorted.some((candidate) => candidate.id === imageEditor.candidate.id);
+    if (!stillExists) setImageEditor(null);
+  }, [imageEditor, sorted]);
 
   useEffect(() => {
-    if (!selectorOpen) return;
+    setImageEditor((prev) => {
+      if (!prev || !effectiveBundle) return prev;
+      const fresh = effectiveBundle.candidates.find((c) => c.id === prev.candidate.id);
+      return fresh ? { ...prev, candidate: fresh } : prev;
+    });
+  }, [effectiveBundle?.updatedAt]);
+
+  useEffect(() => {
+    if (!digestQueueLayout || !selectorOpen) return;
     if (sourceCandidates.length > 0) setActiveTab("source");
     else if (schematicCandidates.length > 0) setActiveTab("schematic");
     else setActiveTab("stock");
-  }, [selectorOpen, sourceCandidates.length, schematicCandidates.length]);
+  }, [digestQueueLayout, selectorOpen, sourceCandidates.length, schematicCandidates.length]);
+
+  const showChooser = digestQueueLayout || selectorOpen;
+  const hasBundle = effectiveBundle && effectiveBundle.candidates.length > 0;
 
   return (
-    <div className="space-y-4">
-      {preview ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal
-          onClick={() => setPreview(null)}
-        >
-          <div
-            className="max-h-[90vh] max-w-4xl overflow-auto rounded-2xl border border-[color:var(--border)] bg-[color:var(--background)] p-3 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {activeVisualImageDataUrl(preview) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={activeVisualImageDataUrl(preview)!}
-                alt=""
-                className="max-h-[80vh] w-auto max-w-full object-contain"
-              />
-            ) : null}
-            <p className="mt-2 text-sm text-[color:var(--foreground)]">{preview.provenance}</p>
-            <p className="text-xs text-[color:var(--muted-foreground)]">{preview.rationale}</p>
-            <div className="mt-2 flex justify-end">
-              <Button type="button" variant="secondary" onClick={() => setPreview(null)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
+    <div className="space-y-5">
+      {imageEditor ? (
+        <DigestImageEditorModal
+          candidate={imageEditor.candidate}
+          initialMode={imageEditor.initialMode}
+          disabled={disabled || working}
+          onClose={() => setImageEditor(null)}
+          onSaveEdited={async ({ base64, mime, editMetadata }) => {
+            await api("save_digest_image_edit", {
+              base64,
+              mime,
+              source_candidate_id: imageEditor.candidate.id,
+              edit_metadata: editMetadata,
+            });
+            setImageEditor(null);
+          }}
+          onRevertOriginal={async () => {
+            await api("revert_digest_candidate_image", {
+              candidate_id: imageEditor.candidate.id,
+            });
+          }}
+        />
       ) : null}
 
-      <div className="rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--card)]/92 p-3 shadow-[0_8px_18px_-18px_rgba(40,22,16,0.7)]">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">Selected for Digest</p>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">Selected</p>
+            {!activeSrc ? (
+              <p className="mt-1 max-w-md text-sm text-[color:var(--muted-foreground)]">
+                No visual selected. Choose a source image, generate an illustration, or find a stock-style visual.
+              </p>
+            ) : null}
           </div>
-          <div className="flex gap-1.5">
-            <Button
+          <div className="flex flex-wrap items-center gap-1.5">
+            {!digestQueueLayout ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-8 px-2.5 text-xs font-medium"
+                disabled={disabled || working}
+                onClick={() => setSelectorOpen((v) => !v)}
+              >
+                {selectorOpen ? "Hide options" : "Choose image"}
+              </Button>
+            ) : null}
+            <button
               type="button"
-              variant="secondary"
-              className="h-7 px-2 text-[11px]"
-              disabled={disabled || working}
-              onClick={() => setSelectorOpen((v) => !v)}
-            >
-              Choose image
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-7 px-2 text-[11px]"
               disabled={!active}
-              onClick={() => active && setPreview(active)}
+              title="Preview"
+              aria-label="Preview selected visual"
+              onClick={() => active && setImageEditor({ candidate: active, initialMode: "preview" })}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
             >
-              Expand
+              <PreviewIcon />
+            </button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 px-2.5 text-xs font-medium"
+              disabled={!active}
+              title="Open image editor"
+              aria-label="Edit digest image"
+              onClick={() => active && setImageEditor({ candidate: active, initialMode: "crop" })}
+            >
+              Edit
             </Button>
           </div>
         </div>
-        {activeSrc ? (
-          <div className="mt-2 overflow-hidden rounded-lg border border-[color:var(--border)]/50">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={activeSrc} alt="" className="max-h-52 w-full object-cover object-center" />
+        {!activeSrc && digestQueueLayout ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 px-3 text-xs"
+              disabled={disabled || working}
+              onClick={() => {
+                setActiveTab("source");
+                setSelectorOpen(true);
+                void api("discover_source");
+              }}
+            >
+              Source
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 px-3 text-xs"
+              disabled={disabled || working}
+              onClick={() => {
+                setActiveTab("schematic");
+                setSelectorOpen(true);
+                void api("generate_illustration");
+              }}
+            >
+              Illustration
+            </Button>
+            <Button type="button" variant="secondary" className="h-8 px-3 text-xs" disabled title="Coming soon">
+              Stock
+            </Button>
           </div>
-        ) : (
-          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">No visual selected. Run options below and pick a candidate.</p>
-        )}
-        {active ? (
-          <p className="mt-2 text-[10px] text-[color:var(--muted-foreground)]">
-            <span className="font-medium text-[color:var(--foreground)]">{typeLabel(active.type)}</span> · {selectedVisualDescriptor(active)}
-          </p>
         ) : null}
-        <p className="mt-1 text-[10px] text-[color:var(--muted-foreground)]">
-          {active ? `Rights: ${rightsLabel(active.rights)}` : "Rights and provenance appear after selection."}
-        </p>
-      </div>
+        {activeSrc ? (
+          <div className="relative aspect-video max-h-52 w-full min-w-0 overflow-hidden rounded-lg border border-[color:var(--border)]/45 bg-[#faf6ef]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={activeSrc}
+              alt=""
+              className="box-border h-full w-full object-contain object-center"
+              decoding="async"
+            />
+          </div>
+        ) : null}
+        {active ? (
+          <div className="space-y-0.5 text-xs text-[color:var(--muted-foreground)]">
+            <p className="font-medium text-[color:var(--foreground)]">{selectedKindLine(active)}</p>
+            <p>{rightsLine(active.rights, active.type === "source")}</p>
+          </div>
+        ) : null}
+      </section>
 
-      {!effectiveBundle || effectiveBundle.candidates.length === 0 ? (
-        <p className="text-sm text-[color:var(--muted-foreground)]">
-          No candidates yet. Use Choose image.
-        </p>
-      ) : selectorOpen ? (
-        <div className="rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/5 p-3">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold text-[color:var(--foreground)]">Choose image</p>
-            <div className="flex items-center gap-1.5">
-              <Button
+      {showChooser ? (
+        <section className="space-y-3 border-t border-[color:var(--border)]/40 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+              Acquisition modes
+            </p>
+            <div className="flex flex-wrap gap-1">
+              <button
                 type="button"
-                variant="secondary"
-                className="h-7 px-2 text-[11px]"
                 disabled={disabled || working || !hasAiCandidates}
                 onClick={() => void api("clear_ai")}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] disabled:opacity-40"
               >
-                {actionBusy === "clear_ai" ? "Clearing…" : "Clear AI images"}
-              </Button>
-              <Button
+                Clear AI images
+              </button>
+              <span className="text-[color:var(--muted-foreground)]/40" aria-hidden>
+                ·
+              </span>
+              <button
                 type="button"
-                variant="secondary"
-                className="h-7 px-2 text-[11px]"
                 disabled={disabled || working}
                 onClick={() => void api("refresh_all")}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] disabled:opacity-40"
               >
-                {actionBusy === "refresh_all" ? "Refreshing…" : "Refresh options"}
-              </Button>
+                Refresh options
+              </button>
             </div>
           </div>
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {(["source", "schematic", "stock"] as const).map((tab) => (
               <button
                 key={tab}
@@ -326,37 +532,52 @@ export function DigestVisualPanel({
                     void api("generate_illustration");
                   }
                 }}
-                className={`rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   tab === activeTab
-                    ? "border-[color:var(--accent)]/60 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
-                    : "border-[color:var(--border)]/70 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                    ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/14 text-[color:var(--foreground)]"
+                    : "border-[color:var(--border)]/55 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/90 hover:text-[color:var(--foreground)]"
                 }`}
               >
                 {tabLabel(tab)}
               </button>
             ))}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {tabCandidates.length === 0 ? (
-              <p className="text-sm text-[color:var(--muted-foreground)]">
-                {activeTab === "stock" ? "Stock image options are coming soon." : "No options in this tab yet."}
-              </p>
-            ) : (
-              tabCandidates.map((candidate) => (
-                <CandidateCard
-                  key={candidate.id}
-                  candidate={candidate}
-                  selected={selectedId === candidate.id}
-                  onPreview={() => setPreview(candidate)}
-                  onSelect={() => {
-                    setOptimisticSelectedId(candidate.id);
-                    void api("select", { candidate_id: candidate.id });
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </div>
+          {!hasBundle ? (
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              No candidates yet. Use Source or Illustration above, or Refresh options.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 sm:gap-3.5">
+              {tabCandidates.length === 0 ? (
+                <p className="text-sm text-[color:var(--muted-foreground)]">
+                  {activeTab === "stock" ? "Stock image options are coming soon." : "No options in this tab yet."}
+                </p>
+              ) : (
+                tabCandidates.map((candidate) => (
+                  <CandidateCard
+                    key={candidate.id}
+                    candidate={candidate}
+                    selected={selectedId === candidate.id}
+                    canDiscard={
+                      sorted.length > 1 &&
+                      (Boolean(candidate.editedFromId) || candidate.aiGenerated === true)
+                    }
+                    discardBusy={actionBusy === "discard"}
+                    onDiscard={() => {
+                      if (!window.confirm("Remove this image option from the digest?")) return;
+                      void api("discard", { candidate_id: candidate.id });
+                    }}
+                    onPreview={() => setImageEditor({ candidate, initialMode: "preview" })}
+                    onSelect={() => {
+                      setOptimisticSelectedId(candidate.id);
+                      void api("select", { candidate_id: candidate.id });
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </section>
       ) : null}
     </div>
   );

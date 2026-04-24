@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 
 /** Fold legacy `why_it_matters` into `blurb` so the UI is one paragraph (no label). */
@@ -45,15 +44,25 @@ function CopyIcon({ className = "" }: { className?: string }) {
   );
 }
 
+/** Three editorial length targets (word delta from current body). */
+const LENGTH_TIERS = [
+  { id: 0, label: "Short", delta: -45 },
+  { id: 1, label: "Medium", delta: 0 },
+  { id: 2, label: "Long", delta: 45 },
+] as const;
+
 export function SummaryEditor({
   summary,
   onSaved,
   variant = "default",
+  onRequestClose,
 }: {
   summary: Summary;
   onSaved: () => Promise<void>;
-  /** Tighter card for nested digest layout. */
+  /** Tighter layout for digest queue (no heavy card chrome). */
   variant?: "default" | "embedded";
+  /** When set, shows “Hide editor” as secondary action (digest queue). */
+  onRequestClose?: () => void;
 }) {
   const rawText = summary.edited_text ?? summary.generated_text;
   const initial = mergeWhyIntoBlurb(
@@ -66,7 +75,7 @@ export function SummaryEditor({
   );
   const [content, setContent] = useState<BlurbContent>(initial);
   const [saving, setSaving] = useState(false);
-  const [lengthDeltaWords, setLengthDeltaWords] = useState(0); // negative shorter, positive longer
+  const [lengthTier, setLengthTier] = useState<0 | 1 | 2>(1);
   const [adjusting, setAdjusting] = useState(false);
   const [chatPrompt, setChatPrompt] = useState("");
   const [chatting, setChatting] = useState(false);
@@ -81,7 +90,7 @@ export function SummaryEditor({
       ),
     );
     setChatPrompt("");
-    setLengthDeltaWords(0);
+    setLengthTier(1);
   }, [summary]);
 
   function summaryBody(): string {
@@ -135,14 +144,15 @@ export function SummaryEditor({
     }
   }
 
-  async function adjustLength() {
+  async function applyLengthFromTier() {
     const base = summaryBody().trim();
     if (!base) {
       toast.error("Nothing to adjust yet");
       return;
     }
     const current = wordCount(base);
-    const targetWords = Math.max(15, Math.min(400, current + lengthDeltaWords));
+    const delta = LENGTH_TIERS[lengthTier].delta;
+    const targetWords = Math.max(15, Math.min(400, current + delta));
 
     setAdjusting(true);
     try {
@@ -152,7 +162,6 @@ export function SummaryEditor({
         body: JSON.stringify({
           text: base,
           target_words: targetWords,
-          // Keep style/model implicit for now; endpoint is generic.
         }),
       });
       const data = (await res.json()) as { error?: string; text?: string };
@@ -160,7 +169,7 @@ export function SummaryEditor({
         throw new Error(data.error ?? "Adjust failed");
       }
       applySummaryBody(data.text);
-      toast.success("Adjusted");
+      toast.success("Length applied");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Adjust failed");
     } finally {
@@ -195,110 +204,129 @@ export function SummaryEditor({
     }
   }
 
-  const cardTone =
-    variant === "embedded"
-      ? "w-full min-w-0 max-w-none !rounded-xl !p-4 text-sm shadow-sm sm:!p-5"
-      : "w-full min-w-0 max-w-none text-sm";
+  const embedded = variant === "embedded";
 
-  return (
-    <Card className={cardTone}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium capitalize">{summary.style}</span>
-        <span className="text-xs text-[color:var(--muted-foreground)]">
-          {summary.model_name ?? "model"} · {new Date(summary.created_at).toLocaleString()}
-        </span>
+  const body = (
+    <div className={`w-full min-w-0 space-y-4 text-sm ${embedded ? "" : "rounded-2xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/95 p-4 sm:p-5 shadow-sm"}`}>
+      {!embedded ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[color:var(--muted-foreground)]">
+          <span className="font-medium capitalize text-[color:var(--foreground)]">{summary.style}</span>
+          <span>
+            {summary.model_name ?? "model"} · {new Date(summary.created_at).toLocaleString()}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Headline</Label>
+        <Input
+          className="w-full min-w-0 border-[color:var(--border)]/80 bg-[color:var(--background)]/95"
+          value={content.headline}
+          onChange={(e) => setContent({ ...content, headline: e.target.value })}
+        />
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-[color:var(--muted-foreground)]">
-          {wordCount(
-            `${content.headline} ${summaryBody()}`.trim(),
-          )}{" "}
-          words
-        </span>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="surface-subtle flex items-center gap-2 rounded-full px-2 py-1">
-            <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
-              Length
-            </span>
-            <input
-              type="range"
-              min={-40}
-              max={40}
-              step={5}
-              value={lengthDeltaWords}
-              onChange={(e) => setLengthDeltaWords(Number(e.target.value))}
-              className="h-0.5 w-24 accent-[color:var(--accent)]"
-              aria-label="Adjust summary length in words"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-7 px-2 py-0 text-xs"
-              onClick={adjustLength}
-              disabled={adjusting}
-              title="Rewrite to target length"
-            >
-              {adjusting ? "…" : "Apply"}
-            </Button>
-          </div>
-          <Button type="button" variant="ghost" onClick={copyText}>
-            <span className="inline-flex items-center gap-1.5">
-              <CopyIcon className="h-4 w-4" />
-              Copy
-            </span>
-          </Button>
-        </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Summary</Label>
+        <Textarea
+          className="min-h-[168px] w-full min-w-0 box-border border-[color:var(--border)]/80 bg-[color:var(--background)]/95"
+          value={summaryBody()}
+          onChange={(e) => applySummaryBody(e.target.value)}
+        />
       </div>
-      <div className="mt-3 w-full min-w-0 max-w-none space-y-2">
-        <div className="w-full min-w-0">
-          <Label>Headline</Label>
-          <Input
-            className="mt-1 w-full min-w-0 max-w-none"
-            value={content.headline}
-            onChange={(e) => setContent({ ...content, headline: e.target.value })}
+
+      <div className="rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--muted)]/12 px-3 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+          Length
+        </p>
+        <div className="mt-3 px-1">
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={1}
+            value={lengthTier}
+            onChange={(e) => setLengthTier(Number(e.target.value) as 0 | 1 | 2)}
+            className="editorial-length-slider h-2 w-full cursor-pointer appearance-none rounded-full bg-[color:var(--border)]/60 accent-[color:var(--accent)]"
+            aria-valuetext={LENGTH_TIERS[lengthTier].label}
+            aria-label="Editorial length: Short, Medium, or Long"
           />
-        </div>
-        <div className="w-full min-w-0">
-          <Label>Summary</Label>
-          <Textarea
-            className="mt-1 min-h-[176px] w-full min-w-0 max-w-none box-border"
-            value={summaryBody()}
-            onChange={(e) => applySummaryBody(e.target.value)}
-          />
-        </div>
-        <div className="surface-subtle w-full min-w-0 rounded-[1rem] p-3">
-          <p className="text-xs font-medium text-[color:var(--foreground)]">Refine with AI</p>
-          <div className="mt-1.5 flex gap-2">
-            <Input
-              className="h-8 flex-1 text-sm"
-              value={chatPrompt}
-              onChange={(e) => setChatPrompt(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void askAgent();
+          <div className="mt-2 flex justify-between text-[11px] font-medium">
+            {LENGTH_TIERS.map((tier) => (
+              <span
+                key={tier.id}
+                className={
+                  lengthTier === tier.id
+                    ? "text-[color:var(--foreground)]"
+                    : "text-[color:var(--muted-foreground)]/80"
                 }
-              }}
-              placeholder="e.g. punchier, shorter, less jargon…"
-              aria-label="Instruction for the agent"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-8 shrink-0 px-3 text-xs"
-              onClick={() => void askAgent()}
-              disabled={chatting}
-            >
-              {chatting ? "…" : "Apply"}
-            </Button>
+              >
+                {tier.label}
+              </span>
+            ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={saveEdits} disabled={saving}>
-            {saving ? "Saving..." : hasSavedEdits ? "Saved" : "Save"}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-8 px-3 text-xs"
+            onClick={() => void applyLengthFromTier()}
+            disabled={adjusting || !summaryBody().trim()}
+          >
+            {adjusting ? "Applying…" : "Apply length"}
+          </Button>
+          <span className="text-[11px] text-[color:var(--muted-foreground)]">
+            {wordCount(`${content.headline} ${summaryBody()}`.trim())} words
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Adjust with AI</Label>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Input
+            className="h-9 flex-1 border-[color:var(--border)]/80 bg-[color:var(--background)]/95 text-sm"
+            value={chatPrompt}
+            onChange={(e) => setChatPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void askAgent();
+              }
+            }}
+            placeholder="e.g. punchier, shorter, less jargon…"
+            aria-label="Instruction for AI refinement"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-9 shrink-0 px-4 text-xs sm:w-auto"
+            onClick={() => void askAgent()}
+            disabled={chatting || !chatPrompt.trim()}
+          >
+            {chatting ? "Applying…" : "Apply"}
           </Button>
         </div>
       </div>
-    </Card>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--border)]/40 pt-4">
+        <Button type="button" onClick={() => void saveEdits()} disabled={saving} className="h-9 px-4 text-sm">
+          {saving ? "Saving…" : "Save changes"}
+        </Button>
+        {onRequestClose ? (
+          <Button type="button" variant="secondary" className="h-9 px-3 text-sm" onClick={onRequestClose}>
+            Hide editor
+          </Button>
+        ) : null}
+        <Button type="button" variant="ghost" className="h-9 px-3 text-sm text-[color:var(--muted-foreground)]" onClick={copyText}>
+          <span className="inline-flex items-center gap-1.5">
+            <CopyIcon className="h-4 w-4" />
+            Copy
+          </span>
+        </Button>
+      </div>
+    </div>
   );
+
+  return body;
 }

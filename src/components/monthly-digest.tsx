@@ -173,6 +173,48 @@ function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): Di
   return "needs_review";
 }
 
+function digestQueueChecklist(item: DigestItemPayload, summaries: Summary[]): ReactNode {
+  const hasVisual = hasActiveVisual(item.digest_cover);
+  const hasDraft = summaries.length > 0;
+  const briefSaved = summaries.some((s) => Boolean(s.edited_text?.trim()));
+  const summaryLabel = !hasDraft ? "Missing" : briefSaved ? "Ready" : "Draft";
+  const visualLabel = hasVisual ? "Selected" : "Missing";
+  const reviewLabel = !hasDraft ? "—" : briefSaved ? "Reviewed" : "Needs review";
+  const digestLabel = hasVisual && briefSaved && hasDraft ? "Ready" : "Not ready";
+
+  const pill = (label: string, value: string, tone: "neutral" | "ok" | "warn" | "action") => {
+    const toneClass =
+      tone === "ok"
+        ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
+        : tone === "warn"
+          ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+          : tone === "action"
+            ? "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200"
+            : "border-[color:var(--border)]/60 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)]";
+    return (
+      <span
+        key={label}
+        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${toneClass}`}
+      >
+        <span className="text-[color:var(--muted-foreground)]/90">{label}:</span>
+        {value}
+      </span>
+    );
+  };
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[color:var(--border)]/35 pb-3"
+      aria-label="Digest workflow status"
+    >
+      {pill("Summary", summaryLabel, !hasDraft ? "warn" : briefSaved ? "ok" : "neutral")}
+      {pill("Visual", visualLabel, hasVisual ? "ok" : "warn")}
+      {pill("Review", reviewLabel, reviewLabel === "Needs review" ? "action" : "neutral")}
+      {pill("Digest", digestLabel, digestLabel === "Ready" ? "ok" : "neutral")}
+    </div>
+  );
+}
+
 function digestStatusPill(status: DigestWorkflowStatus): ReactNode {
   switch (status) {
     case "ready":
@@ -377,60 +419,6 @@ function DigestCategoryCard({
   );
 }
 
-function DigestWorkspaceSection({
-  open,
-  onToggle,
-  title,
-  subtitle,
-  status,
-  closedActionLabel,
-  children,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  title: string;
-  subtitle: string;
-  status?: ReactNode;
-  closedActionLabel?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="border-b border-[color:var(--border)]/40 last:border-b-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex w-full items-stretch gap-0 text-left transition-colors hover:bg-[color:var(--muted)]/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-1"
-      >
-        <span
-          className="w-1 shrink-0 self-stretch rounded-full bg-[color:var(--accent)]/45"
-          aria-hidden
-        />
-        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 py-3 pl-3 pr-3 sm:items-center sm:pl-4 sm:pr-4">
-          <div className="min-w-0 space-y-0.5">
-            <span className="block text-sm font-semibold tracking-tight text-[color:var(--foreground)]">
-              {title}
-            </span>
-            <span className="block text-xs leading-snug text-[color:var(--muted-foreground)]">{subtitle}</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {status}
-            {!open && closedActionLabel ? (
-              <span className="text-xs font-medium text-[color:var(--foreground)]/80">{closedActionLabel}</span>
-            ) : null}
-            <CollapseChevron open={open} />
-          </div>
-        </div>
-      </button>
-      {open ? (
-        <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--background)]/70 px-3 py-4 sm:px-5 dark:bg-black/25">
-          {children}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export type DigestItemPayload = {
   id: string;
   title: string;
@@ -592,7 +580,7 @@ function DigestItemRow({
     <Card
       className={`min-w-0 overflow-hidden border transition-all ${
         expanded
-          ? "border-[color:var(--accent)]/70 bg-[color:var(--background)]/98 shadow-[0_24px_64px_-36px_rgba(67,42,33,0.8)]"
+          ? "border-[color:var(--accent)]/55 bg-[color:var(--background)]/98 shadow-[0_18px_48px_-32px_rgba(67,42,33,0.45)]"
           : "border-[color:var(--border)]/85 bg-[color:var(--card)]/95 shadow-[0_12px_34px_-30px_rgba(44,28,22,0.72)]"
       }`}
     >
@@ -655,7 +643,7 @@ function DigestItemRow({
           </div>
           </div>
           <div className="relative shrink-0" ref={actionsMenuRef}>
-            <div className="inline-flex h-10 items-stretch overflow-hidden rounded-[13px] border border-[#d7cfc2] bg-[#f5efe4] text-[#3f2c24] shadow-[0_8px_24px_-20px_rgba(67,42,33,0.55)]">
+            <div className="inline-flex h-9 items-stretch overflow-hidden rounded-xl border border-[color:var(--border)]/65 bg-[color:var(--background)]/85 text-[color:var(--foreground)]/85 shadow-none">
               {item.source_url ? (
                 <a
                   href={item.source_url}
@@ -663,7 +651,7 @@ function DigestItemRow({
                   rel="noreferrer"
                   title="Open source"
                   aria-label="Open source"
-                  className="inline-flex h-full items-center gap-1.5 px-2.5 text-sm font-medium transition-colors hover:bg-[#efe5d6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                  className="inline-flex h-full items-center gap-1 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -689,7 +677,7 @@ function DigestItemRow({
                   href={`/items/${item.id}`}
                   title="Open record"
                   aria-label="Open record"
-                  className="inline-flex h-full items-center gap-1.5 px-2.5 text-sm font-medium transition-colors hover:bg-[#efe5d6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                  className="inline-flex h-full items-center gap-1 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -717,7 +705,7 @@ function DigestItemRow({
                 aria-expanded={expanded}
                 title={expanded ? "Collapse" : "Expand"}
                 aria-label={expanded ? "Collapse details" : "Expand details"}
-                className="inline-flex h-full items-center gap-1.5 border-l border-[#d7cfc2] px-2.5 text-sm font-medium transition-colors hover:bg-[#efe5d6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                className="inline-flex h-full items-center gap-1 border-l border-[color:var(--border)]/60 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
               >
                 <CollapseChevron open={expanded} />
                 <span className="hidden sm:inline">{expanded ? "Collapse" : "Expand"}</span>
@@ -729,7 +717,7 @@ function DigestItemRow({
                 aria-haspopup="menu"
                 title="More actions"
                 aria-label="More actions"
-                className="inline-flex h-full items-center gap-1.5 border-l border-[#d7cfc2] px-2.5 text-sm font-medium transition-colors hover:bg-[#efe5d6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                className="inline-flex h-full items-center gap-1 border-l border-[color:var(--border)]/60 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -827,7 +815,7 @@ function DigestItemRow({
 
       {!expanded ? (
         <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-          <div className="grid gap-3.5 rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/80 p-3 md:grid-cols-[minmax(0,1fr)_184px]">
+          <div className="grid gap-3.5 rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/80 p-3 md:grid-cols-[minmax(0,1fr)_minmax(11rem,28%)]">
             <div className="min-w-0 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">Summary preview</p>
               <p className="line-clamp-1 text-sm font-semibold leading-snug text-[color:var(--foreground)]">{briefPreview.headline}</p>
@@ -835,12 +823,17 @@ function DigestItemRow({
                 {briefPreview.blurb || "No summary generated yet. Draft one when ready."}
               </p>
             </div>
-            <div className="overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--muted)]/24">
+            <div className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]">
               {imageSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={imageSrc} alt="" className="aspect-[4/3] w-full object-cover object-center" />
+                <img
+                  src={imageSrc}
+                  alt=""
+                  className="box-border h-full w-full object-contain object-center"
+                  decoding="async"
+                />
               ) : (
-                <div className="flex aspect-[4/3] items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
+                <div className="flex min-h-[4.5rem] w-full items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
                   No visual generated yet
                 </div>
               )}
@@ -850,104 +843,119 @@ function DigestItemRow({
       ) : null}
 
       {expanded ? (
-      <div className="border-t border-[color:var(--border)]/60 bg-[color:var(--background)]/58 p-3.5 sm:p-[1.125rem]">
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-2xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/95 shadow-[0_14px_34px_-28px_rgba(35,19,14,0.7)]">
-              <div className="flex items-center justify-between border-b border-[color:var(--border)]/50 px-3.5 py-2.5">
-                <div>
-                  <p className="text-sm font-semibold text-[color:var(--foreground)]">Summary preview</p>
-                  <p className="text-xs text-[color:var(--muted-foreground)]">{activeSummary ? "Current editorial draft for copy review." : "No summary generated yet."}</p>
+        <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--muted)]/6 px-4 py-4 sm:px-5">
+          {digestQueueChecklist(item, summaries)}
+          <div className="mt-4 grid items-start gap-6 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.14fr)]">
+            <div className="min-w-0 space-y-5">
+              <div>
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                    Summary
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={copyBriefPreview}
+                    disabled={!activeSummary}
+                    className="text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[color:var(--foreground)] hover:underline disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    Copy
+                  </button>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={copyBriefPreview} disabled={!activeSummary} className="inline-flex h-8 items-center rounded-lg border border-[color:var(--border)]/75 px-2.5 text-xs font-semibold text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] disabled:opacity-50">Copy</button>
-                </div>
-              </div>
-              <div className="space-y-2 p-3">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
-                  <StatusPill>{activeSummary?.style ?? "No channel"}</StatusPill>
-                  <StatusPill>{briefPreview.words} words</StatusPill>
-                </div>
-                <p className="text-base font-semibold leading-snug text-[color:var(--foreground)]">{briefPreview.headline}</p>
-                <p className="text-sm leading-relaxed text-[color:var(--foreground)]/92">{briefPreview.blurb || "Draft summary to start the summary workflow."}</p>
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-2xl border border-[color:var(--border)]/65 bg-[color:var(--background)]/48 shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] dark:shadow-none">
-              <DigestWorkspaceSection
-                open={summariesSectionOpen}
-                onToggle={() => setSummariesSectionOpen((o) => !o)}
-                title="Refine summary"
-                subtitle="Adjust tone, length, framing, or audience."
-                closedActionLabel={!summariesSectionOpen ? "Open editor" : undefined}
-              >
-                <div className="flex flex-col gap-3.5">
-                  <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-end">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:max-w-[14rem]">
-                      <span className="text-xs font-medium text-[color:var(--foreground)]/80">Channel</span>
-                      <Select
-                        value={genStyle}
-                        onChange={(e) => setGenStyle(e.target.value)}
-                        className="w-full"
-                        aria-label="Summary format"
-                      >
-                        <option value="newsletter">Newsletter</option>
-                        <option value="linkedin">LinkedIn</option>
-                        <option value="bluesky_x">Social Media</option>
-                      </Select>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={generateSummary}
-                      disabled={generating || archiving || illustrating}
-                      className="whitespace-nowrap"
-                    >
-                      {generating ? "Drafting…" : summaries.length > 0 ? "Regenerate" : "Draft summary"}
-                    </Button>
-                    <button
-                      type="button"
-                      onClick={() => setSummaryOpen((o) => !o)}
-                      className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors ${
-                        summaryOpen
-                          ? "border-[color:var(--accent)]/55 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
-                          : "border-[color:var(--border)] bg-[color:var(--card)] text-[color:var(--muted-foreground)] hover:border-[color:var(--foreground)]/20 hover:text-[color:var(--foreground)]"
-                      }`}
-                    >
-                      {summaryOpen ? "Hide editor" : "Show editor"}
-                    </button>
+                <div className="rounded-lg border border-[color:var(--border)]/45 bg-[color:var(--background)]/55 px-3 py-3 sm:px-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-[color:var(--muted-foreground)]">
+                    <StatusPill className="py-0 text-[10px]">{activeSummary?.style ?? "No channel"}</StatusPill>
+                    <span>{briefPreview.words} words</span>
                   </div>
-                  {summaryOpen ? (
-                    <div className="w-full min-w-0 rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--card)]/90 p-2 sm:p-2.5">
-                      {summaries.length === 0 ? (
-                        <p className="px-2 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
-                          No draft yet. Pick a channel and tap <span className="font-medium text-[color:var(--foreground)]">Draft summary</span>.
-                        </p>
-                      ) : (
-                        <SummaryEditor
-                          key={summaries[0]!.id}
-                          summary={summaries[0]!}
-                          onSaved={refreshSummaries}
-                          variant="embedded"
-                        />
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-                      Open editor to adjust the digest-ready copy for this signal.
-                    </p>
-                  )}
+                  <p className="text-base font-semibold leading-snug text-[color:var(--foreground)]">{briefPreview.headline}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--foreground)]/90">
+                    {briefPreview.blurb || "No summary generated yet. Draft one when ready."}
+                  </p>
                 </div>
-              </DigestWorkspaceSection>
+              </div>
+              <div className="h-px bg-[color:var(--border)]/35" aria-hidden />
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setSummariesSectionOpen((o) => !o)}
+                  aria-expanded={summariesSectionOpen}
+                  className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left transition-colors hover:bg-[color:var(--muted)]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                >
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-[color:var(--foreground)]">Refine summary</span>
+                    <span className="mt-0.5 block text-xs text-[color:var(--muted-foreground)]">
+                      Channel, length, and AI-assisted edits.
+                    </span>
+                  </div>
+                  <CollapseChevron open={summariesSectionOpen} />
+                </button>
+                {summariesSectionOpen ? (
+                  <div className="mt-3 space-y-3 pl-0.5">
+                    <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-end">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[14rem]">
+                        <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">Channel</span>
+                        <Select
+                          value={genStyle}
+                          onChange={(e) => setGenStyle(e.target.value)}
+                          className="w-full"
+                          aria-label="Summary format"
+                        >
+                          <option value="newsletter">Newsletter</option>
+                          <option value="linkedin">LinkedIn</option>
+                          <option value="bluesky_x">Social Media</option>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={generateSummary}
+                        disabled={generating || archiving || illustrating}
+                        className="h-8 whitespace-nowrap px-3 text-xs"
+                      >
+                        {generating ? "Drafting…" : summaries.length > 0 ? "Regenerate" : "Draft summary"}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => setSummaryOpen((o) => !o)}
+                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          summaryOpen
+                            ? "border-[color:var(--accent)]/45 bg-[color:var(--accent)]/10 text-[color:var(--foreground)]"
+                            : "border-[color:var(--border)]/70 bg-transparent text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                        }`}
+                      >
+                        {summaryOpen ? "Hide editor" : "Show editor"}
+                      </button>
+                    </div>
+                    {summaryOpen ? (
+                      <div className="w-full min-w-0 pt-1">
+                        {summaries.length === 0 ? (
+                          <p className="py-4 text-center text-sm text-[color:var(--muted-foreground)]">
+                            No draft yet. Pick a channel and tap{" "}
+                            <span className="font-medium text-[color:var(--foreground)]">Draft summary</span>.
+                          </p>
+                        ) : (
+                          <SummaryEditor
+                            key={summaries[0]!.id}
+                            summary={summaries[0]!}
+                            onSaved={refreshSummaries}
+                            variant="embedded"
+                            onRequestClose={() => setSummaryOpen(false)}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                        Open the editor to lock in digest-ready copy.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/95 shadow-[0_14px_34px_-28px_rgba(35,19,14,0.7)]">
-            <div className="border-b border-[color:var(--border)]/50 px-4 py-3">
-              <p className="text-sm font-semibold text-[color:var(--foreground)]">Image snapshot</p>
-              <p className="text-xs text-[color:var(--muted-foreground)]">
-                Select a source image, AI-generated illustration, or stock-style visual for the digest.
-              </p>
-            </div>
-            <div className="p-3 sm:p-4">
+            <div className="min-w-0 xl:border-l xl:border-[color:var(--border)]/35 xl:pl-6">
+              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                Visual
+              </h4>
               <DigestVisualPanel
+                digestQueueLayout
                 sourceItemId={item.id}
                 bundle={item.digest_cover}
                 busy={illustrating}
@@ -961,7 +969,6 @@ function DigestItemRow({
             </div>
           </div>
         </div>
-      </div>
       ) : null}
     </Card>
   );
@@ -1408,9 +1415,9 @@ export function MonthlyDigestView({
         <>
           {activeTab === "copy_illustrator" ? (
             <div className="space-y-4">
-              <Card className="rounded-2xl border-[color:var(--border)]/75 bg-[color:var(--background)]/90 p-4 shadow-[0_14px_36px_-28px_rgba(49,31,24,0.7)]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex flex-wrap gap-2">
+              <Card className="rounded-xl border-[color:var(--border)]/55 bg-[color:var(--background)]/75 p-3 shadow-none">
+                <div className="flex flex-wrap items-start justify-between gap-2.5">
+                  <div className="flex flex-wrap gap-1.5">
                     {(
                       [
                         ["total", "Total highlights", queueStats.total],
@@ -1420,13 +1427,18 @@ export function MonthlyDigestView({
                         ["brief", "Missing summary", queueStats.missingBrief],
                       ] as const
                     ).map(([key, label, value]) => (
-                      <div key={key} className="min-w-[7.5rem] rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/92 px-3 py-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">{label}</p>
-                        <p className="mt-0.5 text-lg font-semibold tracking-tight text-[color:var(--foreground)]">{value}</p>
+                      <div
+                        key={key}
+                        className="min-w-[6.75rem] rounded-lg border border-[color:var(--border)]/50 bg-[color:var(--card)]/70 px-2.5 py-1.5"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
+                          {label}
+                        </p>
+                        <p className="mt-0.5 text-base font-semibold tracking-tight text-[color:var(--foreground)]">{value}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Button
                       type="button"
                       variant="secondary"
@@ -1436,7 +1448,7 @@ export function MonthlyDigestView({
                         );
                         if (first) setExpandedDigestItemId(first.id);
                       }}
-                      className="h-8 px-3 text-xs"
+                      className="h-7 px-2.5 text-[11px]"
                     >
                       Expand first unfinished
                     </Button>
@@ -1444,22 +1456,22 @@ export function MonthlyDigestView({
                       type="button"
                       variant="secondary"
                       onClick={() => setExpandedDigestItemId(null)}
-                      className="h-8 px-3 text-xs"
+                      className="h-7 px-2.5 text-[11px]"
                     >
                       Collapse all
                     </Button>
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-[color:var(--border)]/40 pt-2.5">
                   {(["all", "needs_work", "ready", "missing_visual", "missing_brief"] as const).map((f) => (
                     <button
                       key={f}
                       type="button"
                       onClick={() => setQueueFilter(f)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                         queueFilter === f
-                          ? "border-[color:var(--accent)]/60 bg-[color:var(--accent)]/14 text-[color:var(--foreground)]"
-                          : "border-[color:var(--border)]/70 bg-[color:var(--card)]/92 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                          ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
+                          : "border-[color:var(--border)]/60 bg-[color:var(--background)]/60 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
                       }`}
                     >
                       {digestFilterLabel(f)}

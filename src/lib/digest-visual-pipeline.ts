@@ -1,6 +1,12 @@
 import * as cheerio from "cheerio";
 import { resolvePmcidFromPmid, tryPmcArticleImageUrl } from "@/lib/digest-cover";
-import { type DigestVisualBundle, type DigestVisualCandidate, type RightsHint } from "@/lib/digest-visual-types";
+import {
+  type DigestVisualBundle,
+  type DigestVisualCandidate,
+  type DigestVisualEditMetadata,
+  type DigestVisualOriginalSnapshot,
+  type RightsHint,
+} from "@/lib/digest-visual-types";
 
 const USER_AGENT = "CommunitySignalDigest/1.0 (digest-visual-pipeline)";
 
@@ -517,6 +523,9 @@ export async function runDiscoverSourceOnly(opts: {
 
 export function removeCandidateById(bundle: DigestVisualBundle, id: string): DigestVisualBundle {
   const next = bundle.candidates.filter((c) => c.id !== id);
+  if (next.length === 0) {
+    throw new Error("Cannot remove the last visual candidate.");
+  }
   const selectedId =
     bundle.selectedId && next.some((c) => c.id === bundle.selectedId)
       ? bundle.selectedId
@@ -551,6 +560,127 @@ export function mergeCandidates(existing: DigestVisualBundle, incoming: DigestVi
 export function setSelected(bundle: DigestVisualBundle, candidateId: string | null): DigestVisualBundle {
   if (candidateId && !bundle.candidates.some((c) => c.id === candidateId)) return bundle;
   return { ...bundle, selectedId: candidateId, updatedAt: new Date().toISOString() };
+}
+
+/** Update the same candidate id with edited pixels; stash `editOriginal` on first edit for revert. */
+export function applyCandidateImageEditInPlace(
+  bundle: DigestVisualBundle,
+  opts: {
+    candidateId: string;
+    base64: string;
+    mime: string;
+    editMetadata: DigestVisualEditMetadata;
+  },
+): DigestVisualBundle {
+  const idx = bundle.candidates.findIndex((c) => c.id === opts.candidateId);
+  if (idx < 0) {
+    throw new Error("Candidate not found.");
+  }
+  const c = bundle.candidates[idx]!;
+  const snapshot: DigestVisualOriginalSnapshot =
+    c.editOriginal ??
+    ({
+      kind: c.kind,
+      url: c.url,
+      mime: c.mime,
+      base64: c.base64,
+    } satisfies DigestVisualOriginalSnapshot);
+  const updated: DigestVisualCandidate = {
+    ...c,
+    editOriginal: snapshot,
+    kind: "inline",
+    mime: opts.mime,
+    base64: opts.base64,
+    url: undefined,
+    editMetadata: opts.editMetadata,
+    editedFromId: undefined,
+  };
+  const next = bundle.candidates.map((x) => (x.id === opts.candidateId ? updated : x));
+  return { ...bundle, candidates: next, selectedId: bundle.selectedId, updatedAt: new Date().toISOString() };
+}
+
+/** Restore candidate visual from `editOriginal` and clear edit metadata. */
+export function revertCandidateImageEdit(bundle: DigestVisualBundle, candidateId: string): DigestVisualBundle {
+  const c = bundle.candidates.find((x) => x.id === candidateId);
+  if (!c?.editOriginal) {
+    throw new Error("Nothing to revert for this candidate.");
+  }
+  const o = c.editOriginal;
+  const restored: DigestVisualCandidate = {
+    ...c,
+    kind: o.kind,
+    url: o.kind === "url" ? o.url : undefined,
+    mime: o.kind === "inline" ? o.mime : undefined,
+    base64: o.kind === "inline" ? o.base64 : undefined,
+    editOriginal: undefined,
+    editMetadata: undefined,
+    editedFromId: undefined,
+  };
+  return {
+    ...bundle,
+    candidates: bundle.candidates.map((x) => (x.id === candidateId ? restored : x)),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Replace or append the digest snapshot with a user-cropped inline image; keeps selection on the saved snapshot. */
+
+export function applyCroppedSnapshot(
+  bundle: DigestVisualBundle,
+  opts: { base64: string; mime: string },
+): DigestVisualBundle {
+  const selId = bundle.selectedId;
+  if (!selId) {
+    throw new Error("No visual selected to save.");
+  }
+  const sel = bundle.candidates.find((c) => c.id === selId);
+  if (!sel) {
+    throw new Error("Selected visual not found.");
+  }
+  const updatedAt = new Date().toISOString();
+
+  if (sel.kind === "inline") {
+    const nextCandidates = bundle.candidates.map((c) =>
+      c.id === selId
+        ? {
+            ...c,
+            kind: "inline" as const,
+            mime: opts.mime,
+            base64: opts.base64,
+            url: undefined,
+            provenance: "Digest — edited snapshot",
+            rationale: "User-cropped digest snapshot.",
+            aiGenerated: false,
+          }
+        : c,
+    );
+    return { ...bundle, candidates: nextCandidates, selectedId: selId, updatedAt };
+  }
+
+  const newCandId = newId();
+  const newCand: DigestVisualCandidate = {
+    id: newCandId,
+    type: sel.type,
+    kind: "inline",
+    mime: opts.mime,
+    base64: opts.base64,
+    provenance: "Digest — edited snapshot",
+    sourceDetail: sel.kind === "url" ? sel.url : sel.sourceDetail,
+    caption: sel.caption,
+    rights: sel.rights === "open_access" ? "verify" : sel.rights,
+    rightsNote:
+      "User-edited crop for digest presentation. Verify usage rights before publication outside internal use.",
+    aiGenerated: false,
+    rationale: "User-cropped digest snapshot.",
+    createdAt: updatedAt,
+    scores: sel.scores,
+  };
+  return {
+    ...bundle,
+    candidates: [...bundle.candidates, newCand],
+    selectedId: newCandId,
+    updatedAt,
+  };
 }
 
 /** @deprecated Use generateIllustrationOptions */

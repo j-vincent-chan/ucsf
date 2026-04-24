@@ -9,6 +9,35 @@ export type VisualCandidateType = "source" | "schematic" | "stock" | "abstract";
 
 export type RightsHint = "open_access" | "unknown" | "verify";
 
+/** Stored on edited digest visual candidates for audit and re-open. */
+export type DigestImageAspectPreset = "original" | "16:9" | "1:1" | "4:5" | "freeform";
+
+/** Snapshot of the visual payload before the first in-place edit (revert restores this). */
+export type DigestVisualOriginalSnapshot = {
+  kind: "url" | "inline";
+  url?: string;
+  mime?: string;
+  base64?: string;
+};
+
+export type DigestVisualEditMetadata = {
+  v: 1;
+  originalCandidateId: string;
+  aspectPreset?: DigestImageAspectPreset;
+  cropPixels: { x: number; y: number; w: number; h: number };
+  resizePixels: { w: number; h: number };
+  lockAspect: boolean;
+  adjustments: {
+    brightness: number;
+    contrast: number;
+    saturation: number;
+    warmth: number;
+    sharpness: number;
+  };
+  filterId: string;
+  editedAt: string;
+};
+
 export type DigestVisualCandidate = {
   id: string;
   type: VisualCandidateType;
@@ -25,6 +54,11 @@ export type DigestVisualCandidate = {
   promptUsed?: string;
   rationale: string;
   createdAt: string;
+  /** Present when this candidate is an edited derivative; original row stays in the bundle. */
+  editedFromId?: string;
+  editMetadata?: DigestVisualEditMetadata;
+  /** First-import pixels/URL before any in-place save; used to restore the original asset. */
+  editOriginal?: DigestVisualOriginalSnapshot;
   /** 1–5, optional lightweight scoring for UI */
   scores?: {
     relevance: number;
