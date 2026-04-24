@@ -309,7 +309,7 @@ function enforceIllustrationPromptGuardrails(prompt: string, brief: Illustration
   return next.slice(0, 1200);
 }
 
-async function dalleImage(prompt: string): Promise<{ mime: string; base64: string } | null> {
+async function dalleImage(prompt: string): Promise<{ mime: string; base64: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing. Illustration generation requires a configured OpenAI API key.");
