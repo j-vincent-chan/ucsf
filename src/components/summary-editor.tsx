@@ -48,9 +48,12 @@ function CopyIcon({ className = "" }: { className?: string }) {
 export function SummaryEditor({
   summary,
   onSaved,
+  variant = "default",
 }: {
   summary: Summary;
   onSaved: () => Promise<void>;
+  /** Tighter card for nested digest layout. */
+  variant?: "default" | "embedded";
 }) {
   const rawText = summary.edited_text ?? summary.generated_text;
   const initial = mergeWhyIntoBlurb(
@@ -67,6 +70,7 @@ export function SummaryEditor({
   const [adjusting, setAdjusting] = useState(false);
   const [chatPrompt, setChatPrompt] = useState("");
   const [chatting, setChatting] = useState(false);
+  const hasSavedEdits = Boolean(summary.edited_text?.trim());
 
   useEffect(() => {
     const raw = summary.edited_text ?? summary.generated_text;
@@ -191,8 +195,13 @@ export function SummaryEditor({
     }
   }
 
+  const cardTone =
+    variant === "embedded"
+      ? "w-full min-w-0 max-w-none !rounded-xl !p-4 text-sm shadow-sm sm:!p-5"
+      : "w-full min-w-0 max-w-none text-sm";
+
   return (
-    <Card className="text-sm">
+    <Card className={cardTone}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium capitalize">{summary.style}</span>
         <span className="text-xs text-[color:var(--muted-foreground)]">
@@ -240,25 +249,25 @@ export function SummaryEditor({
           </Button>
         </div>
       </div>
-      <div className="mt-3 space-y-2">
-        <div>
+      <div className="mt-3 w-full min-w-0 max-w-none space-y-2">
+        <div className="w-full min-w-0">
           <Label>Headline</Label>
           <Input
-            className="mt-1"
+            className="mt-1 w-full min-w-0 max-w-none"
             value={content.headline}
             onChange={(e) => setContent({ ...content, headline: e.target.value })}
           />
         </div>
-        <div>
+        <div className="w-full min-w-0">
           <Label>Summary</Label>
           <Textarea
-            className="mt-1 min-h-[176px]"
+            className="mt-1 min-h-[176px] w-full min-w-0 max-w-none box-border"
             value={summaryBody()}
             onChange={(e) => applySummaryBody(e.target.value)}
           />
         </div>
-        <div className="surface-subtle rounded-[1rem] p-3">
-          <p className="text-xs font-medium text-[color:var(--foreground)]">Agent chat</p>
+        <div className="surface-subtle w-full min-w-0 rounded-[1rem] p-3">
+          <p className="text-xs font-medium text-[color:var(--foreground)]">Refine with AI</p>
           <div className="mt-1.5 flex gap-2">
             <Input
               className="h-8 flex-1 text-sm"
@@ -284,19 +293,9 @@ export function SummaryEditor({
             </Button>
           </div>
         </div>
-        <div>
-          <p className="text-xs italic text-[color:var(--muted-foreground)]">
-            Confidence notes (from the draft, read-only)
-          </p>
-          <p className="mt-1 rounded-xl border border-transparent bg-[color:var(--muted)]/55 px-3 py-2 text-sm text-[color:var(--foreground)]/90">
-            {content.confidence_notes?.trim()
-              ? content.confidence_notes
-              : "—"}
-          </p>
-        </div>
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={saveEdits} disabled={saving}>
-            Save edits
+            {saving ? "Saving..." : hasSavedEdits ? "Saved" : "Save"}
           </Button>
         </div>
       </div>

@@ -147,7 +147,7 @@ export function SidebarNav({
           id="sidebar-digest-trigger"
         >
           <DigestIcon />
-          <span className="min-w-0 flex-1 text-left">Monthly Digest</span>
+          <span className="min-w-0 flex-1 text-left">Digests</span>
           <ChevronDownIcon open={digestOpen} />
         </button>
         {digestOpen ? (

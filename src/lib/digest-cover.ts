@@ -1,31 +1,20 @@
 import * as cheerio from "cheerio";
 
+import {
+  type DigestVisualBundle,
+  parseDigestVisualBundleFromDb,
+} from "@/lib/digest-visual-types";
+
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
+/** @deprecated Use DigestVisualBundle; kept for any legacy imports. */
 export type DigestCoverPayload =
   | { kind: "url"; url: string; source: string }
   | { kind: "inline"; mime: string; base64: string; source: string };
 
-export function parseDigestCoverFromDb(raw: unknown): DigestCoverPayload | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  if (o.kind === "url" && typeof o.url === "string" && o.url.startsWith("http")) {
-    return { kind: "url", url: o.url, source: typeof o.source === "string" ? o.source : "unknown" };
-  }
-  if (
-    o.kind === "inline" &&
-    typeof o.base64 === "string" &&
-    typeof o.mime === "string" &&
-    o.mime.startsWith("image/")
-  ) {
-    return {
-      kind: "inline",
-      mime: o.mime,
-      base64: o.base64,
-      source: typeof o.source === "string" ? o.source : "unknown",
-    };
-  }
-  return null;
+/** V2 visual bundle in `source_items.digest_cover` (replaces single legacy payload). */
+export function parseDigestCoverFromDb(raw: unknown): DigestVisualBundle | null {
+  return parseDigestVisualBundleFromDb(raw);
 }
 
 function ncbiKeyParam(): string {
@@ -100,20 +89,49 @@ function truncate(s: string, max: number): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-/** DALL·E 3 editorial illustration (no journal marks, no readable fake text). */
+/** DALL·E 3 — ultra-minimal diagram fallback (legacy single-image path). */
+const DIGEST_ILLUSTRATION_PROMPT_BODY = `Create ONE ultra-minimal flat vector diagram on a pure white background for this publication/news article — not a poster, not photorealism, not a busy infographic.
+
+Style:
+- 2D line art only: thin dark-gray strokes, large empty margins, at most 4–6 simple shapes (rounded rectangles/circles) and plain arrows between them.
+- At most one muted accent color used sparingly; no gradients, textures, shadows, glow, 3D, isometric views, blueprint grids, or decorative frames.
+
+Content:
+- Abstract the main idea into a tiny high-level flow with short generic labels (2–4 words each). Do not render the title or long summary as readable text in the image.
+- Do not fabricate data, scans, charts, microscopy, histology, molecular detail, DNA helices, lab equipment, or anything that could look like real experimental output.
+
+Forbidden:
+- Photorealistic labs, faces, identifiable people, logos, cluttered “science montage” imagery.
+
+Add a tiny corner label: "AI — not data".`;
+
+const DALL_E_3_PROMPT_MAX_CHARS = 4000;
+
 export async function generateDigestIllustration(opts: {
   title: string;
   abstractOrSummary: string;
 }): Promise<{ mime: string; base64: string } | null> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
-  const prompt = [
-    "Editorial scientific illustration for a research newsletter or social post.",
-    "Clean modern infographic style, soft muted colors, no photorealistic faces, no logos, no journal names, no readable text in the image.",
-    "Single cohesive scene suggesting the research topic abstractly.",
-    `Research title: ${truncate(opts.title, 220)}`,
-    `Context: ${truncate(opts.abstractOrSummary, 600)}`,
-  ].join(" ");
+  const body = DIGEST_ILLUSTRATION_PROMPT_BODY;
+  const titleBlock = truncate(opts.title, 280);
+  const tailPrefix = `
+
+---
+Source material (interpret only; do not render as readable text in the image):
+Title: ${titleBlock}
+Summary: `;
+  const rawSummary = opts.abstractOrSummary || opts.title;
+  let summaryMax = 1200;
+  let prompt = "";
+  for (;;) {
+    prompt = `${body}${tailPrefix}${truncate(rawSummary, summaryMax)}`;
+    if (prompt.length <= DALL_E_3_PROMPT_MAX_CHARS || summaryMax <= 200) break;
+    summaryMax -= 150;
+  }
+  if (prompt.length > DALL_E_3_PROMPT_MAX_CHARS) {
+    prompt = prompt.slice(0, DALL_E_3_PROMPT_MAX_CHARS - 1) + "…";
+  }
 
   try {
     const { default: OpenAI } = await import("openai");

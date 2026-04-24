@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { resolveDigestCover } from "@/lib/digest-cover";
+import { bundleToJson } from "@/lib/digest-visual-types";
+import { runFullVisualPipeline } from "@/lib/digest-visual-pipeline";
 import type { Json } from "@/types/database";
 
 const bodySchema = z.object({
   source_item_id: z.string().uuid(),
 });
-
-function extractPubmedPmidFromUrl(url: string | null): string | null {
-  if (!url) return null;
-  const m = url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
-  return m?.[1] ?? null;
-}
 
 export async function POST(req: Request) {
   const supabase = await createClient();
@@ -42,33 +37,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Source item not found" }, { status: 404 });
   }
 
-  const pmid = item.source_type === "pubmed" ? extractPubmedPmidFromUrl(item.source_url) : null;
-  const abstractOrSummary =
-    (item.raw_text?.trim() && item.raw_text.trim().slice(0, 4000)) ||
-    (item.raw_summary?.trim() && item.raw_summary.trim().slice(0, 4000)) ||
-    item.title;
+  let bundle;
+  try {
+    bundle = await runFullVisualPipeline({
+      title: item.title,
+      rawText: item.raw_text,
+      rawSummary: item.raw_summary,
+      sourceType: item.source_type,
+      sourceUrl: item.source_url,
+    });
+  } catch {
+    return NextResponse.json({ error: "Visual pipeline failed." }, { status: 502 });
+  }
 
-  const cover = await resolveDigestCover({
-    pmid,
-    title: item.title,
-    abstractOrSummary,
-  });
-
-  if (!cover) {
+  if (!bundle.candidates.length) {
     return NextResponse.json(
-      { error: "Could not resolve an illustration (PMC image or image generation unavailable)." },
+      { error: "Could not resolve visuals (source images and/or image generation unavailable)." },
       { status: 502 },
     );
   }
 
   const { error: upErr } = await supabase
     .from("source_items")
-    .update({ digest_cover: cover as unknown as Json })
+    .update({ digest_cover: bundleToJson(bundle) as Json })
     .eq("id", item.id);
 
   if (upErr) {
-    return NextResponse.json({ error: upErr.message ?? "Could not save illustration" }, { status: 500 });
+    return NextResponse.json({ error: upErr.message ?? "Could not save visuals" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, cover });
+  return NextResponse.json({ ok: true, bundle });
 }
