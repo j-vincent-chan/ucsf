@@ -19,6 +19,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardTitle } from "@/components/ui/card";
+import { CollaborationNetworkGraph } from "@/components/collaboration-network-graph";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory } from "@/types/database";
@@ -841,6 +842,23 @@ export function ResearchDashboard({
           ) : null}
         </Card>
       </div>
+
+      <Card>
+        <CardTitle>Collaboration network (range)</CardTitle>
+        <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+          Investigators from your watchlist; lines show co-listed publications and funding signals in the
+          selected range. Use the cluster control to color by research role, program tier, or detected
+          collaboration groups on this network.
+        </p>
+        <div className="mt-4 min-w-0">
+          <CollaborationNetworkGraph
+            items={itemsInRange}
+            entityNameById={data.entityNameById}
+            entityMetaById={data.entityMetaById}
+            deletingIds={deletingIds}
+          />
+        </div>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

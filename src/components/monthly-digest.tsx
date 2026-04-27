@@ -28,7 +28,7 @@ import {
   getActiveCandidate,
   hasActiveVisual,
 } from "@/lib/digest-visual-types";
-import { parseBlurbJson } from "@/lib/blurb-content";
+import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
 import { DigestVisualPanel } from "@/components/digest-visual-panel";
 
 function CollapseChevron({ open }: { open: boolean }) {
@@ -160,6 +160,19 @@ function digestSummaryPreview(summary: Summary | null): { headline: string; blur
   const blurb = clampText(parsed?.blurb?.trim() || raw, 240);
   const words = blurb ? blurb.split(/\s+/).filter(Boolean).length : 0;
   return { headline, blurb, words };
+}
+
+/** Full headline + body for clipboard (preview uses clamped strings). */
+function digestSummaryClipboardText(summary: Summary | null): string {
+  if (!summary) return "";
+  const raw = (summary.edited_text ?? summary.generated_text ?? "").trim();
+  if (!raw) return "";
+  const parsed = parseBlurbJson(raw);
+  if (!parsed) return raw;
+  const merged = mergeWhyIntoBlurb(parsed);
+  const headline = merged.headline?.trim() ?? "";
+  const blurb = merged.blurb?.trim() ?? "";
+  return `${headline}\n\n${blurb}`.trim();
 }
 
 function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): DigestWorkflowStatus {
@@ -533,8 +546,8 @@ function DigestItemRow({
     );
 
   async function copyBriefPreview() {
-    const text = `${briefPreview.headline}\n\n${briefPreview.blurb}`.trim();
-    if (!text || !activeSummary) {
+    const text = digestSummaryClipboardText(activeSummary);
+    if (!text) {
       toast.error("No summary to copy yet.");
       return;
     }

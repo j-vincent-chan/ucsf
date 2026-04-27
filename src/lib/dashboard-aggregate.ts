@@ -31,10 +31,18 @@ export type MemberJoinPoint = {
   joins: number;
 };
 
+/** Profile fields used for collaboration graph clustering (until dedicated taxonomy columns exist). */
+export type DashboardEntityMeta = {
+  entity_type: string;
+  member_status: string;
+  institution: string | null;
+};
+
 export type DashboardPayload = {
   monthly: MonthlyPoint[];
   memberJoins: MemberJoinPoint[];
   entityNameById: Record<string, string>;
+  entityMetaById: Record<string, DashboardEntityMeta>;
   /** Rows for client-side “top entities” and month drill-down on the volume chart */
   itemsForVolume: {
     id: string;
@@ -57,16 +65,17 @@ export type DashboardPayload = {
   watchlistFaculty: number;
 };
 
-type RawEntity = {
+export type RawEntity = {
   id: string;
   name: string;
   created_at: string;
   active: boolean | null;
   entity_type: string;
   member_status: string;
+  institution: string | null;
 };
 
-type RawItem = {
+export type RawItem = {
   id: string;
   title: string;
   category: ItemCategory | null;
@@ -160,8 +169,14 @@ export function buildDashboardPayload(
   items: RawItem[],
 ): DashboardPayload {
   const entityNameById: Record<string, string> = {};
+  const entityMetaById: Record<string, DashboardEntityMeta> = {};
   for (const e of entities) {
     entityNameById[e.id] = e.name;
+    entityMetaById[e.id] = {
+      entity_type: e.entity_type,
+      member_status: e.member_status,
+      institution: e.institution ?? null,
+    };
   }
 
   const watchlistFaculty = entities.filter(
@@ -271,6 +286,7 @@ export function buildDashboardPayload(
     monthly,
     memberJoins,
     entityNameById,
+    entityMetaById,
     itemsForVolume,
     snapshotAt: new Date().toISOString(),
     watchlistFaculty,
@@ -398,4 +414,3 @@ export function cumulativeTotalSeries(
   });
 }
 
-export type { RawEntity, RawItem };

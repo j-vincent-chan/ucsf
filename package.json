@@ -14,10 +14,13 @@
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
     "cheerio": "^1.2.0",
+    "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "next": "16.2.2",
     "openai": "^6.33.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-force-graph-2d": "^1.29.1",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "zod": "^4.3.6"

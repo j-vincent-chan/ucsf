@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   const [entitiesRes, itemsRes, recentRes] = await Promise.all([
     supabase
       .from("tracked_entities")
-      .select("id, name, created_at, active, entity_type, member_status"),
+      .select("id, name, created_at, active, entity_type, member_status, institution"),
     supabase
       .from("source_items")
       .select(

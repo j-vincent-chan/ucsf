@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Summary } from "@/types/database";
 import {
+  mergeWhyIntoBlurb,
   parseBlurbJson,
   stringifyBlurbContent,
   type BlurbContent,
@@ -13,15 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-
-/** Fold legacy `why_it_matters` into `blurb` so the UI is one paragraph (no label). */
-function mergeWhyIntoBlurb(c: BlurbContent): BlurbContent {
-  const b = c.blurb?.trim() ?? "";
-  const w = c.why_it_matters?.trim() ?? "";
-  if (!w) return { ...c, blurb: b, why_it_matters: "" };
-  const merged = b ? `${b.trimEnd()} ${w}` : w;
-  return { ...c, blurb: merged, why_it_matters: "" };
-}
 
 function CopyIcon({ className = "" }: { className?: string }) {
   return (
