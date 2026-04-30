@@ -135,17 +135,17 @@ function selectedKindTitle(candidate: DigestVisualCandidate): string {
   if (edited) {
     if (candidate.type === "source") return "Edited source image";
     if (candidate.type === "stock") return "Edited stock-style visual";
-    return "Edited AI-generated illustration";
+    return "Edited AI-generated thumbnail";
   }
   if (candidate.type === "source") return "Source image";
   if (candidate.type === "stock") return "Stock-style visual";
-  return "AI-generated illustration";
+  return "AI-generated thumbnail";
 }
 
 function selectedKindSubtitle(candidate: DigestVisualCandidate): string {
   if (candidate.type === "source") return "From source page. Verify rights before use.";
   if (candidate.type === "stock") return "Verify license and source before publication.";
-  return "Generated from article-derived visual brief. Review for scientific accuracy.";
+  return "Generated with the digest thumbnail prompt from ingested research content. Review for scientific accuracy.";
 }
 
 export function DigestImageEditorModal({

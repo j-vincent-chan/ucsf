@@ -15,12 +15,12 @@ function typeLabel(t: VisualCandidateType): string {
     case "source":
       return "Source";
     case "schematic":
-      return "Illustration";
+      return "Thumbnail";
     case "stock":
       return "Stock";
     case "abstract":
     default:
-      return "Illustration";
+      return "Thumbnail";
   }
 }
 
@@ -45,7 +45,7 @@ function mapTypeToTab(t: VisualCandidateType): VisualTab {
 function tabLabel(tab: VisualTab): string {
   if (tab === "source") return "Source";
   if (tab === "stock") return "Stock";
-  return "Illustration";
+  return "Thumbnail";
 }
 
 function selectedKindLine(candidate: DigestVisualCandidate): string {
@@ -55,7 +55,7 @@ function selectedKindLine(candidate: DigestVisualCandidate): string {
     Boolean(candidate.editMetadata);
   if (candidate.type === "source") return edited ? "Edited source image" : "Source image";
   if (candidate.type === "stock") return edited ? "Edited stock-style visual" : "Stock-style visual";
-  return edited ? "Edited AI-generated illustration" : "AI-generated illustration";
+  return edited ? "Edited AI-generated thumbnail" : "AI-generated thumbnail";
 }
 
 function selectedKindDetail(candidate: DigestVisualCandidate): string {
@@ -65,7 +65,7 @@ function selectedKindDetail(candidate: DigestVisualCandidate): string {
   if (candidate.type === "stock") {
     return "Verify license and source before publication.";
   }
-  return "Generated from article-derived visual brief. Review for scientific accuracy.";
+  return "Generated with the digest thumbnail prompt from ingested research content. Review for scientific accuracy.";
 }
 
 function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandidate[] {
@@ -314,7 +314,7 @@ export function DigestVisualPanel({
       else if (action === "revert_digest_candidate_image") toast.success("Restored original image");
       else if (action === "clear_ai") toast.success("AI-generated images cleared");
       else if (action === "discover_source") toast.success("Source images updated");
-      else if (action === "generate_illustration") toast.success("Illustration options updated");
+      else if (action === "generate_illustration") toast.success("Thumbnail options updated");
       else toast.success("Visual options updated");
     } catch (e) {
       if (action === "select") setOptimisticSelectedId(null);
@@ -400,7 +400,7 @@ export function DigestVisualPanel({
             <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">Selected</p>
             {!activeSrc ? (
               <p className="mt-1 max-w-md text-sm text-[color:var(--muted-foreground)]">
-                No visual selected. Choose a source image, generate an illustration, or find a stock-style visual.
+                No visual selected. Choose a source image, generate a thumbnail, or find a stock-style visual.
               </p>
             ) : null}
           </div>
@@ -465,7 +465,7 @@ export function DigestVisualPanel({
                 void api("generate_illustration");
               }}
             >
-              Illustration
+              Thumbnail
             </Button>
             <Button type="button" variant="secondary" className="h-8 px-3 text-xs" disabled title="Coming soon">
               Stock
@@ -512,7 +512,14 @@ export function DigestVisualPanel({
               <button
                 type="button"
                 disabled={disabled || working}
-                onClick={() => void api("refresh_all")}
+                onClick={() => {
+                  /* Thumbnail tab: regenerate AI thumbnail only with the fixed template prompt */
+                  if (activeTab === "schematic") {
+                    void api("generate_illustration");
+                  } else {
+                    void api("refresh_all");
+                  }
+                }}
                 className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] disabled:opacity-40"
               >
                 Refresh options
@@ -544,7 +551,7 @@ export function DigestVisualPanel({
           </div>
           {!hasBundle ? (
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              No candidates yet. Use Source or Illustration above, or Refresh options.
+              No candidates yet. Use Source or Thumbnail above, or Refresh options.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 sm:gap-3.5">

@@ -120,38 +120,56 @@ function extractPubmedPmidFromUrl(url: string | null): string | null {
   return m?.[1] ?? null;
 }
 
-async function fetchPubmedLastAuthorByPmid(
-  pmid: string,
-  cache: Map<string, string | null>,
-): Promise<string | null> {
-  if (cache.has(pmid)) return cache.get(pmid) ?? null;
+type EsummaryAuthorTail = { last: string | null; penultimate: string | null };
+
+const PUBMED_ESUMMARY_CHUNK = 200;
+
+function chunkStringIds(ids: string[], size: number): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Batched eSummary: last and penultimate PubMed author per PMID (for watchlist + co-senior ordering).
+ */
+async function fetchPubmedEsummaryTailsBatched(pmids: string[]): Promise<Map<string, EsummaryAuthorTail>> {
+  const out = new Map<string, EsummaryAuthorTail>();
+  const unique = [...new Set(pmids.filter(Boolean))];
+  if (unique.length === 0) return out;
   const apiKey = process.env.NCBI_API_KEY?.trim();
   const keyParam = apiKey ? `&api_key=${encodeURIComponent(apiKey)}` : "";
-  try {
-    const res = await fetch(
-      `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${encodeURIComponent(pmid)}${keyParam}`,
-      { headers: { "User-Agent": "CommunitySignalDigest/1.0 (digest-view)" } },
-    );
-    if (!res.ok) {
-      cache.set(pmid, null);
-      return null;
+  for (const chunk of chunkStringIds(unique, PUBMED_ESUMMARY_CHUNK)) {
+    if (chunk.length === 0) continue;
+    try {
+      const res = await fetch(
+        `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${chunk.map(encodeURIComponent).join(",")}${keyParam}`,
+        { headers: { "User-Agent": "CommunitySignalDigest/1.0 (digest-view)" } },
+      );
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        result?: Record<string, unknown> & { uids?: string[] };
+      };
+      const result = json.result;
+      const uids = result?.uids;
+      if (!result || !Array.isArray(uids)) continue;
+      for (const uid of uids) {
+        const suid = String(uid);
+        const record = result[suid] as { authors?: { name?: string }[] } | undefined;
+        const names = Array.isArray(record?.authors)
+          ? record.authors
+              .map((a) => (typeof a?.name === "string" ? a.name.trim() : ""))
+              .filter(Boolean)
+          : [];
+        const last = names.length > 0 ? (names[names.length - 1] ?? null) : null;
+        const penultimate = names.length >= 2 ? (names[names.length - 2] ?? null) : null;
+        out.set(suid, { last, penultimate });
+      }
+    } catch {
+      // Skip chunk on failure; per-item tails stay unset.
     }
-    const json = (await res.json()) as {
-      result?: Record<string, unknown> & { uids?: string[] };
-    };
-    const record = json.result?.[pmid] as { authors?: { name?: string }[] } | undefined;
-    const names = Array.isArray(record?.authors)
-      ? record.authors
-          .map((a) => (typeof a?.name === "string" ? a.name.trim() : ""))
-          .filter(Boolean)
-      : [];
-    const last = names.length > 0 ? (names[names.length - 1] ?? null) : null;
-    cache.set(pmid, last);
-    return last;
-  } catch {
-    cache.set(pmid, null);
-    return null;
   }
+  return out;
 }
 
 function parsePubmedLastAuthor(rawSummary: string | null): string | null {
@@ -162,6 +180,17 @@ function parsePubmedLastAuthor(rawSummary: string | null): string | null {
     .find((x) => x.toLowerCase().startsWith("last_author:"));
   if (!part) return null;
   const v = part.slice("last_author:".length).trim();
+  return v || null;
+}
+
+function parsePubmedPenultimateFromRawSummary(rawSummary: string | null): string | null {
+  if (!rawSummary) return null;
+  const part = rawSummary
+    .split(" · ")
+    .map((x) => x.trim())
+    .find((x) => x.toLowerCase().startsWith("penultimate_author:"));
+  if (!part) return null;
+  const v = part.slice("penultimate_author:".length).trim();
   return v || null;
 }
 
@@ -203,6 +232,8 @@ function mapRow(
     source_type: r.source_type,
     source_url: r.source_url,
     raw_summary: r.raw_summary,
+    primary_tracked_entity_id: r.tracked_entity_id,
+    penultimate_author_name: r.category === "paper" ? parsePubmedPenultimateFromRawSummary(r.raw_summary) : null,
     investigators,
     pi_name: r.source_type === "pubmed" ? parsePubmedLastAuthor(r.raw_summary) : null,
     digest_cover: parseDigestCoverFromDb(r.digest_cover),
@@ -220,7 +251,8 @@ export default async function DigestMonthPage({
 }: {
   params: Promise<{ month: string }>;
 }) {
-  await requireProfile();
+  const { profile } = await requireProfile();
+  const communityId = profile.community_id;
   const { month: monthParam } = await params;
   const parsed = parseYearMonth(monthParam);
   if (!parsed) {
@@ -236,6 +268,7 @@ export default async function DigestMonthPage({
     supabase
       .from("source_items")
       .select("published_at")
+      .eq("community_id", communityId)
       .eq("status", "approved")
       .not("published_at", "is", null)
       .order("published_at", { ascending: true })
@@ -243,6 +276,7 @@ export default async function DigestMonthPage({
     supabase
       .from("source_items")
       .select("found_at")
+      .eq("community_id", communityId)
       .eq("status", "approved")
       .is("published_at", null)
       .order("found_at", { ascending: true })
@@ -253,12 +287,14 @@ export default async function DigestMonthPage({
     supabase
       .from("source_items")
       .select(ITEM_SELECT)
+      .eq("community_id", communityId)
       .eq("status", "approved")
       .gte("published_at", startISO)
       .lte("published_at", endISO),
     supabase
       .from("source_items")
       .select(ITEM_SELECT)
+      .eq("community_id", communityId)
       .eq("status", "approved")
       .is("published_at", null)
       .gte("found_at", startISO)
@@ -336,7 +372,6 @@ export default async function DigestMonthPage({
 
   const seen = new Set<string>();
   const merged: DigestItemPayload[] = [];
-  const pubmedAuthorCache = new Map<string, string | null>();
   const pubmedFullAuthorCache = new Map<string, string | null>();
 
   for (const r of byPub) {
@@ -364,21 +399,38 @@ export default async function DigestMonthPage({
     );
   }
 
+  const paperPubmedIndices: { i: number; pmid: string }[] = [];
   for (let i = 0; i < merged.length; i++) {
     const row = merged[i]!;
-    if (row.source_type !== "pubmed" || row.pi_name) continue;
+    if (row.source_type !== "pubmed" || row.category !== "paper") continue;
     const pmid = extractPubmedPmidFromUrl(row.source_url);
-    if (!pmid) continue;
-    let piName = await fetchPubmedLastAuthorByPmid(pmid, pubmedAuthorCache);
-    if (!pubmedFullAuthorCache.has(pmid)) {
-      pubmedFullAuthorCache.set(pmid, await fetchPubmedLastAuthorFullNameByPmid(pmid));
-    }
-    const fullName = pubmedFullAuthorCache.get(pmid);
-    if (fullName && (!piName || isPubmedStyleAbbrevAuthor(piName))) {
-      piName = fullName;
-    }
-    if (piName) {
-      merged[i] = { ...row, pi_name: piName };
+    if (pmid) paperPubmedIndices.push({ i, pmid });
+  }
+  if (paperPubmedIndices.length > 0) {
+    const tailByPmid = await fetchPubmedEsummaryTailsBatched(
+      paperPubmedIndices.map((e) => e.pmid),
+    );
+    for (const { i, pmid } of paperPubmedIndices) {
+      const tail = tailByPmid.get(pmid);
+      if (!tail) continue;
+      const row = merged[i]!;
+      const next: DigestItemPayload = {
+        ...row,
+        penultimate_author_name: tail.penultimate ?? row.penultimate_author_name,
+      };
+      if (!row.pi_name && tail.last) {
+        let piName = tail.last;
+        if (!pubmedFullAuthorCache.has(pmid)) {
+          pubmedFullAuthorCache.set(pmid, await fetchPubmedLastAuthorFullNameByPmid(pmid));
+        }
+        const fullName = pubmedFullAuthorCache.get(pmid);
+        if (fullName && (!piName || isPubmedStyleAbbrevAuthor(piName))) {
+          piName = fullName;
+        }
+        merged[i] = { ...next, pi_name: piName };
+      } else {
+        merged[i] = next;
+      }
     }
   }
 

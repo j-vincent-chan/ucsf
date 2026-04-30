@@ -19,6 +19,8 @@ import {
 import type { DigestVisualEditMetadata } from "@/lib/digest-visual-types";
 import type { Json } from "@/types/database";
 
+export const maxDuration = 120;
+
 const actionSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("refresh_all"),

@@ -30,6 +30,10 @@ import {
 } from "@/lib/digest-visual-types";
 import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
 import { DigestVisualPanel } from "@/components/digest-visual-panel";
+import {
+  buildDigestItemSortMap,
+  sortOutputPreviewReferenceRows,
+} from "@/lib/digest-reference-sort";
 
 function CollapseChevron({ open }: { open: boolean }) {
   return (
@@ -443,6 +447,10 @@ export type DigestItemPayload = {
   raw_summary: string | null;
   /** Primary + junction-linked watchlist investigators, sorted by name */
   investigators: { id: string; name: string; first_name: string; last_name: string }[];
+  /** Primary `source_items.tracked_entity_id` (e.g. funding: contact / lead PI). */
+  primary_tracked_entity_id: string | null;
+  /** For papers, PubMed co–last / co–corresponding (second author from the end) when available. */
+  penultimate_author_name: string | null;
   pi_name: string | null;
   /** Image snapshot bundle: source, schematic, and stock candidates; legacy rows are upgraded on read. */
   digest_cover: DigestVisualBundle | null;
@@ -1317,17 +1325,26 @@ export function MonthlyDigestView({
     setStatusLine("");
   }
 
+  const itemSortById = useMemo(() => buildDigestItemSortMap(items), [items]);
+  const orderedResultsByCategory = useMemo(
+    () =>
+      ({
+        papers: sortOutputPreviewReferenceRows(resultsByCategory.papers, "papers", itemSortById),
+        funding: sortOutputPreviewReferenceRows(resultsByCategory.funding, "funding", itemSortById),
+      }) as const,
+    [itemSortById, resultsByCategory.papers, resultsByCategory.funding],
+  );
   const combinedOutputText = useMemo(() => {
     const lines: string[] = [`References — ${monthLabel}`, ""];
     for (const category of categories) {
-      const results = resultsByCategory[category.key];
+      const results = orderedResultsByCategory[category.key];
       if (results.length === 0) continue;
       lines.push(`${category.title}`);
       lines.push(...formatReferenceLines(results, numberedLines));
       lines.push("");
     }
     return lines.join("\n").trim();
-  }, [categories, resultsByCategory, numberedLines, monthLabel]);
+  }, [categories, orderedResultsByCategory, numberedLines, monthLabel]);
 
   async function copyText(text: string, successMsg: string) {
     if (!text.trim()) {
@@ -1688,7 +1705,7 @@ export function MonthlyDigestView({
                     }
                   >
                     {categories.map((category) => {
-                      const lines = formatReferenceLines(resultsByCategory[category.key], numberedLines);
+                      const lines = formatReferenceLines(orderedResultsByCategory[category.key], numberedLines);
                       if (lines.length === 0) return null;
                       return (
                         <section key={category.key} className="border-b border-[color:var(--border)]/45 py-4 first:pt-0 last:border-b-0 last:pb-0">
@@ -1698,7 +1715,7 @@ export function MonthlyDigestView({
                               type="button"
                               onClick={() =>
                                 void copyText(
-                                  formatBulkReferenceList(resultsByCategory[category.key], {
+                                  formatBulkReferenceList(orderedResultsByCategory[category.key], {
                                     numberedLines,
                                     monthLabel,
                                   }),

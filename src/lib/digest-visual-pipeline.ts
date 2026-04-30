@@ -1,5 +1,7 @@
 import * as cheerio from "cheerio";
 import { resolvePmcidFromPmid, tryPmcArticleImageUrl } from "@/lib/digest-cover";
+import { buildDigestThumbnailImagePrompt } from "@/lib/digest-thumbnail-prompt";
+import { refineDigestThumbnailPrompt } from "@/lib/digest-thumbnail-prompt-refine";
 import {
   type DigestVisualBundle,
   type DigestVisualCandidate,
@@ -210,127 +212,57 @@ async function scrapeSourceText(url: string | null): Promise<string> {
   }
 }
 
-type IllustrationBrief = {
-  visual_concept: string;
-  main_subject: string;
-  supporting_elements: string[];
-  avoid: string[];
-};
-
-const ILLUSTRATION_FORBIDDEN_TERMS = [
-  "source content:",
-  "first, identify",
-  "schematic",
-  "pathway",
-  "mechanism figure",
-  "callout",
-  "annotation",
-  "multi-panel",
-  "biorender-like",
-  "clinical trial",
-  "biomarker",
-];
-
-function inferIllustrationBrief(opts: { title: string; sourceText: string }): IllustrationBrief {
-  const t = `${opts.title} ${opts.sourceText}`.toLowerCase();
-  const hasT1D = /\b(type 1 diabetes|t1d|insulin)\b/.test(t);
-  const hasImmune = /\b(immune|autoimmune|t cell|immune cell)\b/.test(t);
-  const hasDiscovery = /\b(discovery|finding|advance|progress|breakthrough)\b/.test(t);
-  const hasPrevention = /\b(prevent|prevention|delay)\b/.test(t);
-  const hasClinical = /\b(patient|care|clinical|cohort|outcome)\b/.test(t);
-
-  if (hasT1D && hasImmune) {
-    return {
-      visual_concept:
-        "immune regulation in type 1 diabetes, shown as a stylized immune cell gently redirected away from an insulin-producing cell",
-      main_subject: "one stylized immune cell and one simplified insulin-producing cell",
-      supporting_elements: ["a soft protective shield or gentle curved cue"],
-      avoid: ["DNA helix", "syringe", "doctors", "patients", "lab benches"],
-    };
-  }
-
-  if (hasClinical) {
-    return {
-      visual_concept: "progress in patient care represented by one calm protective medical symbol",
-      main_subject: "one stylized protective care symbol",
-      supporting_elements: hasDiscovery ? ["a subtle upward progress cue"] : [],
-      avoid: ["hospital room scene", "multiple people", "dense workflow elements"],
-    };
-  }
-
-  if (hasPrevention) {
-    return {
-      visual_concept: "disease prevention represented as gentle protection around one vulnerable biological element",
-      main_subject: "one simplified vulnerable cell-like form with protection",
-      supporting_elements: ["one soft directional cue"],
-      avoid: ["complex arrows", "dense cell clusters", "multi-scene composition"],
-    };
-  }
-
-  return {
-    visual_concept: hasDiscovery
-      ? "a single symbolic discovery concept shown as one protected biological form"
-      : "a single symbolic health science concept with calm protective framing",
-    main_subject: "one simple central biomedical symbol",
-    supporting_elements: ["at most one subtle supporting cue"],
-    avoid: ["pseudo-infographic layout", "publication-style figure styling"],
-  };
+function thumbnailImageModel(): string {
+  return process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-1";
 }
 
-function buildIllustrationPromptFromBrief(brief: IllustrationBrief): string {
-  const supporting = brief.supporting_elements.length > 0 ? brief.supporting_elements.join(", ") : "none";
-  const avoid = brief.avoid.join(", ");
-  return `Create a flat editorial spot illustration for a health/science digest.
-
-Concept: ${brief.visual_concept}
-
-Main subject: ${brief.main_subject}
-
-Supporting elements, if any: ${supporting}
-
-Style: simple 2D vector editorial illustration, soft rounded shapes, muted professional colors, mostly solid fills, subtle layering, clean negative space.
-
-Composition: one centered focal subject on a simple background. No more than three object types total. At least 60% negative space. No panels, no workflows, no timelines, no lab-scene montage. No more than one subtle directional cue.
-
-Text: absolutely no text, labels, numbers, captions, callouts, pseudo-writing, charts, or annotations.
-
-Avoid: ${avoid}, pseudo-infographic, fake scientific diagram, biomedical diagram, pathway diagram, mechanism figure, dense annotations, callout boxes, explanatory panels, hyper-detailed cells, complex arrows, glossy 3D, photorealism, crowded biomedical detail.`;
+function gptImageQuality(): "low" | "medium" | "high" | "auto" {
+  const q = process.env.OPENAI_IMAGE_QUALITY?.trim().toLowerCase();
+  if (q === "low" || q === "medium" || q === "high" || q === "auto") return q;
+  /** Default `high`—closer to polished ChatGPT thumbnails; use OPENAI_IMAGE_QUALITY=medium to save cost. */
+  return "high";
 }
 
-function enforceIllustrationPromptGuardrails(prompt: string, brief: IllustrationBrief): string {
-  let next = prompt.trim().replace(/\s+\n/g, "\n");
-  const lowered = next.toLowerCase();
-  const hasForbidden = ILLUSTRATION_FORBIDDEN_TERMS.some((term) => lowered.includes(term));
-  const tooLong = next.length > 1200;
-  const tooManyEntities = brief.supporting_elements.length > 2;
-  if (hasForbidden || tooLong || tooManyEntities) {
-    const safeBrief: IllustrationBrief = {
-      visual_concept: truncate(brief.visual_concept, 180),
-      main_subject: truncate(brief.main_subject, 140),
-      supporting_elements: brief.supporting_elements.slice(0, 2).map((s) => truncate(s, 90)),
-      avoid: [...brief.avoid, "pseudo-infographic", "biomedical diagram", "dense annotations"].slice(0, 8),
-    };
-    next = buildIllustrationPromptFromBrief(safeBrief);
-  }
-  return next.slice(0, 1200);
-}
-
-async function dalleImage(prompt: string): Promise<{ mime: string; base64: string }> {
+/**
+ * Digest thumbnails use GPT Image models (`gpt-image-1` default)—same product family as ChatGPT image generation.
+ * Set `OPENAI_IMAGE_MODEL=dall-e-3` to use DALL·E 3 instead.
+ */
+async function generateDigestThumbnailImage(prompt: string): Promise<{ mime: string; base64: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY is missing. Illustration generation requires a configured OpenAI API key.");
   }
   const { default: OpenAI } = await import("openai");
   const openai = new OpenAI({ apiKey });
-  const full = prompt.length > 4000 ? `${prompt.slice(0, 3900)}…\n[Truncated]` : prompt;
+  const model = thumbnailImageModel();
+
   try {
+    if (model === "dall-e-3" || model === "dall-e-2") {
+      const full = prompt.length > 4000 ? `${prompt.slice(0, 3900)}…\n[Truncated]` : prompt;
+      const result = await openai.images.generate({
+        model,
+        prompt: full,
+        n: 1,
+        size: "1024x1024",
+        quality: model === "dall-e-3" ? "standard" : "standard",
+        response_format: "b64_json",
+      });
+      const b64 = result.data?.[0]?.b64_json;
+      if (!b64) {
+        throw new Error("OpenAI image response did not contain image data.");
+      }
+      return { mime: "image/png", base64: b64 };
+    }
+
+    const full = prompt.length > 32000 ? `${prompt.slice(0, 31900)}…\n[Truncated]` : prompt;
     const result = await openai.images.generate({
-      model: "dall-e-3",
+      model,
       prompt: full,
       n: 1,
       size: "1024x1024",
-      quality: "standard",
-      response_format: "b64_json",
+      quality: gptImageQuality(),
+      background: "opaque",
+      output_format: "png",
     });
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) {
@@ -348,34 +280,46 @@ export async function generateIllustrationOptions(opts: {
   rawText?: string | null;
   sourceUrl?: string | null;
 }): Promise<DigestVisualCandidate[]> {
-  const scraped = await scrapeSourceText(opts.sourceUrl ?? null);
-  const sourceText = [scraped, opts.rawText, opts.abstractText].filter(Boolean).join("\n\n");
-  const brief = inferIllustrationBrief({
-    title: truncate(opts.title, 200),
-    sourceText: sourceText || opts.title,
+  const summaryAndExcerpts = [opts.abstractText, opts.rawText].filter(Boolean).join("\n\n").trim();
+  const basePrompt = buildDigestThumbnailImagePrompt({
+    title: truncate(opts.title, 500),
+    sourceUrl: opts.sourceUrl?.trim() ?? null,
+    summaryAndExcerpts,
   });
-  const prompt = enforceIllustrationPromptGuardrails(buildIllustrationPromptFromBrief(brief), brief);
-  const img = await dalleImage(prompt);
+
+  const refine = await refineDigestThumbnailPrompt(basePrompt);
+  const imagePrompt = refine.refinedPrompt;
+
+  const img = await generateDigestThumbnailImage(imagePrompt);
+  const imageModel = thumbnailImageModel();
   return [
     candidateFrom({
       type: "schematic",
       kind: "inline",
       mime: img.mime,
       base64: img.base64,
-      provenance: "AI — article-grounded biomedical illustration (DALL·E 3)",
+      provenance: `AI — BioRender-style editorial thumbnail (${imageModel}${refine.usedRefinement ? ", refined prompt" : ""})`,
       rights: "unknown",
       rightsNote: "AI-generated. Not a real figure or dataset from the source article.",
       aiGenerated: true,
       promptUsed: JSON.stringify(
         {
-          extracted_topic: truncate(opts.title, 180),
-          visual_brief: brief,
-          final_image_prompt: prompt,
+          mode: "thumbnail",
+          image_model: imageModel,
+          image_quality: imageModel === "dall-e-3" || imageModel === "dall-e-2" ? null : gptImageQuality(),
+          prompt_refiner_used: refine.usedRefinement,
+          prompt_refiner_note: refine.usedRefinement ? undefined : refine.skipReason,
+          source_url: opts.sourceUrl ?? null,
+          title: truncate(opts.title, 300),
+          summary_and_excerpts_preview: truncate(summaryAndExcerpts, 1200),
+          base_thumbnail_prompt: basePrompt,
+          final_image_prompt: imagePrompt,
         },
         null,
         2,
       ),
-      rationale: "Article-specific editorial spot illustration generated from a minimal visual brief.",
+      rationale:
+        "News / digest / social thumbnail via OpenAI Images. A text model may rewrite the template prompt into a tighter art-director brief before generation (similar to ChatGPT). See promptUsed.base_thumbnail_prompt vs final_image_prompt.",
       scores: { relevance: 4, fidelity: 4, editorial: 4, risk: 2, rightsConfidence: 4 },
     }),
   ];

@@ -41,10 +41,10 @@ export function currentYearMonth(): string {
 
 export function recentYearMonths(count: number): { ym: string; label: string }[] {
   const out: { ym: string; label: string }[] = [];
-  const d = new Date();
+  const now = new Date();
+  let y = now.getUTCFullYear();
+  let m = now.getUTCMonth() + 1;
   for (let i = 0; i < count; i++) {
-    const y = d.getUTCFullYear();
-    const m = d.getUTCMonth() + 1;
     const ym = `${y}-${String(m).padStart(2, "0")}`;
     out.push({
       ym,
@@ -54,7 +54,11 @@ export function recentYearMonths(count: number): { ym: string; label: string }[]
         timeZone: "UTC",
       }),
     });
-    d.setUTCMonth(d.getUTCMonth() - 1);
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
   }
   return out;
 }

@@ -66,6 +66,16 @@ function WatchlistIcon() {
   );
 }
 
+function SocialSignalsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconBase()}>
+      <path d="M12 4v4M12 16v4M4 12h4M16 12h4" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M18 6l2 2M4 18l2-2M18 18l2-2M4 6l2 2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ChevronDownIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -133,6 +143,17 @@ export function SidebarNav({
         <Link href="/submit" className={itemClass(pathname === "/submit")}>
           <SubmitIcon />
           <span>Add Signal</span>
+        </Link>
+      </div>
+
+      <SectionLabel>Social</SectionLabel>
+      <div className="space-y-1.5">
+        <Link
+          href="/social-signals"
+          className={itemClass(pathname.startsWith("/social-signals"))}
+        >
+          <SocialSignalsIcon />
+          <span>Social Signals</span>
         </Link>
       </div>
 

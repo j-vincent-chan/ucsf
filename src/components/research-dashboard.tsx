@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -19,8 +20,20 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardTitle } from "@/components/ui/card";
-import { CollaborationNetworkGraph } from "@/components/collaboration-network-graph";
 import { Button } from "@/components/ui/button";
+
+const CollaborationNetworkGraph = dynamic(
+  () =>
+    import("@/components/collaboration-network-graph").then((mod) => mod.CollaborationNetworkGraph),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-4 text-sm text-[color:var(--muted-foreground)]">
+        Loading collaboration graph…
+      </div>
+    ),
+  },
+);
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory } from "@/types/database";
 import { toast } from "sonner";
