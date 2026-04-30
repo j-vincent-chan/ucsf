@@ -184,8 +184,15 @@ export async function POST(req: Request) {
         break;
       }
       case "generate_stock": {
-        const gen = await generateStockOptions({ title: item.title, abstractText: abstractOrSummary });
-        bundle = mergeCandidates(bundle ?? { v: 2, selectedId: null, candidates: [] }, gen);
+        const gen = await generateStockOptions({
+          title: item.title,
+          abstractText: abstractOrSummary,
+          rawText: item.raw_text,
+          sourceUrl: item.source_url,
+        });
+        const merged = mergeCandidates(bundle ?? { v: 2, selectedId: null, candidates: [] }, gen);
+        const generatedId = gen.find((c) => c.type === "stock")?.id ?? null;
+        bundle = generatedId ? setSelected(merged, generatedId) : merged;
         break;
       }
       case "select": {

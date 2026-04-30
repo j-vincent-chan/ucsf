@@ -134,11 +134,11 @@ function selectedKindTitle(candidate: DigestVisualCandidate): string {
     Boolean(candidate.editMetadata);
   if (edited) {
     if (candidate.type === "source") return "Edited source image";
-    if (candidate.type === "stock") return "Edited stock-style visual";
+    if (candidate.type === "stock") return "Edited photo-style visual";
     return "Edited AI-generated thumbnail";
   }
   if (candidate.type === "source") return "Source image";
-  if (candidate.type === "stock") return "Stock-style visual";
+  if (candidate.type === "stock") return "Photo-style visual";
   return "AI-generated thumbnail";
 }
 

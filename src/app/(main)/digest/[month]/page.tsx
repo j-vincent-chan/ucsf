@@ -14,7 +14,7 @@ import {
   fetchPubmedLastAuthorFullNameByPmid,
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
-import { parseDigestCoverFromDb } from "@/lib/digest-cover";
+import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +28,13 @@ const ITEM_SELECT = `
   source_type,
   source_url,
   raw_summary,
-  digest_cover
+  digest_cover_has_asset
 `;
 
-const JUNCTION_IN_CHUNK = 200;
-const SUMMARY_IN_CHUNK = 300;
-const TRACKED_ENTITY_IN_CHUNK = 300;
+/** Smaller chunks = shorter per-query work (helps under Postgres statement_timeout). */
+const JUNCTION_IN_CHUNK = 120;
+const SUMMARY_IN_CHUNK = 120;
+const TRACKED_ENTITY_IN_CHUNK = 200;
 
 async function fetchJunctionInChunks(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -205,7 +206,7 @@ function mapRow(
     source_type: DigestItemPayload["source_type"];
     source_url: string | null;
     raw_summary: string | null;
-    digest_cover: unknown;
+    digest_cover_has_asset: boolean | null;
   },
   junctionRows: unknown[],
   primaryTrackedEntity: unknown,
@@ -236,7 +237,8 @@ function mapRow(
     penultimate_author_name: r.category === "paper" ? parsePubmedPenultimateFromRawSummary(r.raw_summary) : null,
     investigators,
     pi_name: r.source_type === "pubmed" ? parsePubmedLastAuthor(r.raw_summary) : null,
-    digest_cover: parseDigestCoverFromDb(r.digest_cover),
+    digest_cover: null,
+    digestCoverHasAsset: Boolean(r.digest_cover_has_asset),
     summaries,
   };
 }
@@ -314,24 +316,24 @@ export default async function DigestMonthPage({
   if (!loadErr) {
     const allIds = [...new Set([...byPub, ...byFound].map((row) => row.id))];
     if (allIds.length > 0) {
-      const [{ data: junctionRows, error: junctionErr }, { data: summariesRows, error: summariesErr }] =
-        await Promise.all([
-          fetchJunctionInChunks(supabase, allIds),
-          fetchSummariesInChunks(supabase, allIds),
-        ]);
+      const { data: junctionRows, error: junctionErr } = await fetchJunctionInChunks(supabase, allIds);
       if (junctionErr) {
         return (
           <div className="mx-auto max-w-4xl">
             <h1 className="text-2xl font-semibold">Digest for {heading}</h1>
-            <p className="mt-4 text-red-600">Failed to load digest: {junctionErr.message}</p>
+            <p className="mt-4 text-red-600">Failed to load digest: {userFacingDbStatementTimeoutMessage(junctionErr.message)}</p>
           </div>
         );
       }
+      const { data: summariesRows, error: summariesErr } = await fetchSummariesInChunks(
+        supabase,
+        allIds,
+      );
       if (summariesErr) {
         return (
           <div className="mx-auto max-w-4xl">
             <h1 className="text-2xl font-semibold">Digest for {heading}</h1>
-            <p className="mt-4 text-red-600">Failed to load digest: {summariesErr.message}</p>
+            <p className="mt-4 text-red-600">Failed to load digest: {userFacingDbStatementTimeoutMessage(summariesErr.message)}</p>
           </div>
         );
       }
@@ -359,7 +361,7 @@ export default async function DigestMonthPage({
           return (
             <div className="mx-auto max-w-4xl">
               <h1 className="text-2xl font-semibold">Digest for {heading}</h1>
-              <p className="mt-4 text-red-600">Failed to load digest: {entitiesErr.message}</p>
+              <p className="mt-4 text-red-600">Failed to load digest: {userFacingDbStatementTimeoutMessage(entitiesErr.message)}</p>
             </div>
           );
         }
@@ -462,7 +464,7 @@ export default async function DigestMonthPage({
     return (
       <div className="mx-auto max-w-4xl">
         <h1 className="text-2xl font-semibold">Digest for {heading}</h1>
-        <p className="mt-4 text-red-600">Failed to load digest: {loadErr.message}</p>
+        <p className="mt-4 text-red-600">Failed to load digest: {userFacingDbStatementTimeoutMessage(loadErr.message)}</p>
       </div>
     );
   }

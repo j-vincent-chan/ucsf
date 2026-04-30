@@ -11,11 +11,12 @@ Your job: output ONE replacement prompt in plain English that the image model wi
 
 Requirements for the rewritten prompt:
 1. Start with one sentence stating the scientific essence (central finding only).
-2. Describe ONE clear visual concept: prefer a simple left-to-right or top-down editorial flow, or one focal mechanism scene. The layout should feel like a polished BioRender figure or journal thumbnail—calm, spacious, readable at small size.
-3. Explicitly discourage stock infographic tropes unless necessary: avoid default "magnifying glass zoom" panels, vertical stacked legend strips with colored ribbons, and dense icon grids. If a comparison is needed, prefer a clean two-panel side-by-side over a busy callout collage.
-4. Name 2–4 SHORT label strings (correct spelling) that should appear on the image, each 1–5 words, tied to specific elements; no paragraphs, no fake UI blocks, no lorem text.
-5. Close by restating: white or very light background, crisp readable vector-like illustration, soft gradients, muted professional colors, strong negative space, minimal clutter.
+2. Describe ONE clear visual concept as a polished BioRender-style editorial figure thumbnail (2.5D journal figure, not photoreal): soft volumetric shading, translucent matte spheres for cells/vesicles when relevant, organic clustered packing, gentle contact shadows, diffuse lighting, no harsh black outlines. Prefer one hero focal; if the core finding is two-state contrast (including immune vs therapy), use a clean two-panel side-by-side with matched perspective and lighting—not two unrelated scenes.
+3. When the story has a macro–micro gap (organ/tissue vs cells, molecules, or pathology), you MAY use at most ONE magnified inset or magnifying-glass callout. Place 2–4 labels in rounded pills or rounded rectangles with pastel fills tied to element colors and dark navy or charcoal sans-serif text; optional simple flat icons along one margin—editorial sidebar or under-panel captions, not a dense legend. Avoid busy collages, extra callouts, and icon grids.
+4. Name those 2–4 SHORT label strings explicitly (correct spelling), each 1–5 words, tied to specific elements; no paragraphs, no fake UI blocks, no lorem text.
+5. Close by restating background choice: for cellular/immune/tissue-mechanism stories, very light warm pink or flesh-toned high-key field with subtle diffuse vascular or ECM context (still airy, not muddy); for devices/pipelines/conceptual scenes, pure clinical white. Always: soft gradients on subjects, muted professional accents, strong readable hierarchy—and horizontal widescreen (16:9 style), not square or portrait.
 6. Preserve factual content from the research (disease, mechanism, agents, tissues). Do not invent study results not implied by the text.
+7. Discourage flat-poster tropes: evenly spaced horizontal banner strips, uniform low-contrast tan-on-beige floods, stock diagram wallpaper, hyper-glossy glass spheres.
 
 Be concise: typically 12–25 sentences total—enough to direct the artist, not an essay.`;
 

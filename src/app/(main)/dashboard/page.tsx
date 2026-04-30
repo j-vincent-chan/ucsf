@@ -5,19 +5,24 @@ import { buildDashboardPayload, type RawEntity, type RawItem } from "@/lib/dashb
 
 export const dynamic = "force-dynamic";
 
+const JUNCTION_LINK_CHUNK = 250;
+
 export default async function DashboardPage() {
-  await requireProfile();
+  const { profile } = await requireProfile();
+  const communityId = profile.community_id;
   const supabase = await createClient();
 
   const [entitiesRes, itemsRes, recentRes] = await Promise.all([
     supabase
       .from("tracked_entities")
-      .select("id, name, created_at, active, entity_type, member_status, institution"),
+      .select("id, name, created_at, active, entity_type, member_status, institution")
+      .eq("community_id", communityId),
     supabase
       .from("source_items")
       .select(
         "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id",
       )
+      .eq("community_id", communityId)
       .order("created_at", { ascending: false })
       .limit(15000),
     supabase
@@ -32,6 +37,7 @@ export default async function DashboardPage() {
         tracked_entities!tracked_entity_id ( name )
       `,
       )
+      .eq("community_id", communityId)
       .order("created_at", { ascending: false })
       .limit(10),
   ]);
@@ -49,16 +55,27 @@ export default async function DashboardPage() {
   const entities = (entitiesRes.data ?? []) as RawEntity[];
   const rawItems = (itemsRes.data ?? []) as RawItem[];
   const itemIds = rawItems.map((r) => r.id);
-  let linksByItem = new Map<string, string[]>();
+  const linksByItem = new Map<string, string[]>();
   if (itemIds.length > 0) {
-    const { data: linkRows } = await supabase
-      .from("source_item_tracked_entities")
-      .select("source_item_id, tracked_entity_id")
-      .in("source_item_id", itemIds);
-    for (const row of linkRows ?? []) {
-      const arr = linksByItem.get(row.source_item_id) ?? [];
-      arr.push(row.tracked_entity_id);
-      linksByItem.set(row.source_item_id, arr);
+    for (let i = 0; i < itemIds.length; i += JUNCTION_LINK_CHUNK) {
+      const chunk = itemIds.slice(i, i + JUNCTION_LINK_CHUNK);
+      const { data: linkRows, error: linkErr } = await supabase
+        .from("source_item_tracked_entities")
+        .select("source_item_id, tracked_entity_id")
+        .in("source_item_id", chunk);
+      if (linkErr) {
+        return (
+          <div className="mx-auto max-w-3xl">
+            <h1 className="text-2xl font-semibold">Dashboard</h1>
+            <p className="mt-4 text-red-600">Failed to load analytics: {linkErr.message}</p>
+          </div>
+        );
+      }
+      for (const row of linkRows ?? []) {
+        const arr = linksByItem.get(row.source_item_id) ?? [];
+        arr.push(row.tracked_entity_id);
+        linksByItem.set(row.source_item_id, arr);
+      }
     }
   }
   const items: RawItem[] = rawItems.map((r) => {

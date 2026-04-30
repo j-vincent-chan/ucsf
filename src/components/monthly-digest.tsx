@@ -27,6 +27,7 @@ import {
   activeVisualImageDataUrl,
   getActiveCandidate,
   hasActiveVisual,
+  parseDigestVisualBundleFromDb,
 } from "@/lib/digest-visual-types";
 import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
 import { DigestVisualPanel } from "@/components/digest-visual-panel";
@@ -179,8 +180,12 @@ function digestSummaryClipboardText(summary: Summary | null): string {
   return `${headline}\n\n${blurb}`.trim();
 }
 
+function digestItemHasVisual(item: DigestItemPayload): boolean {
+  return item.digestCoverHasAsset || hasActiveVisual(item.digest_cover);
+}
+
 function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): DigestWorkflowStatus {
-  const hasVisual = hasActiveVisual(item.digest_cover);
+  const hasVisual = digestItemHasVisual(item);
   const hasDraft = summaries.length > 0;
   const briefSaved = summaries.some((s) => Boolean(s.edited_text?.trim()));
   if (hasVisual && briefSaved) return "ready";
@@ -191,7 +196,7 @@ function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): Di
 }
 
 function digestQueueChecklist(item: DigestItemPayload, summaries: Summary[]): ReactNode {
-  const hasVisual = hasActiveVisual(item.digest_cover);
+  const hasVisual = digestItemHasVisual(item);
   const hasDraft = summaries.length > 0;
   const briefSaved = summaries.some((s) => Boolean(s.edited_text?.trim()));
   const summaryLabel = !hasDraft ? "Missing" : briefSaved ? "Ready" : "Draft";
@@ -246,11 +251,6 @@ function digestStatusPill(status: DigestWorkflowStatus): ReactNode {
     default:
       return <StatusPill>Not started</StatusPill>;
   }
-}
-
-function hasDiscoveredSourceCandidate(bundle: DigestVisualBundle | null): boolean {
-  if (!bundle) return false;
-  return bundle.candidates.some((c) => c.type === "source" && c.kind === "url" && Boolean(c.url));
 }
 
 type DigestRefCategory = {
@@ -454,6 +454,8 @@ export type DigestItemPayload = {
   pi_name: string | null;
   /** Image snapshot bundle: source, schematic, and stock candidates; legacy rows are upgraded on read. */
   digest_cover: DigestVisualBundle | null;
+  /** True when `digest_cover` JSON exists in DB (list page omits the JSON to avoid timeouts / huge RSC payloads). */
+  digestCoverHasAsset: boolean;
   summaries: Summary[];
 };
 
@@ -478,6 +480,9 @@ function DigestItemRow({
   const [summariesSectionOpen, setSummariesSectionOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const actionsMenuRef = useRef<HTMLDivElement | null>(null);
+  /** Full `digest_cover` loaded on demand (month list omits JSON from the server). */
+  const [fetchedCover, setFetchedCover] = useState<DigestVisualBundle | null>(null);
+  const [coverLoading, setCoverLoading] = useState(false);
   const activeSummary = summaries[0] ?? null;
   const briefReady = summaries.some((s) => Boolean(s.edited_text?.trim()));
   const workflowStatus = digestWorkflowStatus(item, summaries);
@@ -595,7 +600,43 @@ function DigestItemRow({
     };
   }, [actionsMenuOpen]);
 
-  const imageSrc = activeVisualImageDataUrl(getActiveCandidate(item.digest_cover));
+  useEffect(() => {
+    setFetchedCover(null);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (!item.digestCoverHasAsset) {
+      setFetchedCover(null);
+      return;
+    }
+    if (!expanded) return;
+    let cancelled = false;
+    setCoverLoading(true);
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from("source_items")
+          .select("digest_cover")
+          .eq("id", item.id)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error || data?.digest_cover == null) {
+          setFetchedCover(null);
+          return;
+        }
+        setFetchedCover(parseDigestVisualBundleFromDb(data.digest_cover));
+      } finally {
+        if (!cancelled) setCoverLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, item.digestCoverHasAsset, item.id]);
+
+  const visualBundle = fetchedCover ?? item.digest_cover;
+  const imageSrc = activeVisualImageDataUrl(getActiveCandidate(visualBundle));
 
   return (
     <Card
@@ -853,6 +894,10 @@ function DigestItemRow({
                   className="box-border h-full w-full object-contain object-center"
                   decoding="async"
                 />
+              ) : digestItemHasVisual(item) ? (
+                <div className="flex min-h-[4.5rem] w-full items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
+                  Expand card to view thumbnail
+                </div>
               ) : (
                 <div className="flex min-h-[4.5rem] w-full items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
                   No visual generated yet
@@ -973,20 +1018,27 @@ function DigestItemRow({
             </div>
             <div className="min-w-0 xl:border-l xl:border-[color:var(--border)]/35 xl:pl-6">
               <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-                Visual
+                Selected Visual
               </h4>
-              <DigestVisualPanel
-                digestQueueLayout
-                sourceItemId={item.id}
-                bundle={item.digest_cover}
-                busy={illustrating}
-                onStarted={() => setIllustrating(true)}
-                onComplete={() => {
-                  setIllustrating(false);
-                  router.refresh();
-                }}
-                disabled={generating || archiving}
-              />
+              {item.digestCoverHasAsset && coverLoading && !visualBundle ? (
+                <p className="rounded-lg border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
+                  Loading visuals…
+                </p>
+              ) : (
+                <DigestVisualPanel
+                  digestQueueLayout
+                  sourceItemId={item.id}
+                  bundle={visualBundle}
+                  busy={illustrating}
+                  onStarted={() => setIllustrating(true)}
+                  onComplete={() => {
+                    setIllustrating(false);
+                    setFetchedCover(null);
+                    router.refresh();
+                  }}
+                  disabled={generating || archiving}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1135,7 +1187,7 @@ export function MonthlyDigestView({
     const pending = items.filter(
       (item) =>
         !sourceDiscoveryAttemptedIdsRef.current.has(item.id) &&
-        !hasDiscoveredSourceCandidate(item.digest_cover),
+        !item.digestCoverHasAsset,
     );
     if (pending.length === 0) return;
 

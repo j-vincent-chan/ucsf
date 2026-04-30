@@ -194,6 +194,8 @@ export interface Database {
           archive_reason: string | null;
           /** Newsletter / social illustration: URL from PMC page or inline AI image JSON */
           digest_cover: Json | null;
+          /** Generated: true when digest_cover is non-null (for digest list queries without the JSON payload). */
+          digest_cover_has_asset: boolean;
           created_at: string;
           updated_at: string;
         };

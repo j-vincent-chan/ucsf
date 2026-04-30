@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { resolvePmcidFromPmid, tryPmcArticleImageUrl } from "@/lib/digest-cover";
+import { buildDigestStockPhotoImagePrompt } from "@/lib/digest-stock-photo-prompt";
 import { buildDigestThumbnailImagePrompt } from "@/lib/digest-thumbnail-prompt";
 import { refineDigestThumbnailPrompt } from "@/lib/digest-thumbnail-prompt-refine";
 import {
@@ -224,17 +225,30 @@ function gptImageQuality(): "low" | "medium" | "high" | "auto" {
 }
 
 /**
+ * Default landscape output for digest illustrations. Override with OPENAI_IMAGE_SIZE (e.g. 1024x1024).
+ * DALL·E 2 supports square sizes only.
+ */
+function thumbnailImageSize(model: string): string {
+  const fromEnv = process.env.OPENAI_IMAGE_SIZE?.trim();
+  if (fromEnv) return fromEnv;
+  if (model === "dall-e-3") return "1792x1024";
+  if (model === "dall-e-2") return "1024x1024";
+  return "1536x1024";
+}
+
+/**
  * Digest thumbnails use GPT Image models (`gpt-image-1` default)—same product family as ChatGPT image generation.
  * Set `OPENAI_IMAGE_MODEL=dall-e-3` to use DALL·E 3 instead.
  */
 async function generateDigestThumbnailImage(prompt: string): Promise<{ mime: string; base64: string }> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is missing. Illustration generation requires a configured OpenAI API key.");
+    throw new Error("OPENAI_API_KEY is missing. Image generation requires a configured OpenAI API key.");
   }
   const { default: OpenAI } = await import("openai");
   const openai = new OpenAI({ apiKey });
   const model = thumbnailImageModel();
+  const size = thumbnailImageSize(model);
 
   try {
     if (model === "dall-e-3" || model === "dall-e-2") {
@@ -243,7 +257,7 @@ async function generateDigestThumbnailImage(prompt: string): Promise<{ mime: str
         model,
         prompt: full,
         n: 1,
-        size: "1024x1024",
+        size: size as "1024x1024" | "1792x1024" | "1024x1792",
         quality: model === "dall-e-3" ? "standard" : "standard",
         response_format: "b64_json",
       });
@@ -259,7 +273,7 @@ async function generateDigestThumbnailImage(prompt: string): Promise<{ mime: str
       model,
       prompt: full,
       n: 1,
-      size: "1024x1024",
+      size: size as "1024x1024" | "1536x1024" | "1024x1536" | "auto",
       quality: gptImageQuality(),
       background: "opaque",
       output_format: "png",
@@ -270,7 +284,7 @@ async function generateDigestThumbnailImage(prompt: string): Promise<{ mime: str
     }
     return { mime: "image/png", base64: b64 };
   } catch (error) {
-    throw new Error(error instanceof Error ? error.message : "Illustration image generation failed.");
+    throw new Error(error instanceof Error ? error.message : "Image generation failed.");
   }
 }
 
@@ -306,6 +320,7 @@ export async function generateIllustrationOptions(opts: {
         {
           mode: "thumbnail",
           image_model: imageModel,
+          image_size: thumbnailImageSize(imageModel),
           image_quality: imageModel === "dall-e-3" || imageModel === "dall-e-2" ? null : gptImageQuality(),
           prompt_refiner_used: refine.usedRefinement,
           prompt_refiner_note: refine.usedRefinement ? undefined : refine.skipReason,
@@ -325,9 +340,50 @@ export async function generateIllustrationOptions(opts: {
   ];
 }
 
-export async function generateStockOptions(opts: { title: string; abstractText: string }): Promise<DigestVisualCandidate[]> {
-  void opts;
-  return [];
+export async function generateStockOptions(opts: {
+  title: string;
+  abstractText: string;
+  rawText?: string | null;
+  sourceUrl?: string | null;
+}): Promise<DigestVisualCandidate[]> {
+  const summaryAndExcerpts = [opts.abstractText, opts.rawText].filter(Boolean).join("\n\n").trim();
+  const imagePrompt = buildDigestStockPhotoImagePrompt({
+    title: truncate(opts.title, 500),
+    sourceUrl: opts.sourceUrl?.trim() ?? null,
+    summaryAndExcerpts,
+  });
+
+  const img = await generateDigestThumbnailImage(imagePrompt);
+  const imageModel = thumbnailImageModel();
+  return [
+    candidateFrom({
+      type: "stock",
+      kind: "inline",
+      mime: img.mime,
+      base64: img.base64,
+      provenance: `AI — hyperrealistic biomedical stock photo (${imageModel})`,
+      rights: "unknown",
+      rightsNote: "AI-generated stock-style image. Not from the source site; verify suitability for your channel.",
+      aiGenerated: true,
+      promptUsed: JSON.stringify(
+        {
+          mode: "stock_photo",
+          image_model: imageModel,
+          image_size: thumbnailImageSize(imageModel),
+          image_quality: imageModel === "dall-e-3" || imageModel === "dall-e-2" ? null : gptImageQuality(),
+          source_url: opts.sourceUrl ?? null,
+          title: truncate(opts.title, 300),
+          summary_and_excerpts_preview: truncate(summaryAndExcerpts, 1200),
+          final_image_prompt: imagePrompt,
+        },
+        null,
+        2,
+      ),
+      rationale:
+        "News / digest / social card photography via OpenAI Images using the hyperrealistic biomedical stock-photo brief (not schematic / not BioRender). See promptUsed.final_image_prompt.",
+      scores: { relevance: 4, fidelity: 4, editorial: 4, risk: 2, rightsConfidence: 3 },
+    }),
+  ];
 }
 
 function dedupeByUrl(cands: DigestVisualCandidate[]): DigestVisualCandidate[] {

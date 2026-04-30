@@ -205,7 +205,7 @@ export async function POST(req: Request) {
   const { data: item, error: itemErr } = await supabase
     .from("source_items")
     .select(
-      "id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entity_id, signal_group_key, tracked_entities!tracked_entity_id ( name )",
+      "id, community_id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entity_id, signal_group_key, tracked_entities!tracked_entity_id ( name )",
     )
     .eq("id", source_item_id)
     .maybeSingle();
@@ -237,11 +237,15 @@ export async function POST(req: Request) {
   }
 
   if (item.signal_group_key) {
-    const { data: siblingItems } = await supabase
+    let siblingQuery = supabase
       .from("source_items")
       .select("id, tracked_entity_id")
       .eq("signal_group_key", item.signal_group_key)
       .limit(200);
+    if (item.community_id) {
+      siblingQuery = siblingQuery.eq("community_id", item.community_id);
+    }
+    const { data: siblingItems } = await siblingQuery;
     for (const row of siblingItems ?? []) {
       relatedItemIds.add(row.id);
       if (row.tracked_entity_id) investigatorIds.add(row.tracked_entity_id);

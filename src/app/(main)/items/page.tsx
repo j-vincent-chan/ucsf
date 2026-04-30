@@ -113,10 +113,13 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
 
   const supabase = await createClient();
 
+  const communityId = profile.community_id;
+
   const [entitiesRes, itemsRes] = await Promise.all([
     supabase
       .from("tracked_entities")
       .select("id, name")
+      .eq("community_id", communityId)
       .eq("active", true)
       .order("name", { ascending: true }),
     (async () => {
@@ -137,6 +140,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
         tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
        `,
         )
+        .eq("community_id", communityId)
         .order("found_at", { ascending: false })
         .limit(400);
 

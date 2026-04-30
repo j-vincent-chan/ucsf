@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DigestImageEditorModal, type EditorToolTab } from "@/components/digest-image-editor-modal";
 import type { DigestVisualEditMetadata } from "@/lib/digest-visual-types";
 import type { DigestVisualBundle, DigestVisualCandidate, VisualCandidateType } from "@/lib/digest-visual-types";
 import { activeVisualImageDataUrl, getActiveCandidate } from "@/lib/digest-visual-types";
+import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
 
 type VisualTab = "source" | "schematic" | "stock";
 
@@ -15,12 +16,12 @@ function typeLabel(t: VisualCandidateType): string {
     case "source":
       return "Source";
     case "schematic":
-      return "Thumbnail";
+      return "Illustration";
     case "stock":
-      return "Stock";
+      return "Photo";
     case "abstract":
     default:
-      return "Thumbnail";
+      return "Illustration";
   }
 }
 
@@ -44,8 +45,8 @@ function mapTypeToTab(t: VisualCandidateType): VisualTab {
 
 function tabLabel(tab: VisualTab): string {
   if (tab === "source") return "Source";
-  if (tab === "stock") return "Stock";
-  return "Thumbnail";
+  if (tab === "stock") return "Photos";
+  return "Illustration";
 }
 
 function selectedKindLine(candidate: DigestVisualCandidate): string {
@@ -54,8 +55,8 @@ function selectedKindLine(candidate: DigestVisualCandidate): string {
     Boolean(candidate.editOriginal) ||
     Boolean(candidate.editMetadata);
   if (candidate.type === "source") return edited ? "Edited source image" : "Source image";
-  if (candidate.type === "stock") return edited ? "Edited stock-style visual" : "Stock-style visual";
-  return edited ? "Edited AI-generated thumbnail" : "AI-generated thumbnail";
+  if (candidate.type === "stock") return edited ? "Edited photo-style visual" : "Photo-style visual";
+  return edited ? "Edited AI-generated illustration" : "AI-generated illustration";
 }
 
 function selectedKindDetail(candidate: DigestVisualCandidate): string {
@@ -65,7 +66,7 @@ function selectedKindDetail(candidate: DigestVisualCandidate): string {
   if (candidate.type === "stock") {
     return "Verify license and source before publication.";
   }
-  return "Generated with the digest thumbnail prompt from ingested research content. Review for scientific accuracy.";
+  return "Generated with the digest illustration prompt from ingested research content. Review for scientific accuracy.";
 }
 
 function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandidate[] {
@@ -245,7 +246,7 @@ export function DigestVisualPanel({
   const [localBundle, setLocalBundle] = useState<DigestVisualBundle | null>(bundle);
 
   useEffect(() => {
-    setLocalBundle(bundle);
+    if (bundle != null) setLocalBundle(bundle);
   }, [bundle]);
 
   useEffect(() => {
@@ -257,9 +258,9 @@ export function DigestVisualPanel({
       | "refresh_all"
       | "select"
       | "discard"
-      | "clear_ai"
       | "discover_source"
       | "generate_illustration"
+      | "generate_stock"
       | "save_cropped"
       | "save_digest_image_edit"
       | "revert_digest_candidate_image",
@@ -312,13 +313,17 @@ export function DigestVisualPanel({
       else if (action === "save_cropped") toast.success("Image snapshot saved");
       else if (action === "save_digest_image_edit") toast.success("Image saved");
       else if (action === "revert_digest_candidate_image") toast.success("Restored original image");
-      else if (action === "clear_ai") toast.success("AI-generated images cleared");
       else if (action === "discover_source") toast.success("Source images updated");
-      else if (action === "generate_illustration") toast.success("Thumbnail options updated");
+      else if (action === "generate_illustration") toast.success("New AI illustrations generated");
+      else if (action === "generate_stock") toast.success("AI photo options updated");
       else toast.success("Visual options updated");
     } catch (e) {
       if (action === "select") setOptimisticSelectedId(null);
-      toast.error(e instanceof Error ? e.message : "Visual request failed");
+      toast.error(
+        userFacingDbStatementTimeoutMessage(
+          e instanceof Error ? e.message : "Visual request failed",
+        ),
+      );
     } finally {
       setActionBusy(null);
     }
@@ -330,7 +335,6 @@ export function DigestVisualPanel({
   const sourceCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "source");
   const schematicCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "schematic");
   const stockCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "stock");
-  const hasAiCandidates = sorted.some((c) => c.aiGenerated);
   const selectedId = optimisticSelectedId ?? effectiveBundle?.selectedId ?? null;
   const active =
     effectiveBundle?.candidates.find((c) => c.id === selectedId) ??
@@ -359,12 +363,26 @@ export function DigestVisualPanel({
     });
   }, [effectiveBundle?.updatedAt]);
 
+  /** Only pick default tab when the chooser opens — not when candidates change (e.g. discard), so tabs stay put. */
+  const digestChooserWasOpenRef = useRef(false);
   useEffect(() => {
-    if (!digestQueueLayout || !selectorOpen) return;
+    if (!digestQueueLayout) {
+      digestChooserWasOpenRef.current = false;
+      return;
+    }
+    const wasOpen = digestChooserWasOpenRef.current;
+    digestChooserWasOpenRef.current = selectorOpen;
+    if (!selectorOpen || wasOpen) return;
     if (sourceCandidates.length > 0) setActiveTab("source");
     else if (schematicCandidates.length > 0) setActiveTab("schematic");
     else setActiveTab("stock");
-  }, [digestQueueLayout, selectorOpen, sourceCandidates.length, schematicCandidates.length]);
+  }, [
+    digestQueueLayout,
+    selectorOpen,
+    sourceCandidates.length,
+    schematicCandidates.length,
+    stockCandidates.length,
+  ]);
 
   const showChooser = digestQueueLayout || selectorOpen;
   const hasBundle = effectiveBundle && effectiveBundle.candidates.length > 0;
@@ -397,10 +415,16 @@ export function DigestVisualPanel({
       <section className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">Selected</p>
+            {!digestQueueLayout ? (
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+                Selected Visual
+              </p>
+            ) : null}
             {!activeSrc ? (
-              <p className="mt-1 max-w-md text-sm text-[color:var(--muted-foreground)]">
-                No visual selected. Choose a source image, generate a thumbnail, or find a stock-style visual.
+              <p
+                className={`max-w-md text-sm text-[color:var(--muted-foreground)] ${digestQueueLayout ? "" : "mt-1"}`}
+              >
+                No visual selected. Choose a source image, generate an illustration, or add AI photo options.
               </p>
             ) : null}
           </div>
@@ -465,10 +489,20 @@ export function DigestVisualPanel({
                 void api("generate_illustration");
               }}
             >
-              Thumbnail
+              Illustration
             </Button>
-            <Button type="button" variant="secondary" className="h-8 px-3 text-xs" disabled title="Coming soon">
-              Stock
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-8 px-3 text-xs"
+              disabled={disabled || working}
+              onClick={() => {
+                setActiveTab("stock");
+                setSelectorOpen(true);
+                void api("generate_stock");
+              }}
+            >
+              Photos
             </Button>
           </div>
         ) : null}
@@ -493,71 +527,70 @@ export function DigestVisualPanel({
 
       {showChooser ? (
         <section className="space-y-3 border-t border-[color:var(--border)]/40 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+            Acquisition modes
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
-              Acquisition modes
-            </p>
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                disabled={disabled || working || !hasAiCandidates}
-                onClick={() => void api("clear_ai")}
-                className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] disabled:opacity-40"
-              >
-                Clear AI images
-              </button>
-              <span className="text-[color:var(--muted-foreground)]/40" aria-hidden>
-                ·
-              </span>
-              <button
-                type="button"
-                disabled={disabled || working}
-                onClick={() => {
-                  /* Thumbnail tab: regenerate AI thumbnail only with the fixed template prompt */
-                  if (activeTab === "schematic") {
-                    void api("generate_illustration");
-                  } else {
-                    void api("refresh_all");
-                  }
-                }}
-                className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] disabled:opacity-40"
-              >
-                Refresh options
-              </button>
+            <div className="flex flex-wrap gap-1.5">
+              {(["source", "schematic", "stock"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab);
+                    if (tab === "source" && sourceCandidates.length === 0) {
+                      void api("discover_source");
+                    } else if (tab === "schematic" && schematicCandidates.length === 0) {
+                      void api("generate_illustration");
+                    }
+                  }}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    tab === activeTab
+                      ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/14 text-[color:var(--foreground)]"
+                      : "border-[color:var(--border)]/55 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/90 hover:text-[color:var(--foreground)]"
+                  }`}
+                >
+                  {tabLabel(tab)}
+                </button>
+              ))}
             </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {(["source", "schematic", "stock"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => {
-                  setActiveTab(tab);
-                  if (tab === "source" && sourceCandidates.length === 0) {
-                    void api("discover_source");
-                  } else if (tab === "schematic" && schematicCandidates.length === 0) {
-                    void api("generate_illustration");
-                  }
-                }}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  tab === activeTab
-                    ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/14 text-[color:var(--foreground)]"
-                    : "border-[color:var(--border)]/55 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/90 hover:text-[color:var(--foreground)]"
-                }`}
-              >
-                {tabLabel(tab)}
-              </button>
-            ))}
+            <div className="ml-auto flex shrink-0 items-center">
+              {activeTab === "schematic" ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="h-8 px-3 text-xs font-semibold"
+                  disabled={disabled || working}
+                  title="Runs the illustration model on this signal’s title and summary to add BioRender-style options."
+                  onClick={() => void api("generate_illustration")}
+                >
+                  Generate illustration
+                </Button>
+              ) : activeTab === "stock" ? (
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="h-8 px-3 text-xs font-semibold"
+                  disabled={disabled || working}
+                  title="Runs the photo-style agent on this signal (options appear when available)."
+                  onClick={() => void api("generate_stock")}
+                >
+                  Generate photos
+                </Button>
+              ) : null}
+            </div>
           </div>
           {!hasBundle ? (
             <p className="text-sm text-[color:var(--muted-foreground)]">
-              No candidates yet. Use Source or Thumbnail above, or Refresh options.
+              No candidates yet. Use Source, or switch to Illustration / Photos and tap Generate.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 sm:gap-3.5">
               {tabCandidates.length === 0 ? (
                 <p className="text-sm text-[color:var(--muted-foreground)]">
-                  {activeTab === "stock" ? "Stock image options are coming soon." : "No options in this tab yet."}
+                  {activeTab === "stock"
+                    ? "No photo options in this tab yet. Try Generate photos."
+                    : "No options in this tab yet. Try Generate illustration."}
                 </p>
               ) : (
                 tabCandidates.map((candidate) => (
