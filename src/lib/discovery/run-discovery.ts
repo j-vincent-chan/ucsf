@@ -106,7 +106,6 @@ function bucketFromDomain(sourceDomain: string | null): string {
   return "web_other";
 }
 
-const MAX_PER_SOURCE = 28;
 const MAX_FACULTY = 200;
 
 export async function runDiscovery(
@@ -114,6 +113,8 @@ export async function runDiscovery(
   options: {
     entityIds?: string[];
     daysBack?: number;
+    /** Cap PubMed / NIH / CT / news items collected per investigator per run (1–500). */
+    maxPerSource?: number;
     /** When set (e.g. cron with service role), only this tenant's faculty are processed. */
     communityId?: string;
   } = {},
@@ -121,9 +122,18 @@ export async function runDiscovery(
   const ENABLE_LAB_WEBSITE_SCRAPE = process.env.DISCOVER_LAB_WEBSITE_SCRAPE === "1";
   const note =
     "Lab website: currently disabled. NIH funding: set NIH profile ID on the watchlist (numeric); Discover queries the RePORTER API (~1 req/s per PI). Media: Google Alert + UCSF News when institution matches.";
+  const DEFAULT_DAYS_BACK = 730;
+  const MAX_DAYS_BACK = 3100;
+  const DEFAULT_MAX_PER_SOURCE = 250;
+  const ABSOLUTE_MAX_PER_SOURCE = 500;
+
   const daysBack = Math.min(
-    Math.max(options.daysBack ?? 365, 14),
-    730,
+    Math.max(options.daysBack ?? DEFAULT_DAYS_BACK, 14),
+    MAX_DAYS_BACK,
+  );
+  const maxPerSource = Math.min(
+    Math.max(options.maxPerSource ?? DEFAULT_MAX_PER_SOURCE, 1),
+    ABSOLUTE_MAX_PER_SOURCE,
   );
   const now = new Date();
   const mindate = new Date(now);
@@ -284,7 +294,7 @@ export async function runDiscovery(
         mindate,
         maxdate: now,
         trackedEntityId: ent.id,
-        maxResults: MAX_PER_SOURCE,
+        maxResults: maxPerSource,
         throttleMs: delay,
       });
       if (r.error) {
@@ -305,7 +315,7 @@ export async function runDiscovery(
       const r = await fetchNihReporterFundingCandidates({
         profileId: nihId,
         trackedEntityId: ent.id,
-        maxResults: MAX_PER_SOURCE,
+        maxResults: maxPerSource,
         mindate,
         maxdate: now,
       });
@@ -325,7 +335,7 @@ export async function runDiscovery(
         queryTerm: ctQ,
         institution: ent.institution,
         trackedEntityId: ent.id,
-        maxResults: MAX_PER_SOURCE,
+        maxResults: maxPerSource,
         minStudyFirstPostDate: trialMinPost,
       });
       if (r.error) {
@@ -343,7 +353,7 @@ export async function runDiscovery(
       const r = await fetchGoogleNewsRssCandidates({
         query: gaq,
         trackedEntityId: ent.id,
-        maxResults: MAX_PER_SOURCE,
+        maxResults: maxPerSource,
         notBefore: mindate,
         throttleMs: delay,
       });
@@ -362,7 +372,7 @@ export async function runDiscovery(
       const r = await fetchLabWebsiteHtmlCandidates({
         labWebsiteUrl: labSite,
         trackedEntityId: ent.id,
-        maxResults: MAX_PER_SOURCE,
+        maxResults: maxPerSource,
         notBefore: mindate,
         throttleMs: delay,
       });
@@ -393,7 +403,7 @@ export async function runDiscovery(
           lastName: ent.last_name,
           middleInitial: ent.middle_initial,
           trackedEntityId: ent.id,
-          maxResults: MAX_PER_SOURCE,
+          maxResults: maxPerSource,
         }),
       );
     }

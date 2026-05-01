@@ -98,6 +98,53 @@ function TrashIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function ClipboardCopyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+async function copyDigestVisualCandidate(candidate: DigestVisualCandidate): Promise<void> {
+  try {
+    if (candidate.kind === "url" && candidate.url?.trim()) {
+      await navigator.clipboard.writeText(candidate.url.trim());
+      toast.success("Image link copied");
+      return;
+    }
+    if (
+      candidate.kind === "inline" &&
+      candidate.base64 &&
+      candidate.mime?.startsWith("image/")
+    ) {
+      const bin = atob(candidate.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: candidate.mime });
+      await navigator.clipboard.write([new ClipboardItem({ [candidate.mime]: blob })]);
+      toast.success("Image copied");
+      return;
+    }
+    toast.error("Nothing to copy");
+  } catch {
+    toast.error("Copy failed");
+  }
+}
+
 function PreviewIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -446,9 +493,19 @@ export function DigestVisualPanel({
               title="Preview"
               aria-label="Preview selected visual"
               onClick={() => active && setImageEditor({ candidate: active, initialMode: "preview" })}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
             >
               <PreviewIcon />
+            </button>
+            <button
+              type="button"
+              disabled={!active || !activeSrc}
+              title="Copy image or link"
+              aria-label="Copy selected visual"
+              onClick={() => active && void copyDigestVisualCandidate(active)}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ClipboardCopyIcon />
             </button>
             <Button
               type="button"
@@ -486,7 +543,6 @@ export function DigestVisualPanel({
               onClick={() => {
                 setActiveTab("schematic");
                 setSelectorOpen(true);
-                void api("generate_illustration");
               }}
             >
               Illustration
@@ -540,8 +596,6 @@ export function DigestVisualPanel({
                     setActiveTab(tab);
                     if (tab === "source" && sourceCandidates.length === 0) {
                       void api("discover_source");
-                    } else if (tab === "schematic" && schematicCandidates.length === 0) {
-                      void api("generate_illustration");
                     }
                   }}
                   className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${

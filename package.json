@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
-    "readme-screenshots": "tsx scripts/readme-screenshots.ts"
+    "readme-screenshots": "tsx scripts/readme-screenshots.ts",
+    "build:scimago": "node scripts/build-scimago-lookup.mjs",
+    "discovery:backfill": "tsx scripts/discovery-backfill.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",

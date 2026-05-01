@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { ResearchDashboard } from "@/components/research-dashboard";
@@ -7,24 +9,47 @@ export const dynamic = "force-dynamic";
 
 const JUNCTION_LINK_CHUNK = 250;
 
+/** Stable key pagination — avoids missing rows; distinct from “recent imports only”. */
+const DASH_ITEMS_PAGE = 1000;
+/** Safety valve (raise if a tenant exceeds this). */
+const DASH_ITEMS_HARD_CAP = 100_000;
+
+const SOURCE_ITEM_FIELDS =
+  "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id";
+
+async function fetchAllCommunitySourceItemsForDashboard(
+  supabase: SupabaseClient<Database>,
+  communityId: string,
+): Promise<{ data: RawItem[]; error: { message: string } | null }> {
+  const out: RawItem[] = [];
+  for (let offset = 0; offset < DASH_ITEMS_HARD_CAP; offset += DASH_ITEMS_PAGE) {
+    const { data, error } = await supabase
+      .from("source_items")
+      .select(SOURCE_ITEM_FIELDS)
+      .eq("community_id", communityId)
+      .order("id", { ascending: true })
+      .range(offset, offset + DASH_ITEMS_PAGE - 1);
+    if (error) {
+      return { data: [], error: { message: error.message } };
+    }
+    const chunk = (data ?? []) as RawItem[];
+    out.push(...chunk);
+    if (chunk.length < DASH_ITEMS_PAGE) break;
+  }
+  return { data: out, error: null };
+}
+
 export default async function DashboardPage() {
   const { profile } = await requireProfile();
   const communityId = profile.community_id;
   const supabase = await createClient();
 
-  const [entitiesRes, itemsRes, recentRes] = await Promise.all([
+  const [entitiesRes, itemsPaged, recentRes, countRes] = await Promise.all([
     supabase
       .from("tracked_entities")
       .select("id, name, created_at, active, entity_type, member_status, institution")
       .eq("community_id", communityId),
-    supabase
-      .from("source_items")
-      .select(
-        "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id",
-      )
-      .eq("community_id", communityId)
-      .order("created_at", { ascending: false })
-      .limit(15000),
+    fetchAllCommunitySourceItemsForDashboard(supabase, communityId),
     supabase
       .from("source_items")
       .select(
@@ -40,9 +65,13 @@ export default async function DashboardPage() {
       .eq("community_id", communityId)
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("source_items")
+      .select("*", { count: "exact", head: true })
+      .eq("community_id", communityId),
   ]);
 
-  const err = entitiesRes.error ?? itemsRes.error;
+  const err = entitiesRes.error ?? itemsPaged.error ?? recentRes.error ?? countRes.error;
   if (err) {
     return (
       <div className="mx-auto max-w-3xl">
@@ -53,7 +82,7 @@ export default async function DashboardPage() {
   }
 
   const entities = (entitiesRes.data ?? []) as RawEntity[];
-  const rawItems = (itemsRes.data ?? []) as RawItem[];
+  const rawItems = itemsPaged.data;
   const itemIds = rawItems.map((r) => r.id);
   const linksByItem = new Map<string, string[]>();
   if (itemIds.length > 0) {
@@ -90,7 +119,15 @@ export default async function DashboardPage() {
     };
   });
 
-  const payload = buildDashboardPayload(entities, items);
+  const expectedCount =
+    typeof countRes.count === "number" && Number.isFinite(countRes.count)
+      ? countRes.count
+      : null;
+  const payload = {
+    ...buildDashboardPayload(entities, items),
+    analyticsSourceItemsLoaded: items.length,
+    analyticsSourceItemsExpected: expectedCount,
+  };
 
   const recentRows = recentRes.data ?? [];
   type RecentRow = (typeof recentRows)[number];
@@ -114,5 +151,10 @@ export default async function DashboardPage() {
     entityName: entityName(r),
   }));
 
-  return <ResearchDashboard data={payload} recentItems={recentItems} />;
+  return (
+    <ResearchDashboard
+      data={payload}
+      recentItems={recentItems}
+    />
+  );
 }

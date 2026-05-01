@@ -46,6 +46,7 @@ import {
   cumulativeTotalSeries,
   effectiveMonthKey,
   filterMonthlyByRange,
+  formatDashboardSnapshotLabel,
   rangeStartMonth,
   sumMonthlyKpis,
   topEntitiesInRange,
@@ -562,14 +563,20 @@ export function ResearchDashboard({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
-            Dashboard of research activity across the community, built from curated signals.
-          </p>
-          <p className="mt-2 text-xs text-[color:var(--muted-foreground)]/85">
-            Updated {new Date(data.snapshotAt).toLocaleString()}
-          </p>
+          <div className="mt-2 space-y-2">
+            <div className="max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
+              Dashboard of research activity across the community, built from curated signals.
+            </div>
+            <div className="text-xs text-[color:var(--muted-foreground)]/85">
+              Updated{" "}
+              <time dateTime={data.snapshotAt}>
+                {data.snapshotDisplayUtc ??
+                  formatDashboardSnapshotLabel(data.snapshotAt)}
+              </time>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
+        <div className="flex max-w-md flex-col items-start gap-2 sm:items-end sm:text-right">
           <RangeToggle
             value={range}
             onChange={(r) => {
@@ -579,7 +586,14 @@ export function ResearchDashboard({
               setGrantDrillAgency(null);
             }}
           />
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
+          <p className="text-xs leading-snug text-[color:var(--muted-foreground)]">
+            Charts bucket signals by <span className="font-medium">publication month</span> (award dates for
+            grants), not import date.{" "}
+            <span className="font-medium">YTD</span> is Jan through this month (UTC). Use{" "}
+            <span className="font-medium">2Y</span> or <span className="font-medium">Max</span> to see
+            backfilled history.
+          </p>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-[color:var(--muted-foreground)] sm:justify-end">
             <input
               type="checkbox"
               checked={showCumulativeLine}
@@ -590,6 +604,19 @@ export function ResearchDashboard({
           </label>
         </div>
       </div>
+
+      {data.analyticsSourceItemsExpected != null &&
+      data.analyticsSourceItemsLoaded !== data.analyticsSourceItemsExpected ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-50"
+        >
+          Dashboard charts loaded <strong>{data.analyticsSourceItemsLoaded}</strong> of{" "}
+          <strong>{data.analyticsSourceItemsExpected}</strong> signals for this community (counts come from a
+          separate query). If those numbers differ, graphs can miss recent months. Refresh the page; if it
+          persists, the analytics fetch may need a higher cap or there may be an API error during pagination.
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <KpiCard label="Faculty tracked" value={data.watchlistFaculty} sub="ImmunoX roster" />

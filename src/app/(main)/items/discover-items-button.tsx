@@ -36,7 +36,7 @@ export function DiscoverItemsButton() {
       const res = await fetch("/api/discover-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ daysBack: 730, maxPerSource: 250 }),
         signal: abortRef.current.signal,
       });
       const data = (await res.json()) as DiscoverResponse & { error?: string };

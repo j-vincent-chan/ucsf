@@ -3,7 +3,8 @@
  * approximate (recent-year style IF); unknown journals sort as 0 unless
  * `raw_summary` includes an explicit `Impact factor: N` or `JIF: N` segment.
  */
-function normJournal(s: string): string {
+/** Normalize journal labels for SCImago / heuristic substring matching. */
+export function normJournalForImpactMatch(s: string): string {
   return s
     .toLowerCase()
     .normalize("NFKD")
@@ -102,26 +103,6 @@ export function parseJournalNameFromRawSummaryForPaper(raw: string | null | unde
   return v || null;
 }
 
-/** First segment of our PubMed-style raw_summary (full journal name from discovery) when no "journal:" key. */
-function journalLabelFromRawSummaryHeuristic(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const first = raw
-    .split(" · ")
-    .map((x) => x.trim())
-    .find(
-      (x) =>
-        x.length > 0 &&
-        !x.toLowerCase().startsWith("doi:") &&
-        !x.toLowerCase().startsWith("last_author:") &&
-        !x.toLowerCase().startsWith("penultimate_author:") &&
-        !x.toLowerCase().startsWith("journal:") &&
-        !x.toLowerCase().startsWith("impact factor:") &&
-        !x.toLowerCase().startsWith("impact_factor:") &&
-        !x.toLowerCase().startsWith("jif:"),
-    );
-  return first || null;
-}
-
 /**
  * `Author. "Title." **Journal** 2026; …` — the journal is between the close-quote and
  * 4-digit year. Using this fixes ordering when the stored `raw_summary` journal
@@ -147,6 +128,26 @@ function firstMatchingPatternScore(n: string): number {
   return 0;
 }
 
+/** @internal Used by SCImago lookup when `journal:` is missing from raw_summary. */
+export function journalLabelFromRawSummaryHeuristic(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const first = raw
+    .split(" · ")
+    .map((x) => x.trim())
+    .find(
+      (x) =>
+        x.length > 0 &&
+        !x.toLowerCase().startsWith("doi:") &&
+        !x.toLowerCase().startsWith("last_author:") &&
+        !x.toLowerCase().startsWith("penultimate_author:") &&
+        !x.toLowerCase().startsWith("journal:") &&
+        !x.toLowerCase().startsWith("impact factor:") &&
+        !x.toLowerCase().startsWith("impact_factor:") &&
+        !x.toLowerCase().startsWith("jif:"),
+    );
+  return first || null;
+}
+
 /**
  * @param formattedReferenceLine – optional generated reference line; journal is parsed from
  *   `… "Title." **Journal** YYYY;` which aligns IF ordering with what editors see in preview.
@@ -161,7 +162,7 @@ export function approxImpactFactorForPaperSort(
     parseJournalNameFromRawSummaryForPaper(rawSummary) ?? journalLabelFromRawSummaryHeuristic(rawSummary);
   const fromLine = extractJournalFromFormattedReferenceLine(formattedReferenceLine);
   return Math.max(
-    rawLabel ? firstMatchingPatternScore(normJournal(rawLabel)) : 0,
-    fromLine ? firstMatchingPatternScore(normJournal(fromLine)) : 0,
+    rawLabel ? firstMatchingPatternScore(normJournalForImpactMatch(rawLabel)) : 0,
+    fromLine ? firstMatchingPatternScore(normJournalForImpactMatch(fromLine)) : 0,
   );
 }

@@ -121,9 +121,13 @@ The app expects `tracked_entities.first_name` (and related columns). Run `supaba
 - Turn on email confirmation and password policies in Supabase for real deployments.
 - Review RLS policies before production data lands; this app assumes a trusted internal audience.
 - Automated discovery is supported via Vercel Cron:
-  - Set `CRON_SECRET` in your Vercel environment variables.
-  - `vercel.json` schedules `GET /api/discover-items` nightly at `00:00` (UTC).
-  - The endpoint validates `Authorization: Bearer <CRON_SECRET>` and runs discovery with the service-role client.
+  - Set `CRON_SECRET` in your Vercel **production** environment variables (same value Vercel sends as `Authorization: Bearer …`). If this is missing or mismatched, scheduled runs return **401** and nothing is discovered.
+  - `vercel.json` schedules `GET /api/discover-items` nightly at `00:00` **UTC** (evening prior in US timezones).
+  - The endpoint validates `Authorization: Bearer <CRON_SECRET>` and runs discovery with the service-role client using a **rolling window** (`DISCOVERY_CRON_DAYS_BACK`, default 56 days) and `DISCOVERY_CRON_MAX_PER_SOURCE` (default 80) so nightly jobs finish within the route time limit.
+- Manual **Discover new items** in the UI uses a wider window (~730 days) and higher per-source caps (PubMed paginates up to that cap per investigator).
+- **Deep history** (e.g. 2018–present): run locally so serverless timeouts do not apply:
+  - `npm run discovery:backfill -- --days=2920 --max-per-source=400`
+  - Requires `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` in `.env.local`.
 
 ## Commands
 

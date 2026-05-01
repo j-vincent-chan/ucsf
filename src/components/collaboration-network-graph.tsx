@@ -131,33 +131,45 @@ export function CollaborationNetworkGraph({
     CLUSTER_OPTIONS.find((o) => o.id === clusterMode)?.label ?? "Clusters";
 
   const NODE_REL_SIZE = 5;
+  /** force-graph draws nodes at node.x/node.y; it does not translate the canvas to each node. */
   const paintNodeLabels = useCallback(
     (node: object, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      const n = node as GraphNode;
+      const n = node as GraphNode & { x?: number; y?: number };
+      const nx = n.x;
+      const ny = n.y;
+      if (typeof nx !== "number" || typeof ny !== "number" || !Number.isFinite(nx) || !Number.isFinite(ny)) {
+        return;
+      }
+
       const r = nodeRadius(n, NODE_REL_SIZE);
-      const mainPx = Math.max(7.5, Math.min(15, 11 / globalScale));
+      const mainPx = Math.max(8, Math.min(15, 12 / globalScale));
       const subPx = Math.max(6.5, Math.min(13, 9.25 / globalScale));
-      const name = truncateLabel(n.name, 32);
+      const name = truncateLabel(n.name, 36);
       const cluster = truncateLabel(n.clusterKey, 40);
 
-      ctx.textAlign = "center";
+      const pad = 6 / globalScale;
+      const x = nx + r + pad;
+      const lineGap = mainPx * 1.18;
+      const blockH = lineGap + subPx * 1.05;
+      const yName = ny - blockH / 2;
+
+      ctx.textAlign = "left";
       ctx.textBaseline = "top";
       const halo = Math.max(2, 2.8 / globalScale);
-      const yName = r + 5 / globalScale;
 
       ctx.font = `600 ${mainPx}px ui-sans-serif, system-ui, sans-serif`;
       ctx.lineWidth = halo;
-      ctx.strokeStyle = "rgba(255, 252, 248, 0.95)";
-      ctx.fillStyle = "rgba(28, 26, 24, 0.94)";
-      ctx.strokeText(name, 0, yName);
-      ctx.fillText(name, 0, yName);
+      ctx.strokeStyle = "rgba(255, 252, 248, 0.96)";
+      ctx.fillStyle = "rgba(28, 26, 24, 0.95)";
+      ctx.strokeText(name, x, yName);
+      ctx.fillText(name, x, yName);
 
       ctx.font = `500 ${subPx}px ui-sans-serif, system-ui, sans-serif`;
-      const yCluster = yName + mainPx * 1.22;
+      const yCluster = yName + lineGap;
       ctx.strokeStyle = "rgba(255, 252, 248, 0.9)";
       ctx.fillStyle = "rgba(88, 82, 74, 0.92)";
-      ctx.strokeText(cluster, 0, yCluster);
-      ctx.fillText(cluster, 0, yCluster);
+      ctx.strokeText(cluster, x, yCluster);
+      ctx.fillText(cluster, x, yCluster);
     },
     [],
   );
@@ -247,7 +259,7 @@ export function CollaborationNetworkGraph({
             return `${gn.name}\n${clusterDimensionTitle}: ${gn.clusterKey}`;
           }}
           nodeColor={(n) => (n as GraphNode).color}
-          nodeCanvasObjectMode={() => "after"}
+          nodeCanvasObjectMode="after"
           nodeCanvasObject={paintNodeLabels}
           linkLabel={(l) => {
             const L = l as GraphLink;
@@ -305,7 +317,7 @@ export function CollaborationNetworkGraph({
             ))}
             {bundle.legend.length > 16 ? (
               <span className="self-center text-xs text-[color:var(--muted-foreground)]">
-                +{bundle.legend.length - 16} more clusters (hover nodes for full labels)
+                +{bundle.legend.length - 16} more clusters (see labels on the graph)
               </span>
             ) : null}
           </div>

@@ -310,11 +310,15 @@ export function SummaryEditor({
             Hide editor
           </Button>
         ) : null}
-        <Button type="button" variant="ghost" className="h-9 px-3 text-sm text-[color:var(--muted-foreground)]" onClick={copyText}>
-          <span className="inline-flex items-center gap-1.5">
-            <CopyIcon className="h-4 w-4" />
-            Copy
-          </span>
+        <Button
+          type="button"
+          variant="ghost"
+          title="Copy summary"
+          aria-label="Copy summary"
+          className="h-9 w-9 shrink-0 p-0 text-[color:var(--muted-foreground)]"
+          onClick={copyText}
+        >
+          <CopyIcon className="mx-auto h-4 w-4" />
         </Button>
       </div>
     </div>

@@ -4,6 +4,12 @@ import type { DiscoveryCandidate } from "./types";
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
+/** esearch page size; esummary is batched to the same chunk size. */
+const PMID_PAGE = 200;
+
+/** Hard safety cap per investigator per run (even deep backfills). */
+const PMID_HARD_CAP = 5000;
+
 function ncbiParams(): string {
   const key = process.env.NCBI_API_KEY?.trim();
   return key ? `&api_key=${encodeURIComponent(key)}` : "";
@@ -63,12 +69,31 @@ export type PubMedFetchOptions = {
   mindate: Date;
   maxdate: Date;
   trackedEntityId: string;
+  /** Max PubMed IDs to fetch (paginates esearch until reached or no more hits). */
   maxResults: number;
   throttleMs: number;
 };
 
 function termAlreadyHasAffiliationFilter(term: string): boolean {
   return /\[[^\]]*affiliation[^\]]*\]/i.test(term);
+}
+
+async function esummaryBatch(
+  ids: string[],
+  throttleMs: number,
+): Promise<{ result?: Record<string, unknown> & { uids?: string[] } }> {
+  await sleep(throttleMs);
+  const sumUrl =
+    `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${ids.join(",")}${ncbiParams()}`;
+  const uRes = await fetch(sumUrl, {
+    headers: { "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)" },
+  });
+  if (!uRes.ok) {
+    return {};
+  }
+  return (await uRes.json()) as {
+    result?: Record<string, unknown> & { uids?: string[] };
+  };
 }
 
 export async function fetchPubMedCandidates(
@@ -88,73 +113,92 @@ export async function fetchPubMedCandidates(
   const md = `${opts.mindate.getFullYear()}/${String(opts.mindate.getMonth() + 1).padStart(2, "0")}/${String(opts.mindate.getDate()).padStart(2, "0")}`;
   const xd = `${opts.maxdate.getFullYear()}/${String(opts.maxdate.getMonth() + 1).padStart(2, "0")}/${String(opts.maxdate.getDate()).padStart(2, "0")}`;
 
-  const searchUrl =
-    `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&retmax=${opts.maxResults}` +
-    `&sort=pub+date&datetype=pdat&mindate=${md}&maxdate=${xd}` +
-    `&term=${encodeURIComponent(term)}${ncbiParams()}`;
+  const cap = Math.min(Math.max(opts.maxResults, 1), PMID_HARD_CAP);
+  const allIds: string[] = [];
+  let retstart = 0;
+  let totalAvailable = Number.POSITIVE_INFINITY;
 
   try {
-    await sleep(opts.throttleMs);
-    const sRes = await fetch(searchUrl, {
-      headers: { "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)" },
-    });
-    if (!sRes.ok) {
-      return { candidates, error: `PubMed esearch ${sRes.status}` };
-    }
-    const sJson = (await sRes.json()) as {
-      esearchresult?: { idlist?: string[] };
-    };
-    const ids = sJson.esearchresult?.idlist?.filter(Boolean) ?? [];
-    if (ids.length === 0) return { candidates };
+    while (allIds.length < cap && retstart < totalAvailable) {
+      const batchWant = Math.min(PMID_PAGE, cap - allIds.length);
+      if (batchWant <= 0) break;
 
-    await sleep(opts.throttleMs);
-    const sumUrl =
-      `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${ids.join(",")}${ncbiParams()}`;
-    const uRes = await fetch(sumUrl, {
-      headers: { "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)" },
-    });
-    if (!uRes.ok) {
-      return { candidates, error: `PubMed esummary ${uRes.status}` };
-    }
-    const uJson = (await uRes.json()) as {
-      result?: Record<string, unknown> & { uids?: string[] };
-    };
-    const result = uJson.result;
-    const uids = result?.uids;
-    if (!result || !Array.isArray(uids)) {
-      return { candidates };
-    }
-    for (const uid of uids) {
-      const art = result[uid] as Record<string, unknown> | undefined;
-      if (!art || typeof art !== "object") continue;
-      const title = String(art.title ?? "").trim();
-      if (!title) continue;
-      const pmid = String(art.uid ?? uid);
-      const published = parseSortPubDate(
-        typeof art.sortpubdate === "string" ? art.sortpubdate : undefined,
-      );
-      const journal =
-        typeof art.fulljournalname === "string" ? art.fulljournalname : "";
-      const doiEntry = Array.isArray(art.articleids)
-        ? (art.articleids as { idtype?: string; value?: string }[]).find(
-            (x) => x.idtype === "doi",
-          )
-        : undefined;
-      const doi = doiEntry?.value;
-      const lastAuthor = extractLastAuthorName(art);
+      await sleep(opts.throttleMs);
+      const searchUrl =
+        `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&retmax=${batchWant}&retstart=${retstart}` +
+        `&sort=pub+date&datetype=pdat&mindate=${md}&maxdate=${xd}` +
+        `&term=${encodeURIComponent(term)}${ncbiParams()}`;
 
-      candidates.push({
-        tracked_entity_id: opts.trackedEntityId,
-        title,
-        source_url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
-        source_domain: "pubmed.ncbi.nlm.nih.gov",
-        published_at: published,
-        raw_summary: [journal, doi ? `doi:${doi}` : null, lastAuthor ? `last_author:${lastAuthor}` : null]
-          .filter(Boolean)
-          .join(" · ") || null,
-        source_type: "pubmed",
-        category: "paper" as ItemCategory,
+      const sRes = await fetch(searchUrl, {
+        headers: { "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)" },
       });
+      if (!sRes.ok) {
+        return { candidates, error: `PubMed esearch ${sRes.status}` };
+      }
+      const sJson = (await sRes.json()) as {
+        esearchresult?: {
+          idlist?: string[];
+          count?: string;
+        };
+      };
+      const er = sJson.esearchresult;
+      if (typeof er?.count === "string") {
+        const c = Number.parseInt(er.count, 10);
+        if (Number.isFinite(c)) totalAvailable = c;
+      }
+
+      const ids = er?.idlist?.filter(Boolean) ?? [];
+      if (ids.length === 0) break;
+
+      allIds.push(...ids);
+      retstart += ids.length;
+
+      if (ids.length < batchWant) break;
+    }
+
+    if (allIds.length === 0) return { candidates };
+
+    const idsForSummary = allIds.slice(0, cap);
+    for (let i = 0; i < idsForSummary.length; i += PMID_PAGE) {
+      const chunk = idsForSummary.slice(i, i + PMID_PAGE);
+      const uJson = await esummaryBatch(chunk, opts.throttleMs);
+      const result = uJson.result;
+      const uids = result?.uids;
+      if (!result || !Array.isArray(uids)) continue;
+
+      for (const uid of uids) {
+        const art = result[uid] as Record<string, unknown> | undefined;
+        if (!art || typeof art !== "object") continue;
+        const title = String(art.title ?? "").trim();
+        if (!title) continue;
+        const pmid = String(art.uid ?? uid);
+        const published = parseSortPubDate(
+          typeof art.sortpubdate === "string" ? art.sortpubdate : undefined,
+        );
+        const journal =
+          typeof art.fulljournalname === "string" ? art.fulljournalname : "";
+        const doiEntry = Array.isArray(art.articleids)
+          ? (art.articleids as { idtype?: string; value?: string }[]).find(
+              (x) => x.idtype === "doi",
+            )
+          : undefined;
+        const doi = doiEntry?.value;
+        const lastAuthor = extractLastAuthorName(art);
+
+        candidates.push({
+          tracked_entity_id: opts.trackedEntityId,
+          title,
+          source_url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`,
+          source_domain: "pubmed.ncbi.nlm.nih.gov",
+          published_at: published,
+          raw_summary:
+            [journal, doi ? `doi:${doi}` : null, lastAuthor ? `last_author:${lastAuthor}` : null]
+              .filter(Boolean)
+              .join(" · ") || null,
+          source_type: "pubmed",
+          category: "paper" as ItemCategory,
+        });
+      }
     }
   } catch (e) {
     return {

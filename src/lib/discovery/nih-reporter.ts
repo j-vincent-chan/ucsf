@@ -190,98 +190,111 @@ export async function fetchNihReporterFundingCandidates(
     return { candidates, error: "NIH profile ID out of range" };
   }
 
-  const payload = {
-    criteria: {
-      pi_profile_ids: [numericId],
-    },
-    include_fields: [
-      "ApplId",
-      "ProjectNum",
-      "ProjectTitle",
-      "AwardNoticeDate",
-      "ProjectStartDate",
-      "DateAdded",
-      "ProjectDetailUrl",
-      "AbstractText",
-      "Organization",
-      "AwardAmount",
-      "AgencyIcAdmin",
-    ],
-    sort_field: "award_notice_date",
-    sort_order: "desc",
-    offset: 0,
-    limit: 500,
-  };
+  const pageLimit = 500;
+  /** Pull multiple pages until empty or deep enough for mindate filtering + maxResults cap. */
+  const offsetHardStop = 5000;
 
   try {
-    const res = await fetch(API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)",
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      return {
-        candidates,
-        error: `NIH RePORTER ${res.status}`,
-      };
-    }
-    const json = (await res.json()) as {
-      results?: ReporterProjectRow[];
-    };
-    const rows = json.results ?? [];
     const built: DiscoveryCandidate[] = [];
+    let offset = 0;
 
-    for (const row of rows) {
-      const activity = effectiveActivityDate(row);
-      if (
-        !activity ||
-        activity < opts.mindate ||
-        activity > opts.maxdate
-      ) {
-        continue;
+    while (offset < offsetHardStop) {
+      const payload = {
+        criteria: {
+          pi_profile_ids: [numericId],
+        },
+        include_fields: [
+          "ApplId",
+          "ProjectNum",
+          "ProjectTitle",
+          "AwardNoticeDate",
+          "ProjectStartDate",
+          "DateAdded",
+          "ProjectDetailUrl",
+          "AbstractText",
+          "Organization",
+          "AwardAmount",
+          "AgencyIcAdmin",
+        ],
+        sort_field: "award_notice_date",
+        sort_order: "desc",
+        offset,
+        limit: pageLimit,
+      };
+
+      const res = await fetch(API, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        return {
+          candidates,
+          error: `NIH RePORTER ${res.status}`,
+        };
+      }
+      const json = (await res.json()) as {
+        results?: ReporterProjectRow[];
+      };
+      const rows = json.results ?? [];
+      if (rows.length === 0) break;
+
+      for (const row of rows) {
+        const activity = effectiveActivityDate(row);
+        if (
+          !activity ||
+          activity < opts.mindate ||
+          activity > opts.maxdate
+        ) {
+          continue;
+        }
+
+        const titleBase = (row.project_title ?? "").trim();
+        const proj = (row.project_num ?? "").trim();
+        const title =
+          titleBase && proj
+            ? `${titleBase} (${proj})`
+            : titleBase || proj || `NIH award ${row.appl_id ?? ""}`.trim();
+
+        const url =
+          (row.project_detail_url ?? "").trim() ||
+          (row.appl_id != null
+            ? `https://reporter.nih.gov/project-details/${row.appl_id}`
+            : null);
+
+        const org = row.organization?.org_name?.trim();
+        const ic = row.agency_ic_admin?.abbreviation ?? row.agency_ic_admin?.name;
+        const amount =
+          row.award_amount != null && row.award_amount > 0
+            ? `Award: $${row.award_amount.toLocaleString("en-US")}`
+            : null;
+        const abstract = row.abstract_text
+          ? row.abstract_text.replace(/\s+/g, " ").trim().slice(0, 420)
+          : null;
+        const raw_summary = [ic, org, amount, abstract]
+          .filter(Boolean)
+          .join(" · ")
+          .slice(0, 2000) || null;
+
+        built.push({
+          tracked_entity_id: opts.trackedEntityId,
+          title,
+          source_url: url,
+          source_domain: "reporter.nih.gov",
+          published_at: publishedAt(row),
+          raw_summary,
+          source_type: "reporter",
+          category: "funding",
+          nih_project_num: proj || undefined,
+        });
       }
 
-      const titleBase = (row.project_title ?? "").trim();
-      const proj = (row.project_num ?? "").trim();
-      const title =
-        titleBase && proj
-          ? `${titleBase} (${proj})`
-          : titleBase || proj || `NIH award ${row.appl_id ?? ""}`.trim();
-
-      const url =
-        (row.project_detail_url ?? "").trim() ||
-        (row.appl_id != null
-          ? `https://reporter.nih.gov/project-details/${row.appl_id}`
-          : null);
-
-      const org = row.organization?.org_name?.trim();
-      const ic = row.agency_ic_admin?.abbreviation ?? row.agency_ic_admin?.name;
-      const amount =
-        row.award_amount != null && row.award_amount > 0
-          ? `Award: $${row.award_amount.toLocaleString("en-US")}`
-          : null;
-      const abstract = row.abstract_text
-        ? row.abstract_text.replace(/\s+/g, " ").trim().slice(0, 420)
-        : null;
-      const raw_summary = [ic, org, amount, abstract]
-        .filter(Boolean)
-        .join(" · ")
-        .slice(0, 2000) || null;
-
-      built.push({
-        tracked_entity_id: opts.trackedEntityId,
-        title,
-        source_url: url,
-        source_domain: "reporter.nih.gov",
-        published_at: publishedAt(row),
-        raw_summary,
-        source_type: "reporter",
-        category: "funding",
-        nih_project_num: proj || undefined,
-      });
+      if (rows.length < pageLimit) break;
+      offset += pageLimit;
+      await sleep(NIH_REPORTER_THROTTLE_MS);
     }
 
     const nums = built

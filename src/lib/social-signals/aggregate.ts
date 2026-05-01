@@ -17,6 +17,9 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
   const bskyMention =
     process.env.BSKY_MENTION_HANDLE?.trim() || process.env.BSKY_IDENTIFIER?.trim();
 
+  const linkedinToken = process.env.LINKEDIN_ACCESS_TOKEN?.trim();
+  const linkedinUrn = process.env.LINKEDIN_ORGANIZATION_URN?.trim();
+
   const sourceMeta: SourceMeta = {
     x: {
       configured: Boolean(bearer && (tab === "following" ? listId : xHandle)),
@@ -27,9 +30,8 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
       detail: undefined,
     },
     linkedin: {
-      configured: Boolean(
-        process.env.LINKEDIN_ACCESS_TOKEN?.trim() && process.env.LINKEDIN_ORGANIZATION_URN?.trim(),
-      ),
+      configured: Boolean(linkedinToken && linkedinUrn),
+      comingSoon: true,
       detail: undefined,
     },
   };
@@ -97,6 +99,12 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
 
   await Promise.all(tasks);
 
+  const syncedAt = new Date().toISOString();
+  const accounts = {
+    xDisplay: xHandle ? `@${xHandle.replace(/^@/, "")}` : undefined,
+    blueskyDisplay: bskyId?.trim() || undefined,
+  };
+
   if (!process.env.X_BEARER_TOKEN?.trim()) {
     sourceMeta.x = {
       configured: false,
@@ -110,8 +118,18 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
     };
   }
 
+  if (!linkedinToken && !linkedinUrn) {
+    sourceMeta.linkedin = {
+      ...sourceMeta.linkedin,
+      comingSoon: true,
+      detail: "LinkedIn publishing is not available yet. Reserved for future org-based workflows.",
+    };
+  }
+
   return {
     posts: sortPosts(collected),
     sourceMeta,
+    syncedAt,
+    accounts,
   };
 }

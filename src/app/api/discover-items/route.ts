@@ -5,14 +5,34 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile, getSessionUser } from "@/lib/auth";
 import { runDiscovery } from "@/lib/discovery/run-discovery";
 
-export const maxDuration = 120;
+/** Long runs: deep backfills should use `scripts/discovery-backfill.ts` locally (no serverless cap). */
+export const maxDuration = 300;
 
 const bodySchema = z
   .object({
     entityIds: z.array(z.string().uuid()).optional(),
-    daysBack: z.number().int().min(14).max(730).optional(),
+    daysBack: z.number().int().min(14).max(3100).optional(),
+    maxPerSource: z.number().int().min(1).max(500).optional(),
   })
   .strict();
+
+function cronDaysBack(): number {
+  const raw = process.env.DISCOVERY_CRON_DAYS_BACK?.trim();
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 14 && n <= 3100) return n;
+  }
+  return 56;
+}
+
+function cronMaxPerSource(): number {
+  const raw = process.env.DISCOVERY_CRON_MAX_PER_SOURCE?.trim();
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 500) return n;
+  }
+  return 80;
+}
 
 function isCronAuthorized(req: Request): boolean {
   const secret = process.env.CRON_SECRET?.trim();
@@ -49,8 +69,14 @@ export async function GET(req: Request) {
   let labWebsiteCandidates = 0;
   let note = "";
 
+  const dBack = cronDaysBack();
+  const mps = cronMaxPerSource();
   for (const c of communities ?? []) {
-    const result = await runDiscovery(supabase, { communityId: c.id });
+    const result = await runDiscovery(supabase, {
+      communityId: c.id,
+      daysBack: dBack,
+      maxPerSource: mps,
+    });
     communitiesOut.push({ id: c.id, slug: c.slug, name: c.name, result });
     inserted += result.inserted;
     skippedDuplicates += result.skippedDuplicates;
@@ -75,6 +101,8 @@ export async function GET(req: Request) {
     labWebsiteFacultyWithUrl,
     labWebsiteCandidates,
     note,
+    /** Echo so scheduled runs can confirm the rolling window in Vercel logs. */
+    cronConfig: { daysBack: dBack, maxPerSource: mps },
     communities: communitiesOut,
   });
 }

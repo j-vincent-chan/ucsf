@@ -220,7 +220,12 @@ export async function POST(req: Request) {
   const pmid =
     item.source_type === "pubmed" ? extractPubmedPmidFromUrl(item.source_url ?? null) : null;
   const pubmedSummary = pmid ? await fetchPubmedArticleSummaryByPmid(pmid) : null;
-  const paperAuthorList = limitPaperAuthorList(pubmedSummary?.authorList ?? null);
+  const paperAuthorListFull =
+    item.category === "paper" ? (pubmedSummary?.authorList?.trim() || null) : null;
+  const paperAuthorListTruncated =
+    item.category === "paper" ? limitPaperAuthorList(pubmedSummary?.authorList ?? null) : null;
+  /** Prompt uses full PubMed list; UI can swap to truncated display without regenerating. */
+  const paperAuthorListForPrompt = paperAuthorListFull;
 
   const pubmedBibliographyLines: string[] = [];
   if (pubmedSummary && item.category === "paper") {
@@ -237,7 +242,7 @@ export async function POST(req: Request) {
     `Title: ${item.title}`,
     `Type: ${item.source_type}`,
     item.category ? `Category: ${item.category}` : "",
-    paperAuthorList ? `Paper Author List: ${paperAuthorList}` : "",
+    paperAuthorListForPrompt ? `Paper Author List: ${paperAuthorListForPrompt}` : "",
     ...pubmedBibliographyLines,
     piName ? `Funding PI Name: ${piName}` : "",
     item.nih_project_num ? `Funding Project Number: ${item.nih_project_num}` : "",
@@ -271,7 +276,9 @@ export async function POST(req: Request) {
     const reference =
       item.category === "paper"
         ? polishPaperReferenceLine(
-            dedupeAdjacentReferenceSegments(ensurePaperAuthorPrefix(rawReference, paperAuthorList)),
+            dedupeAdjacentReferenceSegments(
+              ensurePaperAuthorPrefix(rawReference, paperAuthorListForPrompt),
+            ),
             pubmedSummary,
           )
         : item.category === "funding"
@@ -280,7 +287,12 @@ export async function POST(req: Request) {
     if (!reference) {
       return NextResponse.json({ error: "No reference generated" }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, reference });
+    return NextResponse.json({
+      ok: true,
+      reference,
+      paper_author_list_full: paperAuthorListFull ?? undefined,
+      paper_author_list_truncated: paperAuthorListTruncated ?? undefined,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "OpenAI request failed" },

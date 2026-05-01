@@ -43,6 +43,9 @@ export type DashboardPayload = {
   memberJoins: MemberJoinPoint[];
   entityNameById: Record<string, string>;
   entityMetaById: Record<string, DashboardEntityMeta>;
+  /** When present and mismatched, charts may omit recent signals (fetch incomplete). */
+  analyticsSourceItemsLoaded?: number;
+  analyticsSourceItemsExpected?: number | null;
   /** Rows for client-side “top entities” and month drill-down on the volume chart */
   itemsForVolume: {
     id: string;
@@ -61,6 +64,8 @@ export type DashboardPayload = {
     created_at: string;
   }[];
   snapshotAt: string;
+  /** Pre-rendered on server so client matches SSR (avoids hydration from locale/ICU differences). */
+  snapshotDisplayUtc: string;
   /** Current snapshot KPIs (not range-dependent) */
   watchlistFaculty: number;
 };
@@ -92,19 +97,47 @@ export type RawItem = {
   tracked_entity_ids?: string[];
 };
 
-function monthKeyFromIso(iso: string): string {
-  if (!iso || iso.length < 7) return "";
-  return iso.slice(0, 7);
+const YM_KEY = /^\d{4}-\d{2}$/;
+
+function isValidYm(s: string): boolean {
+  return YM_KEY.test(s);
+}
+
+/**
+ * Normalize DB/API timestamps to `YYYY-MM` (UTC month). Prefer prefix match over blind
+ * `slice(0, 7)` so Postgres-style strings (`2026-04-03 07:00:00+00`) always bucket correctly.
+ * Handles occasional `Date` / numeric ms values from serializers.
+ */
+function calendarMonthKey(raw: unknown): string {
+  if (raw == null) return "";
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) return "";
+    return `${raw.getUTCFullYear()}-${String(raw.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return "";
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  const s = String(raw).trim();
+  if (!s) return "";
+  const head = s.match(/^(\d{4}-\d{2})/);
+  if (head?.[1]) return head[1];
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  return "";
 }
 
 export function effectiveMonthKey(
   item: Pick<RawItem, "published_at" | "found_at" | "created_at">,
 ): string {
   return (
-    monthKeyFromIso(item.published_at ?? "") ||
-    monthKeyFromIso(item.found_at) ||
-    monthKeyFromIso(item.created_at) ||
-    monthKeyFromIso(new Date().toISOString())
+    calendarMonthKey(item.published_at) ||
+    calendarMonthKey(item.found_at) ||
+    calendarMonthKey(item.created_at) ||
+    calendarMonthKey(new Date().toISOString())
   );
 }
 
@@ -164,6 +197,15 @@ function currentMonthKey(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+/** Single source of truth for “Updated …” on the dashboard (server + client must match). */
+export function formatDashboardSnapshotLabel(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    timeZone: "UTC",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 export function buildDashboardPayload(
   entities: RawEntity[],
   items: RawItem[],
@@ -187,16 +229,20 @@ export function buildDashboardPayload(
   let maxM = "0000-01";
   for (const item of items) {
     const k = effectiveMonthKey(item);
+    if (!isValidYm(k)) continue;
     if (k < minM) minM = k;
     if (k > maxM) maxM = k;
   }
   for (const e of entities) {
-    const k = monthKeyFromIso(e.created_at);
-    if (k && k < minM) minM = k;
-    if (k && k > maxM) maxM = k;
+    const k = calendarMonthKey(e.created_at);
+    if (!k || !isValidYm(k)) continue;
+    if (k < minM) minM = k;
+    if (k > maxM) maxM = k;
   }
 
   const cur = currentMonthKey();
+  if (!isValidYm(minM)) minM = cur;
+  if (!isValidYm(maxM)) maxM = cur;
   if (maxM < cur) maxM = cur;
   if (minM > maxM || minM === "9999-12") {
     minM = maxM;
@@ -209,6 +255,7 @@ export function buildDashboardPayload(
 
   for (const item of items) {
     const ym = effectiveMonthKey(item);
+    if (!isValidYm(ym)) continue;
     const row = monthMap.get(ym);
     if (!row) continue;
 
@@ -244,7 +291,7 @@ export function buildDashboardPayload(
     joinMap.set(ym, 0);
   }
   for (const e of entities) {
-    const ym = monthKeyFromIso(e.created_at);
+    const ym = calendarMonthKey(e.created_at);
     if (!joinMap.has(ym)) {
       joinMap.set(ym, 0);
     }
@@ -282,13 +329,15 @@ export function buildDashboardPayload(
     };
   });
 
+  const snapshotAt = new Date().toISOString();
   return {
     monthly,
     memberJoins,
     entityNameById,
     entityMetaById,
     itemsForVolume,
-    snapshotAt: new Date().toISOString(),
+    snapshotAt,
+    snapshotDisplayUtc: formatDashboardSnapshotLabel(snapshotAt),
     watchlistFaculty,
   };
 }

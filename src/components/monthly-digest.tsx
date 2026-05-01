@@ -31,10 +31,15 @@ import {
 } from "@/lib/digest-visual-types";
 import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
 import { DigestVisualPanel } from "@/components/digest-visual-panel";
+import scimagoSjrLookupJson from "@/data/scimago-sjr-lookup.json";
+import type { ScimagoSjrLookup } from "@/lib/scimago-sjr-lookup";
 import {
   buildDigestItemSortMap,
+  type ReferencePublicationsSortMode,
   sortOutputPreviewReferenceRows,
 } from "@/lib/digest-reference-sort";
+
+const SCIMAGO_SJR_LOOKUP = scimagoSjrLookupJson as ScimagoSjrLookup;
 
 function CollapseChevron({ open }: { open: boolean }) {
   return (
@@ -94,6 +99,8 @@ type BulkRefResult = {
   title: string;
   reference?: string;
   error?: string;
+  paper_author_list_full?: string | null;
+  paper_author_list_truncated?: string | null;
 };
 
 const AI_MODEL_OPTIONS = [
@@ -115,24 +122,56 @@ function extractJournalFromRawSummary(rawSummary: string | null): string | null 
   return v || null;
 }
 
+/** Swap paper author prefix for preview/copy; matches `reference-author-sort-key` title boundary. */
+function applyPaperAuthorTruncateDisplay(
+  reference: string,
+  truncateAuthors: boolean,
+  full?: string | null,
+  trunc?: string | null,
+): string {
+  const f = full?.trim();
+  const t = trunc?.trim();
+  if (!f || !t || f === t) return reference;
+  const text = reference.replace(/[\r\n\t]+/g, " ").trim();
+  const m = /^(.+?)(\.\s+(?:["\u201c]))/.exec(text);
+  if (!m) return reference;
+  const chosen = truncateAuthors ? t : f;
+  return `${chosen}${m[2]}${text.slice(m[0].length)}`;
+}
+
+function displayReferenceLine(r: BulkRefResult, truncatePaperAuthors: boolean): string | undefined {
+  if (!r.reference) return undefined;
+  return applyPaperAuthorTruncateDisplay(
+    r.reference,
+    truncatePaperAuthors,
+    r.paper_author_list_full,
+    r.paper_author_list_truncated,
+  );
+}
+
 function formatBulkReferenceList(
   results: BulkRefResult[],
-  opts: { numberedLines: boolean; monthLabel: string },
+  opts: { numberedLines: boolean; monthLabel: string; truncatePaperAuthors: boolean },
 ): string {
   const header = `References — ${opts.monthLabel}`;
-  const lines = formatReferenceLines(results, opts.numberedLines);
+  const lines = formatReferenceLines(results, opts.numberedLines, opts.truncatePaperAuthors);
   return [header, "", ...lines].join("\n");
 }
 
-function formatReferenceLines(results: BulkRefResult[], numberedLines: boolean): string[] {
+function formatReferenceLines(
+  results: BulkRefResult[],
+  numberedLines: boolean,
+  truncatePaperAuthors: boolean,
+): string[] {
   if (numberedLines) {
-    return results.map((r, idx) =>
-      r.reference ? `${idx + 1}. ${r.reference}` : `${idx + 1}. ${r.title} — [${r.error ?? "Failed"}]`,
-    );
+    return results.map((r, idx) => {
+      const line = displayReferenceLine(r, truncatePaperAuthors);
+      return line ? `${idx + 1}. ${line}` : `${idx + 1}. ${r.title} — [${r.error ?? "Failed"}]`;
+    });
   }
   const ok = results.filter((r) => r.reference);
   const bad = results.filter((r) => r.error);
-  const lines: string[] = [...ok.map((r) => r.reference!)];
+  const lines: string[] = [...ok.map((r) => displayReferenceLine(r, truncatePaperAuthors)!)];
   if (bad.length > 0) {
     lines.push("", "--- Could not generate ---");
     for (const r of bad) {
@@ -810,10 +849,11 @@ function DigestItemRow({
                     void copyBriefPreview();
                   }}
                   disabled={!activeSummary}
+                  title="Copy summary"
+                  aria-label="Copy summary"
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ReferencesCopyIcon className="h-4 w-4 text-current" />
-                  Copy summary
+                  <ReferencesCopyIcon className="h-4 w-4 shrink-0 text-current" />
                 </button>
                 <button
                   type="button"
@@ -914,17 +954,19 @@ function DigestItemRow({
           <div className="mt-4 grid items-start gap-6 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.14fr)]">
             <div className="min-w-0 space-y-5">
               <div>
-                <div className="mb-2 flex items-baseline justify-between gap-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
                   <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
                     Summary
                   </h4>
                   <button
                     type="button"
-                    onClick={copyBriefPreview}
+                    onClick={() => void copyBriefPreview()}
                     disabled={!activeSummary}
-                    className="text-[11px] font-medium text-[color:var(--muted-foreground)] underline-offset-2 transition-colors hover:text-[color:var(--foreground)] hover:underline disabled:pointer-events-none disabled:opacity-40"
+                    title="Copy summary"
+                    aria-label="Copy summary"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
                   >
-                    Copy
+                    <ReferencesCopyIcon className="h-4 w-4 text-current" />
                   </button>
                 </div>
                 <div className="rounded-lg border border-[color:var(--border)]/45 bg-[color:var(--background)]/55 px-3 py-3 sm:px-4">
@@ -1096,6 +1138,9 @@ export function MonthlyDigestView({
   const [expandedDigestItemId, setExpandedDigestItemId] = useState<string | null>(items[0]?.id ?? null);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [numberedLines, setNumberedLines] = useState(true);
+  /** When true, paper references show first 3 authors + et al.; when false, full PubMed author list. */
+  const [truncatePaperAuthors, setTruncatePaperAuthors] = useState(true);
+  const [referenceSortMode, setReferenceSortMode] = useState<ReferencePublicationsSortMode>("impact");
   const [expandedCategories, setExpandedCategories] = useState<Set<RefCategoryKey>>(
     () => new Set<RefCategoryKey>(["papers"]),
   );
@@ -1340,9 +1385,20 @@ export function MonthlyDigestView({
             model: aiModel.trim() || undefined,
           }),
         });
-        const data = (await res.json()) as { error?: string; reference?: string };
+        const data = (await res.json()) as {
+          error?: string;
+          reference?: string;
+          paper_author_list_full?: string | null;
+          paper_author_list_truncated?: string | null;
+        };
         if (!res.ok || !data.reference) throw new Error(data.error ?? "Request failed");
-        out.push({ source_item_id: item.id, title: item.title, reference: data.reference });
+        out.push({
+          source_item_id: item.id,
+          title: item.title,
+          reference: data.reference,
+          paper_author_list_full: data.paper_author_list_full,
+          paper_author_list_truncated: data.paper_author_list_truncated,
+        });
       } catch (e) {
         out.push({
           source_item_id: item.id,
@@ -1381,10 +1437,22 @@ export function MonthlyDigestView({
   const orderedResultsByCategory = useMemo(
     () =>
       ({
-        papers: sortOutputPreviewReferenceRows(resultsByCategory.papers, "papers", itemSortById),
-        funding: sortOutputPreviewReferenceRows(resultsByCategory.funding, "funding", itemSortById),
+        papers: sortOutputPreviewReferenceRows(
+          resultsByCategory.papers,
+          "papers",
+          itemSortById,
+          referenceSortMode,
+          SCIMAGO_SJR_LOOKUP,
+        ),
+        funding: sortOutputPreviewReferenceRows(
+          resultsByCategory.funding,
+          "funding",
+          itemSortById,
+          referenceSortMode,
+          SCIMAGO_SJR_LOOKUP,
+        ),
       }) as const,
-    [itemSortById, resultsByCategory.papers, resultsByCategory.funding],
+    [itemSortById, referenceSortMode, resultsByCategory.papers, resultsByCategory.funding],
   );
   const combinedOutputText = useMemo(() => {
     const lines: string[] = [`References — ${monthLabel}`, ""];
@@ -1392,11 +1460,11 @@ export function MonthlyDigestView({
       const results = orderedResultsByCategory[category.key];
       if (results.length === 0) continue;
       lines.push(`${category.title}`);
-      lines.push(...formatReferenceLines(results, numberedLines));
+      lines.push(...formatReferenceLines(results, numberedLines, truncatePaperAuthors));
       lines.push("");
     }
     return lines.join("\n").trim();
-  }, [categories, orderedResultsByCategory, numberedLines, monthLabel]);
+  }, [categories, orderedResultsByCategory, numberedLines, truncatePaperAuthors, monthLabel]);
 
   async function copyText(text: string, successMsg: string) {
     if (!text.trim()) {
@@ -1644,15 +1712,15 @@ export function MonthlyDigestView({
                     </p>
                   </button>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2.5">
+                <div className="mt-3 flex flex-wrap items-center gap-2.5 overflow-visible">
                   <button
                     type="button"
                     onClick={() => setShowAdvancedSettings((open) => !open)}
-                    className="rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 py-1 text-xs font-semibold text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)]"
+                    className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 text-xs font-semibold text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)]"
                   >
                     {showAdvancedSettings ? "Hide generation settings" : "Generation settings"}
                   </button>
-                  <label className="flex items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]">
+                  <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 text-xs font-medium text-[color:var(--muted-foreground)]">
                     <input
                       type="checkbox"
                       checked={numberedLines}
@@ -1660,6 +1728,32 @@ export function MonthlyDigestView({
                       className="rounded border-[color:var(--border)]"
                     />
                     Numbered lines
+                  </label>
+                  <label
+                    className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]"
+                    title="Papers: on = first 3 authors + et al.; off = full author list (requires generated references from updated API)."
+                  >
+                    <input
+                      type="checkbox"
+                      checked={truncatePaperAuthors}
+                      onChange={(e) => setTruncatePaperAuthors(e.target.checked)}
+                      className="rounded border-[color:var(--border)]"
+                      aria-label="Format: truncate paper authors to three plus et al."
+                    />
+                    Format: Truncate
+                  </label>
+                  <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-xs font-medium text-[color:var(--muted-foreground)]">
+                    <span className="shrink-0 whitespace-nowrap">Sort</span>
+                    <Select
+                      value={referenceSortMode}
+                      onChange={(e) => setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)}
+                      className="box-border h-9 min-h-9 !w-[min(17rem,calc(100vw-8rem))] min-w-[12.5rem] rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
+                      aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
+                    >
+                      <option value="impact">Journal impact · Funding amount</option>
+                      <option value="recent">Most recent</option>
+                      <option value="alphabetical">Alphabetical (1st author)</option>
+                    </Select>
                   </label>
                 </div>
                 {showAdvancedSettings ? (
@@ -1757,7 +1851,11 @@ export function MonthlyDigestView({
                     }
                   >
                     {categories.map((category) => {
-                      const lines = formatReferenceLines(orderedResultsByCategory[category.key], numberedLines);
+                      const lines = formatReferenceLines(
+                        orderedResultsByCategory[category.key],
+                        numberedLines,
+                        truncatePaperAuthors,
+                      );
                       if (lines.length === 0) return null;
                       return (
                         <section key={category.key} className="border-b border-[color:var(--border)]/45 py-4 first:pt-0 last:border-b-0 last:pb-0">
@@ -1770,6 +1868,7 @@ export function MonthlyDigestView({
                                   formatBulkReferenceList(orderedResultsByCategory[category.key], {
                                     numberedLines,
                                     monthLabel,
+                                    truncatePaperAuthors,
                                   }),
                                   `${category.title} references copied`,
                                 )
@@ -1816,8 +1915,8 @@ export function MonthlyDigestView({
               <span className="font-semibold text-[color:var(--foreground)]">{totalSelectedCount}</span> selected ·{" "}
               <span className="font-semibold text-[color:var(--foreground)]">{totalGeneratedCount}</span> generated
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--muted)]/15 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]">
+            <div className="flex flex-wrap items-center gap-2 overflow-visible sm:gap-3">
+              <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--muted)]/15 px-2.5 text-xs font-medium text-[color:var(--muted-foreground)]">
                 <input
                   type="checkbox"
                   checked={numberedLines}
@@ -1826,11 +1925,37 @@ export function MonthlyDigestView({
                 />
                 Format: Numbering
               </label>
+              <label
+                className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--muted)]/15 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]"
+                title="Papers: on = first 3 authors + et al.; off = full author list."
+              >
+                <input
+                  type="checkbox"
+                  checked={truncatePaperAuthors}
+                  onChange={(e) => setTruncatePaperAuthors(e.target.checked)}
+                  className="rounded border-[color:var(--border)]"
+                  aria-label="Format: truncate paper authors to three plus et al."
+                />
+                Format: Truncate
+              </label>
+              <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-xs font-medium text-[color:var(--muted-foreground)]">
+                <span className="shrink-0 whitespace-nowrap">Sort</span>
+                <Select
+                  value={referenceSortMode}
+                  onChange={(e) => setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)}
+                  className="box-border h-9 min-h-9 !w-[min(16rem,calc(100vw-9rem))] min-w-[12rem] rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
+                  aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
+                >
+                  <option value="impact">Journal impact · Funding amount</option>
+                  <option value="recent">Most recent</option>
+                  <option value="alphabetical">A–Z (1st author)</option>
+                </Select>
+              </label>
               <Button
                 type="button"
                 onClick={() => void runCategoryGeneration(stickyGenerateTarget)}
                 disabled={Boolean(runningCategory) || selectedByCategory[stickyGenerateTarget].size === 0}
-                className="h-8 px-3 text-xs shadow-[0_10px_18px_-14px_rgba(87,57,45,0.85)]"
+                className="h-8 shrink-0 px-3 text-xs shadow-[0_10px_18px_-14px_rgba(87,57,45,0.85)]"
               >
                 Generate selected
               </Button>
@@ -1839,7 +1964,7 @@ export function MonthlyDigestView({
                 variant="secondary"
                 onClick={() => void runGenerateAllSelectedCategories()}
                 disabled={Boolean(runningCategory) || totalSelectedCount === 0}
-                className="h-8 px-3 text-xs"
+                className="h-8 shrink-0 px-3 text-xs"
               >
                 Generate all categories
               </Button>
@@ -1848,7 +1973,7 @@ export function MonthlyDigestView({
                 variant="secondary"
                 onClick={() => void copyText(combinedOutputText, "Combined references copied")}
                 disabled={!combinedOutputText}
-                className="h-10 min-h-10 w-10 min-w-10 shrink-0 overflow-visible p-0 leading-none"
+                className="h-8 min-h-8 w-8 min-w-8 shrink-0 overflow-visible p-0 leading-none"
                 aria-label="Copy output"
                 title="Copy output"
               >

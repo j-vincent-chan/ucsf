@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { requireProfile } from "@/lib/auth";
-import { SocialSignalsView } from "@/components/social-signals-view";
+import { SocialSignalsWorkspace } from "@/components/social-signals/social-signals-workspace";
 import { fetchSocialFeed } from "@/lib/social-signals/aggregate";
 import type { SocialFeedTab } from "@/lib/social-signals/types";
 
@@ -16,7 +16,15 @@ export default async function SocialSignalsPage({ searchParams }: { searchParams
   await requireProfile();
   const sp = await searchParams;
   const tab: SocialFeedTab = sp.tab === "mentions" ? "mentions" : "following";
-  const { posts, sourceMeta } = await fetchSocialFeed(tab);
+  const { posts, sourceMeta, syncedAt, accounts } = await fetchSocialFeed(tab);
 
-  return <SocialSignalsView tab={tab} posts={posts} sourceMeta={sourceMeta} />;
+  return (
+    <SocialSignalsWorkspace
+      initialLiveTab={tab}
+      livePosts={posts}
+      sourceMeta={sourceMeta}
+      syncedAt={syncedAt}
+      accounts={accounts}
+    />
+  );
 }

@@ -1,5 +1,8 @@
 import { authorNameMatchesAnyPerson } from "@/lib/person-name-match";
-import { approxImpactFactorForPaperSort } from "@/lib/journal-impact-sort";
+import { fundingAwardAmountUsdFromRawSummary } from "@/lib/funding-award-amount-from-summary";
+import type { ScimagoSjrLookup } from "@/lib/scimago-sjr-lookup";
+import { scimagoSjrScoreForPaper } from "@/lib/scimago-sjr-lookup";
+import { fundingPiFamilySortKey, paperFirstAuthorFamilySortKey } from "@/lib/reference-author-sort-key";
 
 /** Minimal fields for ordering references in the monthly digest output preview. */
 export type DigestReferenceSortableItem = {
@@ -13,6 +16,8 @@ export type DigestReferenceSortableItem = {
   /** Primary `tracked_entity_id` on the source item (funding: contact / lead PI in our model). */
   primary_tracked_entity_id: string | null;
   investigators: { id: string; name: string }[];
+  published_at: string | null;
+  found_at: string;
 };
 
 export type ReferencePreviewRow = {
@@ -20,7 +25,13 @@ export type ReferencePreviewRow = {
   title: string;
   reference?: string;
   error?: string;
+  /** PubMed author lists for papers — enables author truncate toggle in preview/copy without regenerating. */
+  paper_author_list_full?: string | null;
+  paper_author_list_truncated?: string | null;
 };
+
+/** How Publications / references are ordered in the digest preview and bulk copy. */
+export type ReferencePublicationsSortMode = "recent" | "alphabetical" | "impact";
 
 function paperLedByWatchlistInv(item: DigestReferenceSortableItem): boolean {
   if (item.category !== "paper") return false;
@@ -32,37 +43,67 @@ function paperLedByWatchlistInv(item: DigestReferenceSortableItem): boolean {
   return false;
 }
 
-function fundingLeadPIOnWatchlist(item: DigestReferenceSortableItem): boolean {
-  if (item.category !== "funding") return false;
-  if (!item.primary_tracked_entity_id) return false;
-  return item.investigators.some((i) => i.id === item.primary_tracked_entity_id);
+function signalDateMs(item: DigestReferenceSortableItem | undefined): number {
+  if (!item) return 0;
+  const iso = item.published_at ?? item.found_at;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : 0;
 }
 
 /**
- * **Papers:** (1) Journal impact (approximate IF, highest first) — the main signal editors expect.
- * (2) If IF ties, watchlist-led (last or co–last author matches a linked investigator) is listed first.
- * (3) Title, last. **Funding:** lead PI on watchlist first, then title.
+ * **Papers — recent:** newest `published_at` / `found_at` first, then title.
+ * **Papers — alphabetical:** first author’s family name (from formatted reference line), then title.
+ * **Papers — impact:** Impact factor sort via SCImago SJR (highest first); ties → watchlist-led paper first → title.
+ * **Funding — recent:** same date rule; title tie-break.
+ * **Funding — alphabetical:** PI family name from formatted reference (first segment before `.`), then title.
+ * **Funding — impact:** parsed award USD from `raw_summary` (highest first; NIH: `Award: $…`); ties → title.
  */
 export function sortOutputPreviewReferenceRows(
   results: ReferencePreviewRow[],
   category: "papers" | "funding",
   byId: Map<string, DigestReferenceSortableItem>,
+  mode: ReferencePublicationsSortMode,
+  scimagoLookup: ScimagoSjrLookup | null,
 ): ReferencePreviewRow[] {
   return [...results].sort((a, b) => {
     const A = byId.get(a.source_item_id);
     const B = byId.get(b.source_item_id);
+
     if (category === "papers") {
-      const ia = A ? approxImpactFactorForPaperSort(A.raw_summary, a.reference) : 0;
-      const ib = B ? approxImpactFactorForPaperSort(B.raw_summary, b.reference) : 0;
-      if (ib !== ia) return ib - ia; // higher IF first
-      const pa = A ? (paperLedByWatchlistInv(A) ? 1 : 0) : 0;
-      const pb = B ? (paperLedByWatchlistInv(B) ? 1 : 0) : 0;
-      if (pb !== pa) return pb - pa;
+      if (mode === "recent") {
+        const tb = signalDateMs(B);
+        const ta = signalDateMs(A);
+        if (tb !== ta) return tb - ta;
+      } else if (mode === "alphabetical") {
+        const ka = paperFirstAuthorFamilySortKey(a.reference);
+        const kb = paperFirstAuthorFamilySortKey(b.reference);
+        const cmp = ka.localeCompare(kb, undefined, { sensitivity: "base" });
+        if (cmp !== 0) return cmp;
+      } else {
+        const ia = A ? scimagoSjrScoreForPaper(scimagoLookup, A.raw_summary, a.reference) : 0;
+        const ib = B ? scimagoSjrScoreForPaper(scimagoLookup, B.raw_summary, b.reference) : 0;
+        if (ib !== ia) return ib - ia;
+        const pa = A ? (paperLedByWatchlistInv(A) ? 1 : 0) : 0;
+        const pb = B ? (paperLedByWatchlistInv(B) ? 1 : 0) : 0;
+        if (pb !== pa) return pb - pa;
+      }
     } else {
-      const fa = A ? (fundingLeadPIOnWatchlist(A) ? 1 : 0) : 0;
-      const fb = B ? (fundingLeadPIOnWatchlist(B) ? 1 : 0) : 0;
-      if (fa !== fb) return fb - fa;
+      if (mode === "recent") {
+        const tb = signalDateMs(B);
+        const ta = signalDateMs(A);
+        if (tb !== ta) return tb - ta;
+      } else if (mode === "alphabetical") {
+        const ka = fundingPiFamilySortKey(a.reference);
+        const kb = fundingPiFamilySortKey(b.reference);
+        const cmp = ka.localeCompare(kb, undefined, { sensitivity: "base" });
+        if (cmp !== 0) return cmp;
+      } else {
+        const fa = A ? fundingAwardAmountUsdFromRawSummary(A.raw_summary) : 0;
+        const fb = B ? fundingAwardAmountUsdFromRawSummary(B.raw_summary) : 0;
+        if (fb !== fa) return fb - fa;
+      }
     }
+
     return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
   });
 }
@@ -78,6 +119,8 @@ export function buildDigestItemSortMap(
     | "penultimate_author_name"
     | "primary_tracked_entity_id"
     | "investigators"
+    | "published_at"
+    | "found_at"
   >[],
 ): Map<string, DigestReferenceSortableItem> {
   const m = new Map<string, DigestReferenceSortableItem>();
