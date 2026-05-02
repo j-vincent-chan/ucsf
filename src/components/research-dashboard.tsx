@@ -22,17 +22,23 @@ import {
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-const CollaborationNetworkGraph = dynamic(
+const CollaborationLandscape = dynamic(
   () =>
-    import("@/components/collaboration-network-graph").then((mod) => mod.CollaborationNetworkGraph),
+    import("@/components/collaboration-landscape").then((mod) => mod.CollaborationLandscape),
   {
     ssr: false,
     loading: () => (
-      <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-4 text-sm text-[color:var(--muted-foreground)]">
-        Loading collaboration graph…
+      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-4 text-sm text-[color:var(--muted-foreground)]">
+        Loading collaboration landscape…
       </div>
     ),
   },
+);
+
+const CollaborationLandscapeDialog = dynamic(
+  () =>
+    import("@/components/collaboration-landscape").then((mod) => mod.CollaborationLandscapeDialog),
+  { ssr: false },
 );
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory } from "@/types/database";
@@ -362,6 +368,7 @@ export function ResearchDashboard({
   const [journalDrillJournal, setJournalDrillJournal] = useState<string | null>(null);
   const [grantDrillAgency, setGrantDrillAgency] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set());
+  const [landscapeDialogOpen, setLandscapeDialogOpen] = useState(false);
 
   const filteredMonthly = useMemo(
     () => filterMonthlyByRange(data.monthly, range),
@@ -884,20 +891,32 @@ export function ResearchDashboard({
       </div>
 
       <Card>
-        <CardTitle>Collaboration network (range)</CardTitle>
+        <CardTitle>Collaboration landscape</CardTitle>
         <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-          Investigators from your watchlist; lines show co-listed publications and funding signals in the
-          selected range. Use the cluster control to color by research role, program tier, or detected
-          collaboration groups on this network.
+          Interactive preview of investigator ties from your watchlist. Open the full view for tables, the inspector,
+          cluster legend, 3D explore, and exports — the landscape uses its own time horizon and edge lenses on top of
+          the signal library (independent of the charts above).
         </p>
         <div className="mt-4 min-w-0">
-          <CollaborationNetworkGraph
-            items={itemsInRange}
+          <CollaborationLandscape
+            variant="embed"
+            onRequestExpand={() => setLandscapeDialogOpen(true)}
+            items={data.itemsForVolume}
             entityNameById={data.entityNameById}
             entityMetaById={data.entityMetaById}
             deletingIds={deletingIds}
           />
         </div>
+        {landscapeDialogOpen ? (
+          <CollaborationLandscapeDialog
+            open={landscapeDialogOpen}
+            onClose={() => setLandscapeDialogOpen(false)}
+            items={data.itemsForVolume}
+            entityNameById={data.entityNameById}
+            entityMetaById={data.entityMetaById}
+            deletingIds={deletingIds}
+          />
+        ) : null}
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
