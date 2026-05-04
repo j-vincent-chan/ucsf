@@ -78,6 +78,8 @@ export interface Database {
           updated_at: string;
           /** App login handle (email-style); password is stored as bcrypt in password_hash (server-only column). */
           login_username: string | null;
+          /** X OAuth 2.0 tokens for posting; written server-side only; never expose to client. */
+          x_oauth: Json | null;
         };
         Insert: {
           id: string;
@@ -86,12 +88,14 @@ export interface Database {
           community_id: string;
           created_at?: string;
           updated_at?: string;
+          x_oauth?: Json | null;
         };
         Update: {
           full_name?: string | null;
           role?: ProfileRole;
           community_id?: string;
           updated_at?: string;
+          x_oauth?: Json | null;
         };
         Relationships: [];
       };
@@ -337,7 +341,10 @@ export type Summary = Tables["summaries"]["Row"];
 export type Profile = Tables["profiles"]["Row"];
 export type Community = Tables["communities"]["Row"];
 
-/** Profile row plus embedded tenant name from `community:communities(...)` selects. */
-export type ProfileWithCommunity = Profile & {
+/**
+ * Profile row plus embedded tenant — excludes `x_oauth` so routine `getProfile()` reads never pull X tokens into memory.
+ * Settings loads OAuth status via a dedicated admin query.
+ */
+export type ProfileWithCommunity = Omit<Profile, "x_oauth"> & {
   community: Pick<Community, "name" | "slug" | "social_settings"> | null;
 };

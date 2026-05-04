@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SocialPostAccountBranding } from "./social-post-card";
-import type { SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
+import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
 import type { DashboardCounts, SocialWorkspaceSection } from "@/lib/social-signals/workspace-types";
 import {
   INITIAL_ANALYTICS,
@@ -65,29 +65,50 @@ export function SocialSignalsWorkspace({
 }) {
   const [section, setSection] = useState<SocialWorkspaceSection>("dashboard");
   const [composerOpen, setComposerOpen] = useState(false);
+  /** Live ingest bundle; updated when Live listening calls Refresh so production env issues surface in the sidebar. */
+  const [live, setLive] = useState(() => ({
+    posts: livePosts,
+    sourceMeta,
+    syncedAt,
+    accounts,
+  }));
+
+  useEffect(() => {
+    setLive({ posts: livePosts, sourceMeta, syncedAt, accounts });
+  }, [livePosts, sourceMeta, syncedAt, accounts]);
+
+  const handleLiveIngest = useCallback((feed: AggregatedFeed) => {
+    setLive({
+      posts: feed.posts,
+      sourceMeta: feed.sourceMeta,
+      syncedAt: feed.syncedAt,
+      accounts: feed.accounts,
+    });
+  }, []);
+
   /** Demo workspace queue — shown on Dashboard only; Feed tab is live ingest. */
   const posts = INITIAL_WORKSPACE_POSTS;
 
   const accountBranding = useMemo((): SocialPostAccountBranding => {
     return {
       x:
-        accounts.xName || accounts.xDisplay || accounts.xAvatarUrl
+        live.accounts.xName || live.accounts.xDisplay || live.accounts.xAvatarUrl
           ? {
-              displayName: accounts.xName,
-              handle: accounts.xDisplay,
-              avatarUrl: accounts.xAvatarUrl,
+              displayName: live.accounts.xName,
+              handle: live.accounts.xDisplay,
+              avatarUrl: live.accounts.xAvatarUrl,
             }
           : undefined,
       bluesky:
-        accounts.blueskyName || accounts.blueskyDisplay || accounts.blueskyAvatarUrl
+        live.accounts.blueskyName || live.accounts.blueskyDisplay || live.accounts.blueskyAvatarUrl
           ? {
-              displayName: accounts.blueskyName,
-              handle: accounts.blueskyDisplay,
-              avatarUrl: accounts.blueskyAvatarUrl,
+              displayName: live.accounts.blueskyName,
+              handle: live.accounts.blueskyDisplay,
+              avatarUrl: live.accounts.blueskyAvatarUrl,
             }
           : undefined,
     };
-  }, [accounts]);
+  }, [live.accounts]);
 
   const dashboardCounts: DashboardCounts = useMemo(() => {
     const draftPosts = posts.filter((p) => p.status === "draft").length;
@@ -115,16 +136,16 @@ export function SocialSignalsWorkspace({
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-[color:var(--border)]/40 pt-4 text-xs text-[color:var(--muted-foreground)]">
             <span>
               <span className="font-semibold text-[color:var(--foreground)]">X</span>{" "}
-              {accounts.xDisplay ?? "—"} · {sourceMeta.x.configured ? <span className="text-emerald-700 dark:text-emerald-400">Connected</span> : <span>Not connected</span>}
+              {live.accounts.xDisplay ?? "—"} · {live.sourceMeta.x.configured ? <span className="text-emerald-700 dark:text-emerald-400">Connected</span> : <span>Not connected</span>}
             </span>
             <span>
               <span className="font-semibold text-[color:var(--foreground)]">Bluesky</span>{" "}
-              {accounts.blueskyDisplay ?? "—"} · {sourceMeta.bluesky.configured ? <span className="text-emerald-700 dark:text-emerald-400">Connected</span> : <span>Not connected</span>}
+              {live.accounts.blueskyDisplay ?? "—"} · {live.sourceMeta.bluesky.configured ? <span className="text-emerald-700 dark:text-emerald-400">Connected</span> : <span>Not connected</span>}
             </span>
             <span>
               Last ingest:{" "}
               <span className="font-medium text-[color:var(--foreground)]">
-                {new Date(syncedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                {new Date(live.syncedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
               </span>
             </span>
           </div>
@@ -173,12 +194,17 @@ export function SocialSignalsWorkspace({
                     />
                   ))}
                 </div>
-                <LiveListeningFeed initialTab={initialLiveTab} initialPosts={livePosts} />
+                <LiveListeningFeed
+                  initialTab={initialLiveTab}
+                  initialPosts={live.posts}
+                  sourceMeta={live.sourceMeta}
+                  onIngestSuccess={handleLiveIngest}
+                />
               </div>
               <div className="min-w-0 space-y-4">
                 <RecommendationPanel items={INITIAL_RECOMMENDATIONS} onAction={() => setComposerOpen(true)} />
                 <RecentActivityPanel items={INITIAL_RECENT_ACTIVITY} />
-                <ConnectedAccountsSummary sourceMeta={sourceMeta} syncedAt={syncedAt} accounts={accounts} />
+                <ConnectedAccountsSummary sourceMeta={live.sourceMeta} syncedAt={live.syncedAt} accounts={live.accounts} />
               </div>
             </div>
           </SocialDashboard>
@@ -204,12 +230,18 @@ export function SocialSignalsWorkspace({
                 </button>
               </div>
               <div className="flex min-h-0 flex-1 flex-col">
-                <LiveListeningFeed initialTab={initialLiveTab} initialPosts={livePosts} layout="full" />
+                <LiveListeningFeed
+                  initialTab={initialLiveTab}
+                  initialPosts={live.posts}
+                  sourceMeta={live.sourceMeta}
+                  onIngestSuccess={handleLiveIngest}
+                  layout="full"
+                />
               </div>
             </div>
             <div className="space-y-4">
               <RecommendationPanel items={INITIAL_RECOMMENDATIONS} onAction={() => setComposerOpen(true)} />
-              <ConnectedAccountsSummary sourceMeta={sourceMeta} syncedAt={syncedAt} accounts={accounts} />
+              <ConnectedAccountsSummary sourceMeta={live.sourceMeta} syncedAt={live.syncedAt} accounts={live.accounts} />
             </div>
           </div>
         ) : null}

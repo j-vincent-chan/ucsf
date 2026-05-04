@@ -55,9 +55,8 @@ export function ConnectedAccountsSummary({
         {sourceMeta.linkedin.detail ? <span className="block">LinkedIn: {sourceMeta.linkedin.detail}</span> : null}
       </p>
       <p className="mt-3 text-xs leading-snug text-[color:var(--muted-foreground)]">
-        Reconnect or rotate credentials via server environment variables (see{" "}
-        <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 text-[11px]">.env.example</code>
-        ). Deployments require a restart after changes.
+        Local: <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 text-[11px]">.env.local</code>
+        . Production: set the same names in your host (e.g. Vercel → Settings → Environment Variables) and redeploy.
       </p>
     </div>
   );

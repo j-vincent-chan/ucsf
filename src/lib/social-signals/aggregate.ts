@@ -195,13 +195,14 @@ export async function fetchSocialFeed(
     sourceMeta.x = {
       configured: false,
       detail:
-        "Server needs X_BEARER_TOKEN (Twitter API v2 bearer). List ID and mentions handle come from workspace Settings or X_LIST_ID / X_COMMUNITY_HANDLE.",
+        "Server needs X_BEARER_TOKEN (Twitter API v2 bearer). On Vercel, add it under Project → Settings → Environment Variables. List ID / handle: workspace Settings or X_LIST_ID / X_COMMUNITY_HANDLE.",
     };
   }
   if (!bskyId || !bskyPw) {
     sourceMeta.bluesky = {
       configured: false,
-      detail: "Add BSKY_IDENTIFIER and BSKY_APP_PASSWORD (Bluesky app password) to .env.local.",
+      detail:
+        "Add BSKY_IDENTIFIER and BSKY_APP_PASSWORD (Bluesky app password) to server env — for Vercel: Project → Settings → Environment Variables (Production).",
     };
   }
 

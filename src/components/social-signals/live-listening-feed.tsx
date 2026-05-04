@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { dedupeSocialPostsById } from "@/lib/social-signals/dedupe-posts";
 import { groupPostsForFeedDisplay } from "@/lib/social-signals/group-feed-rows";
-import type { SocialFeedTab, SocialPost } from "@/lib/social-signals/types";
+import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
 import { PlatformBadge } from "./platform-badge";
 
 type ListenStyles = {
@@ -237,10 +237,16 @@ function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] })
 export function LiveListeningFeed({
   initialTab,
   initialPosts,
+  sourceMeta,
+  onIngestSuccess,
   layout = "default",
 }: {
   initialTab: SocialFeedTab;
   initialPosts: SocialPost[];
+  /** Server ingest diagnostics (empty feed + misconfigured env on Vercel, etc.). */
+  sourceMeta: SourceMeta;
+  /** Updates parent so “Connected accounts” stays in sync after Refresh. */
+  onIngestSuccess?: (feed: AggregatedFeed) => void;
   /** `full` = taller list on the dedicated Feed page. */
   layout?: "default" | "full";
 }) {
@@ -248,6 +254,10 @@ export function LiveListeningFeed({
   const [posts, setPosts] = useState<SocialPost[]>(() => dedupeSocialPostsById(initialPosts));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPosts(dedupeSocialPostsById(initialPosts));
+  }, [initialPosts]);
 
   const displayPosts = useMemo(() => dedupeSocialPostsById(posts), [posts]);
   const displayRows = useMemo(() => groupPostsForFeedDisplay(displayPosts), [displayPosts]);
@@ -266,16 +276,25 @@ export function LiveListeningFeed({
     setError(null);
     try {
       const res = await fetch(`/api/social-signals?tab=${next}`, { method: "GET" });
-      const data = (await res.json()) as { posts?: SocialPost[]; error?: string };
+      const data = (await res.json()) as Partial<AggregatedFeed> & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load");
-      setPosts(dedupeSocialPostsById(data.posts ?? []));
+      const nextPosts = dedupeSocialPostsById(data.posts ?? []);
+      setPosts(nextPosts);
       setTab(next);
+      if (data.sourceMeta && data.syncedAt && data.accounts) {
+        onIngestSuccess?.({
+          posts: nextPosts,
+          sourceMeta: data.sourceMeta,
+          syncedAt: data.syncedAt,
+          accounts: data.accounts,
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onIngestSuccess]);
 
   function tabBtn(active: boolean) {
     return active
@@ -337,8 +356,36 @@ export function LiveListeningFeed({
         }`}
       >
         {displayRows.length === 0 ? (
-          <li className="rounded-xl border border-dashed border-[color:var(--border)]/70 px-4 py-8 text-center text-sm text-[color:var(--muted-foreground)]">
-            No live posts for this tab. Check connections above or try Mentions / Others.
+          <li className="rounded-xl border border-dashed border-[color:var(--border)]/70 px-4 py-6 text-sm text-[color:var(--muted-foreground)]">
+            <p className="text-center">No live posts for this tab. Try another tab or Refresh.</p>
+            <div className="mx-auto mt-4 max-w-lg rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--muted)]/15 px-3 py-2.5 text-left text-xs text-[color:var(--foreground)]">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">
+                Ingest status
+              </p>
+              <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-snug">
+                <li>
+                  <span className={sourceMeta.x.configured ? "" : "font-medium text-amber-800 dark:text-amber-200"}>
+                    X: {sourceMeta.x.configured ? "configured" : "not configured"}
+                  </span>
+                  {sourceMeta.x.detail ? (
+                    <span className="text-[color:var(--muted-foreground)]"> — {sourceMeta.x.detail}</span>
+                  ) : null}
+                </li>
+                <li>
+                  <span className={sourceMeta.bluesky.configured ? "" : "font-medium text-amber-800 dark:text-amber-200"}>
+                    Bluesky: {sourceMeta.bluesky.configured ? "configured" : "not configured"}
+                  </span>
+                  {sourceMeta.bluesky.detail ? (
+                    <span className="text-[color:var(--muted-foreground)]"> — {sourceMeta.bluesky.detail}</span>
+                  ) : null}
+                </li>
+              </ul>
+              <p className="mt-3 text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+                If this works locally but not on the hosted site, copy the same variable names from{" "}
+                <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-[10px]">.env.local</code>{" "}
+                into your host&apos;s environment (e.g. Vercel → Project → Settings → Environment Variables) and redeploy.
+              </p>
+            </div>
           </li>
         ) : (
           displayRows.map((row) =>
