@@ -1,32 +1,66 @@
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "./types";
-import { fetchBlueskyFollowing, fetchBlueskyMentions } from "./bluesky";
+import { dedupeSocialPostsById } from "./dedupe-posts";
+import {
+  fetchBlueskyFollowing,
+  fetchBlueskyListFeed,
+  fetchBlueskyMentions,
+  fetchBlueskyProfileSummary,
+} from "./bluesky";
 import { fetchLinkedInPlaceholder } from "./linkedin";
-import { fetchXListTimeline, fetchXMentionSearch } from "./x";
+import { fetchXListTimeline, fetchXMentionSearch, fetchXUserByUsername } from "./x";
+
+/** Workspace social ingest targets (Bearer / Bluesky app password stay in env only). */
+export type SocialFeedWorkspaceConfig = {
+  communityHandle?: string;
+  listId?: string;
+  blueskyListAtUri?: string;
+};
 
 function sortPosts(posts: SocialPost[]): SocialPost[] {
   return [...posts].sort((a, b) => Date.parse(b.postedAt) - Date.parse(a.postedAt));
 }
 
-export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFeed> {
+export async function fetchSocialFeed(
+  tab: SocialFeedTab,
+  workspaceCfg?: SocialFeedWorkspaceConfig | null,
+): Promise<AggregatedFeed> {
   const bearer = process.env.X_BEARER_TOKEN?.trim();
-  const listId = process.env.X_LIST_ID?.trim();
-  const xHandle = process.env.X_COMMUNITY_HANDLE?.trim();
+  const listIdWs = workspaceCfg?.listId?.trim();
+  const handleWs = workspaceCfg?.communityHandle?.trim();
+  const listId = listIdWs || process.env.X_LIST_ID?.trim();
+  const envHandleRaw = process.env.X_COMMUNITY_HANDLE?.trim()?.replace(/^@+/, "") ?? "";
+  const xCommunityHandle = (handleWs || envHandleRaw).replace(/^@+/, "") || undefined;
 
   const bskyId = process.env.BSKY_IDENTIFIER?.trim();
   const bskyPw = process.env.BSKY_APP_PASSWORD?.trim();
   const bskyMention =
     process.env.BSKY_MENTION_HANDLE?.trim() || process.env.BSKY_IDENTIFIER?.trim();
+  const bskyListUri =
+    workspaceCfg?.blueskyListAtUri?.trim() || process.env.BSKY_LIST_AT_URI?.trim();
 
   const linkedinToken = process.env.LINKEDIN_ACCESS_TOKEN?.trim();
   const linkedinUrn = process.env.LINKEDIN_ORGANIZATION_URN?.trim();
 
+  const xConfiguredForTab = Boolean(
+    bearer &&
+      ((tab === "mentions" && xCommunityHandle) ||
+        ((tab === "following" || tab === "lists") && listId)),
+  );
+  const bskyConfiguredForTab = Boolean(
+    bskyId &&
+      bskyPw &&
+      (tab === "following" ||
+        (tab === "mentions" && Boolean(bskyMention?.trim())) ||
+        (tab === "lists" && Boolean(bskyListUri?.trim()))),
+  );
+
   const sourceMeta: SourceMeta = {
     x: {
-      configured: Boolean(bearer && (tab === "following" ? listId : xHandle)),
+      configured: xConfiguredForTab,
       detail: undefined,
     },
     bluesky: {
-      configured: Boolean(bskyId && bskyPw),
+      configured: bskyConfiguredForTab,
       detail: undefined,
     },
     linkedin: {
@@ -39,7 +73,41 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
   const tasks: Promise<void>[] = [];
   const collected: SocialPost[] = [];
 
-  if (bearer && listId && tab === "following") {
+  let xName: string | undefined;
+  let xAvatarUrl: string | undefined;
+  let xDisplayResolved = xCommunityHandle ? `@${xCommunityHandle}` : undefined;
+
+  let blueskyName: string | undefined;
+  let blueskyAvatarUrl: string | undefined;
+  let blueskyDisplayResolved = bskyId?.trim() || undefined;
+
+  if (bearer && xCommunityHandle) {
+    tasks.push(
+      (async () => {
+        const u = await fetchXUserByUsername(bearer, xCommunityHandle);
+        if (u) {
+          xName = u.name;
+          xAvatarUrl = u.profileImageUrl ?? undefined;
+          xDisplayResolved = `@${u.username}`;
+        }
+      })(),
+    );
+  }
+
+  if (bskyId && bskyPw) {
+    tasks.push(
+      (async () => {
+        const p = await fetchBlueskyProfileSummary(bskyId, bskyPw);
+        if (p) {
+          blueskyName = p.displayName;
+          blueskyAvatarUrl = p.avatarUrl;
+          blueskyDisplayResolved = p.handle;
+        }
+      })(),
+    );
+  }
+
+  if (bearer && listId && (tab === "following" || tab === "lists")) {
     tasks.push(
       (async () => {
         const { posts, detail } = await fetchXListTimeline(bearer, listId);
@@ -47,10 +115,10 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
         if (detail) sourceMeta.x = { ...sourceMeta.x, detail };
       })(),
     );
-  } else if (bearer && xHandle && tab === "mentions") {
+  } else if (bearer && xCommunityHandle && tab === "mentions") {
     tasks.push(
       (async () => {
-        const { posts, detail } = await fetchXMentionSearch(bearer, xHandle);
+        const { posts, detail } = await fetchXMentionSearch(bearer, xCommunityHandle);
         collected.push(...posts);
         if (detail) sourceMeta.x = { ...sourceMeta.x, detail };
       })(),
@@ -59,9 +127,9 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
     sourceMeta.x = {
       configured: false,
       detail:
-        tab === "following"
-          ? "X: set X_LIST_ID (Twitter List ID) for the Following tab."
-          : "X: set X_COMMUNITY_HANDLE (without @) for the Mentions tab.",
+        tab === "mentions"
+          ? "X Mentions: save your program X handle under Settings → Social publishing, or set X_COMMUNITY_HANDLE in server env."
+          : "X list: add the numeric List ID under Settings → Social publishing (investigator list), or set X_LIST_ID in server env.",
     };
   }
 
@@ -74,7 +142,7 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
           if (detail) sourceMeta.bluesky = { ...sourceMeta.bluesky, detail };
         })(),
       );
-    } else {
+    } else if (tab === "mentions") {
       tasks.push(
         (async () => {
           const { posts, detail } = await fetchBlueskyMentions(
@@ -86,6 +154,20 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
           if (detail) sourceMeta.bluesky = { ...sourceMeta.bluesky, detail };
         })(),
       );
+    } else if (tab === "lists" && bskyListUri) {
+      tasks.push(
+        (async () => {
+          const { posts, detail } = await fetchBlueskyListFeed(bskyId, bskyPw, bskyListUri);
+          collected.push(...posts);
+          if (detail) sourceMeta.bluesky = { ...sourceMeta.bluesky, detail };
+        })(),
+      );
+    } else if (tab === "lists") {
+      sourceMeta.bluesky = {
+        configured: false,
+        detail:
+          "Bluesky Investigators tab: add an `at://…/app.bsky.graph.list/…` URI under Settings → Social publishing, or set BSKY_LIST_AT_URI in env.",
+      };
     }
   }
 
@@ -101,14 +183,19 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
 
   const syncedAt = new Date().toISOString();
   const accounts = {
-    xDisplay: xHandle ? `@${xHandle.replace(/^@/, "")}` : undefined,
-    blueskyDisplay: bskyId?.trim() || undefined,
+    xDisplay: xDisplayResolved,
+    xName,
+    xAvatarUrl,
+    blueskyDisplay: blueskyDisplayResolved,
+    blueskyName,
+    blueskyAvatarUrl,
   };
 
   if (!process.env.X_BEARER_TOKEN?.trim()) {
     sourceMeta.x = {
       configured: false,
-      detail: "Add X_BEARER_TOKEN (Twitter API v2 bearer token) to .env.local.",
+      detail:
+        "Server needs X_BEARER_TOKEN (Twitter API v2 bearer). List ID and mentions handle come from workspace Settings or X_LIST_ID / X_COMMUNITY_HANDLE.",
     };
   }
   if (!bskyId || !bskyPw) {
@@ -127,7 +214,7 @@ export async function fetchSocialFeed(tab: SocialFeedTab): Promise<AggregatedFee
   }
 
   return {
-    posts: sortPosts(collected),
+    posts: sortPosts(dedupeSocialPostsById(collected)),
     sourceMeta,
     syncedAt,
     accounts,

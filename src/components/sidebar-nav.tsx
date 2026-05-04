@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { startTransition, useEffect, useRef, useState } from "react";
 import type { ProfileRole } from "@/types/database";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 function iconBase() {
   return "h-4 w-4 shrink-0";
@@ -43,15 +44,6 @@ function DigestIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconBase()}>
       <rect x="4" y="4" width="16" height="16" rx="3" />
       <path d="M8 9h8M8 13h8M8 17h5" />
-    </svg>
-  );
-}
-
-function ReadmeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconBase()}>
-      <path d="M6 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6z" />
-      <path d="M8 8h7M8 12h7M8 16h5" />
     </svg>
   );
 }
@@ -197,10 +189,6 @@ export function SidebarNav({
             })}
           </div>
         ) : null}
-        <Link href="/readme" className={itemClass(pathname.startsWith("/readme"))}>
-          <ReadmeIcon />
-          <span>Help</span>
-        </Link>
       </div>
 
       {role === "admin" ? (
@@ -214,6 +202,10 @@ export function SidebarNav({
           </div>
         </>
       ) : null}
+
+      <div className="mt-5 shrink-0 border-t border-[color:var(--border)]/55 pt-4">
+        <ThemeToggle label="Dark mode" />
+      </div>
     </nav>
   );
 }

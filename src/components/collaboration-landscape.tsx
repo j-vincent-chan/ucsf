@@ -192,6 +192,7 @@ export function CollaborationLandscape({
   const [graphDisplayMode, setGraphDisplayMode] = useState<"2d" | "3d">("2d");
   const [fundingHighlight, setFundingHighlight] = useState(false);
   const [graphStylePreset, setGraphStylePreset] = useState<GraphStylePreset>("research_landscape");
+  const [showAllInvestigatorLabels, setShowAllInvestigatorLabels] = useState(false);
 
   const effectiveGraphMode: "2d" | "3d" = isEmbed ? "2d" : graphDisplayMode;
 
@@ -411,6 +412,7 @@ export function CollaborationLandscape({
 
   const showNodeLabel = useCallback(
     (id: string, centrality: number, bridgeScore: number) => {
+      if (showAllInvestigatorLabels) return true;
       if (graphStylePreset === "constellation") {
         if (searchHits.has(id)) return true;
         if (pinned.has(id)) return true;
@@ -427,6 +429,7 @@ export function CollaborationLandscape({
       return false;
     },
     [
+      showAllInvestigatorLabels,
       graphStylePreset,
       searchHits,
       pinned,
@@ -824,9 +827,9 @@ export function CollaborationLandscape({
           ? { r: 96, g: 82, b: 72 }
           : { r: 88, g: 86, b: 108 };
     const widthMul =
-      graphStylePreset === "scientific_atlas" ? 0.62 : graphStylePreset === "constellation" ? 0.52 : 0.88;
+      graphStylePreset === "scientific_atlas" ? 0.78 : graphStylePreset === "constellation" ? 0.72 : 1;
     const alphaMul =
-      graphStylePreset === "constellation" ? 0.42 : graphStylePreset === "scientific_atlas" ? 0.58 : 0.72;
+      graphStylePreset === "constellation" ? 0.78 : graphStylePreset === "scientific_atlas" ? 0.9 : 1;
 
     return {
       color: (l: LinkObject<GraphNode, LandscapeLink>) => {
@@ -835,16 +838,16 @@ export function CollaborationLandscape({
           const touched = highlightIds.has(L.source) && highlightIds.has(L.target);
           if (!touched)
             return graphStylePreset === "constellation"
-              ? "rgba(120,150,210,0.02)"
-              : "rgba(110,108,125,0.022)";
+              ? "rgba(130,165,220,0.07)"
+              : "rgba(95,92,115,0.08)";
         }
         if (showEmergingEdges && L.emergingShare < 0.35) {
           return graphStylePreset === "constellation"
-            ? "rgba(120,150,210,0.03)"
-            : "rgba(110,108,125,0.032)";
+            ? "rgba(130,165,220,0.09)"
+            : "rgba(95,92,115,0.09)";
         }
         const t = Math.min(1, L.strength / max);
-        let alpha = (0.028 + t * 0.12) * alphaMul;
+        let alpha = (0.06 + t * 0.2) * alphaMul;
         if (networkLens === "publication_overlap") alpha *= 0.65 + (L.sharedPapers / Math.max(1, L.strength)) * 0.55;
         if (networkLens === "funding_overlap") alpha *= 0.65 + (L.sharedGrants / Math.max(1, L.strength)) * 0.55;
         if (networkLens === "emerging_signals") alpha *= 0.35 + L.emergingShare * 0.85;
@@ -852,7 +855,7 @@ export function CollaborationLandscape({
       },
       width: (l: LinkObject<GraphNode, LandscapeLink>) => {
         const L = l as LandscapeLink;
-        let w = (0.45 + Math.sqrt(L.strength) * 0.82) * widthMul;
+        let w = (0.58 + Math.sqrt(L.strength) * 0.95) * widthMul;
         if (networkLens === "publication_overlap") w *= 0.85 + (L.sharedPapers / Math.max(1, L.strength)) * 0.9;
         if (networkLens === "funding_overlap") w *= 0.85 + (L.sharedGrants / Math.max(1, L.strength)) * 0.9;
         return w;
@@ -869,22 +872,22 @@ export function CollaborationLandscape({
           ? { r: 92, g: 78, b: 70 }
           : { r: 72, g: 68, b: 102 };
     const widthMul =
-      graphStylePreset === "scientific_atlas" ? 0.58 : graphStylePreset === "constellation" ? 0.48 : 0.85;
+      graphStylePreset === "scientific_atlas" ? 0.75 : graphStylePreset === "constellation" ? 0.68 : 0.92;
     const alphaMul =
-      graphStylePreset === "constellation" ? 0.38 : graphStylePreset === "scientific_atlas" ? 0.52 : 0.68;
+      graphStylePreset === "constellation" ? 0.72 : graphStylePreset === "scientific_atlas" ? 0.85 : 0.92;
 
     return {
       color: (l: LinkObject<GraphNode, LandscapeLink>) => {
         const L = l as LandscapeLink;
         if (highlightIds) {
           const touched = highlightIds.has(L.source) && highlightIds.has(L.target);
-          if (!touched) return "rgba(120,140,180,0.05)";
+          if (!touched) return "rgba(130,150,195,0.1)";
         }
         if (showEmergingEdges && L.emergingShare < 0.35) {
-          return "rgba(120,140,180,0.06)";
+          return "rgba(130,150,195,0.12)";
         }
         const t = Math.min(1, L.strength / max);
-        let alpha = (0.08 + t * 0.24) * alphaMul;
+        let alpha = (0.1 + t * 0.28) * alphaMul;
         if (networkLens === "publication_overlap") alpha *= 0.65 + (L.sharedPapers / Math.max(1, L.strength)) * 0.55;
         if (networkLens === "funding_overlap") alpha *= 0.65 + (L.sharedGrants / Math.max(1, L.strength)) * 0.55;
         if (networkLens === "emerging_signals") alpha *= 0.35 + L.emergingShare * 0.85;
@@ -892,7 +895,7 @@ export function CollaborationLandscape({
       },
       width: (l: LinkObject<GraphNode, LandscapeLink>) => {
         const L = l as LandscapeLink;
-        let w = (0.5 + Math.sqrt(L.strength) * 0.8) * widthMul;
+        let w = (0.62 + Math.sqrt(L.strength) * 0.92) * widthMul;
         if (networkLens === "publication_overlap") w *= 0.85 + (L.sharedPapers / Math.max(1, L.strength)) * 0.9;
         if (networkLens === "funding_overlap") w *= 0.85 + (L.sharedGrants / Math.max(1, L.strength)) * 0.9;
         return w;
@@ -1237,6 +1240,15 @@ export function CollaborationLandscape({
           <label className="inline-flex cursor-pointer items-center gap-2 text-[color:var(--foreground)]/90">
             <input
               type="checkbox"
+              checked={showAllInvestigatorLabels}
+              onChange={(e) => setShowAllInvestigatorLabels(e.target.checked)}
+              className="rounded border-[color:var(--border)]"
+            />
+            Show all investigator labels
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-[color:var(--foreground)]/90">
+            <input
+              type="checkbox"
               checked={showEmergingEdges}
               onChange={(e) => setShowEmergingEdges(e.target.checked)}
               className="rounded border-[color:var(--border)]"
@@ -1325,6 +1337,16 @@ export function CollaborationLandscape({
                 </select>
               </label>
             </div>
+            <label className="inline-flex w-full cursor-pointer items-center gap-2 pt-0.5 text-xs text-[color:var(--foreground)]/90 sm:w-auto sm:pl-1">
+              <input
+                type="checkbox"
+                checked={showAllInvestigatorLabels}
+                onChange={(e) => setShowAllInvestigatorLabels(e.target.checked)}
+                className="rounded border-[color:var(--border)]"
+                aria-label="Show all investigator labels on the graph"
+              />
+              All investigator labels
+            </label>
           </div>
         </section>
       )}

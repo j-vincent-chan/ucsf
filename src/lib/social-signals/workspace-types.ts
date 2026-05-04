@@ -39,12 +39,16 @@ export type WorkspaceSocialPost = {
   campaignId?: string;
   accountHandle: string;
   displayName?: string;
+  /** Per-post override; otherwise use connected account avatar from `accountBranding`. */
+  avatarUrl?: string | null;
   sourceSignalType: SourceSignalType;
   sourceSignalTitle: string;
   sourceItemLabel?: string;
   status: PostStatus;
   text: string;
   imageUrl?: string | null;
+  /** Additional images (e.g. carousels). If set, shown with `imageUrl` / instead of a single slot. */
+  mediaUrls?: string[];
   linkPreview?: { title: string; url: string; description: string };
   hashtags: string[];
   mentions: string[];
@@ -57,7 +61,7 @@ export type WorkspaceSocialPost = {
   threadIndex?: number;
   threadCount?: number;
   reviewFlags?: ReviewFlag[];
-  engagement?: { likes: number; reposts: number; replies: number };
+  engagement?: { likes: number; reposts: number; replies: number; views?: number };
 };
 
 export type ReviewComment = {

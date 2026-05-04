@@ -88,7 +88,7 @@ export async function getProfile(): Promise<ProfileWithCommunity | null> {
   if (!row) return null;
   let { data: com } = await supabase
     .from("communities")
-    .select("name, slug")
+    .select("name, slug, social_settings")
     .eq("id", row.community_id)
     .maybeSingle();
   if (!com) {
@@ -96,7 +96,7 @@ export async function getProfile(): Promise<ProfileWithCommunity | null> {
     if (admin) {
       const c = await admin
         .from("communities")
-        .select("name, slug")
+        .select("name, slug, social_settings")
         .eq("id", row.community_id)
         .maybeSingle();
       com = c.data ?? null;

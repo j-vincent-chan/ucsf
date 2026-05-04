@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth";
+import { getProfile, getSessionUser } from "@/lib/auth";
 import { fetchSocialFeed } from "@/lib/social-signals/aggregate";
 import type { SocialFeedTab } from "@/lib/social-signals/types";
+import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
@@ -11,10 +12,21 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const tabParam = url.searchParams.get("tab");
-  const tab: SocialFeedTab = tabParam === "mentions" ? "mentions" : "following";
+  const tab: SocialFeedTab =
+    tabParam === "mentions"
+      ? "mentions"
+      : tabParam === "following"
+        ? "following"
+        : tabParam === "lists"
+          ? "lists"
+          : "lists";
 
   try {
-    const data = await fetchSocialFeed(tab);
+    const profile = await getProfile();
+    const social = parseWorkspaceSocialSettings(profile?.community?.social_settings ?? null);
+    const workspaceCfg = socialFeedIngestFromWorkspace(social);
+
+    const data = await fetchSocialFeed(tab, workspaceCfg);
     return NextResponse.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load social feed";

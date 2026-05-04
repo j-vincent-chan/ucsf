@@ -49,17 +49,21 @@ export interface Database {
           name: string;
           slug: string;
           created_at: string;
+          /** Handles / URLs for Social Signals UI (not OAuth tokens). */
+          social_settings: Json;
         };
         Insert: {
           id?: string;
           name: string;
           slug: string;
           created_at?: string;
+          social_settings?: Json;
         };
         Update: {
           name?: string;
           slug?: string;
           updated_at?: string;
+          social_settings?: Json;
         };
         Relationships: [];
       };
@@ -306,6 +310,10 @@ export interface Database {
         };
         Returns: undefined;
       };
+      set_own_profile_password: {
+        Args: { p_plain: string };
+        Returns: undefined;
+      };
       merge_duplicate_source_items_by_signal_group: {
         Args: Record<string, never>;
         Returns: number;
@@ -331,5 +339,5 @@ export type Community = Tables["communities"]["Row"];
 
 /** Profile row plus embedded tenant name from `community:communities(...)` selects. */
 export type ProfileWithCommunity = Profile & {
-  community: Pick<Community, "name" | "slug"> | null;
+  community: Pick<Community, "name" | "slug" | "social_settings"> | null;
 };

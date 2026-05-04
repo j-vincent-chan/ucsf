@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { SocialPostAccountBranding } from "./social-post-card";
 import type { SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
-import type { DashboardCounts, PublishPlatform, PostStatus, SocialWorkspaceSection } from "@/lib/social-signals/workspace-types";
+import type { DashboardCounts, SocialWorkspaceSection } from "@/lib/social-signals/workspace-types";
 import {
   INITIAL_ANALYTICS,
   INITIAL_DASHBOARD_COUNTS,
@@ -53,21 +54,40 @@ export function SocialSignalsWorkspace({
   livePosts: SocialPost[];
   sourceMeta: SourceMeta;
   syncedAt: string;
-  accounts: { xDisplay?: string; blueskyDisplay?: string };
+  accounts: {
+    xDisplay?: string;
+    xName?: string;
+    xAvatarUrl?: string;
+    blueskyDisplay?: string;
+    blueskyName?: string;
+    blueskyAvatarUrl?: string;
+  };
 }) {
   const [section, setSection] = useState<SocialWorkspaceSection>("dashboard");
   const [composerOpen, setComposerOpen] = useState(false);
-  const [posts, setPosts] = useState(INITIAL_WORKSPACE_POSTS);
-  const [feedPlatform, setFeedPlatform] = useState<PublishPlatform | "all">("all");
-  const [feedStatus, setFeedStatus] = useState<PostStatus | "all">("all");
+  /** Demo workspace queue — shown on Dashboard only; Feed tab is live ingest. */
+  const posts = INITIAL_WORKSPACE_POSTS;
 
-  const filteredPosts = useMemo(() => {
-    return posts.filter((p) => {
-      if (feedPlatform !== "all" && p.platform !== feedPlatform) return false;
-      if (feedStatus !== "all" && p.status !== feedStatus) return false;
-      return true;
-    });
-  }, [posts, feedPlatform, feedStatus]);
+  const accountBranding = useMemo((): SocialPostAccountBranding => {
+    return {
+      x:
+        accounts.xName || accounts.xDisplay || accounts.xAvatarUrl
+          ? {
+              displayName: accounts.xName,
+              handle: accounts.xDisplay,
+              avatarUrl: accounts.xAvatarUrl,
+            }
+          : undefined,
+      bluesky:
+        accounts.blueskyName || accounts.blueskyDisplay || accounts.blueskyAvatarUrl
+          ? {
+              displayName: accounts.blueskyName,
+              handle: accounts.blueskyDisplay,
+              avatarUrl: accounts.blueskyAvatarUrl,
+            }
+          : undefined,
+    };
+  }, [accounts]);
 
   const dashboardCounts: DashboardCounts = useMemo(() => {
     const draftPosts = posts.filter((p) => p.status === "draft").length;
@@ -139,12 +159,18 @@ export function SocialSignalsWorkspace({
                     onClick={() => setSection("feed")}
                     className="text-xs font-semibold text-[color:var(--foreground)] underline underline-offset-4"
                   >
-                    Open full feed
+                    Open live feed
                   </button>
                 </div>
                 <div className="space-y-3">
                   {posts.slice(0, 4).map((p) => (
-                    <SocialPostCard key={p.id} post={p} compact onEdit={(id) => setComposerOpen(true)} />
+                    <SocialPostCard
+                      key={p.id}
+                      post={p}
+                      compact
+                      accountBranding={accountBranding}
+                      onEdit={(id) => setComposerOpen(true)}
+                    />
                   ))}
                 </div>
                 <LiveListeningFeed initialTab={initialLiveTab} initialPosts={livePosts} />
@@ -159,49 +185,27 @@ export function SocialSignalsWorkspace({
         ) : null}
 
         {section === "feed" ? (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-            <div className="min-w-0 space-y-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                  Platform
-                  <select
-                    value={feedPlatform}
-                    onChange={(e) => setFeedPlatform(e.target.value as PublishPlatform | "all")}
-                    className="ml-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs"
-                  >
-                    <option value="all">All</option>
-                    <option value="x">X</option>
-                    <option value="bluesky">Bluesky</option>
-                  </select>
-                </label>
-                <label className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                  Status
-                  <select
-                    value={feedStatus}
-                    onChange={(e) => setFeedStatus(e.target.value as PostStatus | "all")}
-                    className="ml-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs"
-                  >
-                    <option value="all">All</option>
-                    <option value="draft">Draft</option>
-                    <option value="needs_review">Needs review</option>
-                    <option value="scheduled">Scheduled</option>
-                    <option value="published">Published</option>
-                  </select>
-                </label>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-stretch">
+            <div className="flex min-h-0 min-w-0 flex-col gap-4 [height:calc(100dvh-15rem)] lg:[height:calc(100dvh-18rem)]">
+              <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b border-[color:var(--border)]/45 pb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Live feed</h2>
+                  <p className="mt-1 max-w-xl text-sm text-[color:var(--muted-foreground)]">
+                    Live X and Bluesky ingest: use Investigators, Mentions, or Others in the panel below — same as Live
+                    listening on the dashboard (Investigators = X list + Bluesky list URI).
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setComposerOpen(true)}
-                  className="ml-auto rounded-xl bg-[color:var(--foreground)] px-4 py-2 text-xs font-semibold text-[color:var(--background)]"
+                  className="shrink-0 rounded-xl bg-[color:var(--foreground)] px-4 py-2 text-xs font-semibold text-[color:var(--background)]"
                 >
                   Create post
                 </button>
               </div>
-              <div className="space-y-4">
-                {filteredPosts.map((p) => (
-                  <SocialPostCard key={p.id} post={p} onEdit={() => setComposerOpen(true)} />
-                ))}
+              <div className="flex min-h-0 flex-1 flex-col">
+                <LiveListeningFeed initialTab={initialLiveTab} initialPosts={livePosts} layout="full" />
               </div>
-              <LiveListeningFeed initialTab={initialLiveTab} initialPosts={livePosts} />
             </div>
             <div className="space-y-4">
               <RecommendationPanel items={INITIAL_RECOMMENDATIONS} onAction={() => setComposerOpen(true)} />

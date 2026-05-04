@@ -11,6 +11,11 @@ import type {
 } from "./workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "./workspace-types";
 
+/** Demo media only — shows layout for images and multi-attach. */
+const DEMO_IMG_NEWS = "https://images.unsplash.com/photo-1582719478248-54ba93aca9fb?w=900&q=80";
+const DEMO_IMG_LAB = "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=900&q=80";
+const DEMO_IMG_EVENT = "https://images.unsplash.com/photo-1540575467063-027a49d4eb24?w=900&q=80";
+
 const iso = (daysAgo: number, hour = 10) => {
   const d = new Date();
   d.setDate(d.getDate() - daysAgo);
@@ -275,6 +280,7 @@ export const INITIAL_WORKSPACE_POSTS: WorkspaceSocialPost[] = [
     text: "UCSF researchers are exploring regulatory T cells as a targeted way to calm the autoimmune response in type 1 diabetes — aiming to preserve immune function while protecting insulin-producing cells.",
     hashtags: ["#Type1Diabetes", "#Immunology", "#UCSF"],
     mentions: [],
+    mediaUrls: [DEMO_IMG_LAB, DEMO_IMG_NEWS],
     linkPreview: {
       title: "UCSF Diabetes Center — research overview",
       url: "https://example.edu/diabetes-research",
@@ -294,6 +300,7 @@ export const INITIAL_WORKSPACE_POSTS: WorkspaceSocialPost[] = [
     sourceSignalTitle: "Regulatory T cells in type 1 diabetes",
     text: "New research signal: regulatory T cells are being developed as a more precise way to suppress autoimmune activity in type 1 diabetes, with the long-term goal of preserving beta cells without broad immune suppression.",
     hashtags: ["Immunology", "T1D"],
+    imageUrl: DEMO_IMG_LAB,
     linkPreview: {
       title: "Companion brief — immune tolerance",
       url: "https://example.edu/t1d-tregs",
@@ -317,6 +324,7 @@ export const INITIAL_WORKSPACE_POSTS: WorkspaceSocialPost[] = [
       url: "https://example.edu/biospecimen-rfa",
       description: "Deadlines, templates, and contact points.",
     },
+    imageUrl: DEMO_IMG_EVENT,
     altTextStatus: "missing",
     characterLimit: X_CHAR_LIMIT,
     campaignId: "c2",
@@ -330,7 +338,8 @@ export const INITIAL_WORKSPACE_POSTS: WorkspaceSocialPost[] = [
     text: "ImmunoDiverse Colloquia kicks off this spring — sessions foreground trainees and cross-disciplinary immune science. Registration is open; share with your lab slack.",
     hashtags: ["ImmunoDiverse", "UCSF"],
     publishedAt: iso(3, 16),
-    engagement: { likes: 214, reposts: 48, replies: 17 },
+    engagement: { likes: 214, reposts: 48, replies: 17, views: 4200 },
+    imageUrl: DEMO_IMG_EVENT,
     characterLimit: BLUESKY_CHAR_LIMIT,
   }),
   basePost({
