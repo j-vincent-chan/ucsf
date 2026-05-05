@@ -4,11 +4,25 @@ import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { createClient } from "@/lib/supabase/server";
 import { blurbJsonSchema } from "@/lib/blurb-content";
+import {
+  DEFAULT_DIGEST_SUMMARY_TONE,
+  digestSummaryTonePromptBlock,
+} from "@/lib/digest-summary-tone";
 
 const bodySchema = z.object({
   instruction: z.string().min(1),
   content: blurbJsonSchema,
   model: z.string().min(1).optional(),
+  tone: z
+    .enum([
+      "professional",
+      "warm",
+      "strategic",
+      "witty",
+      "thought_leadership",
+      "technical",
+    ])
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -50,6 +64,9 @@ export async function POST(req: Request) {
       ? parsed.data.model
       : DEFAULT_MODEL;
 
+  const tone = parsed.data.tone ?? DEFAULT_DIGEST_SUMMARY_TONE;
+  const toneInstruction = digestSummaryTonePromptBlock(tone);
+
   const openai = new OpenAI({ apiKey });
   try {
     const completion = await openai.chat.completions.parse({
@@ -57,8 +74,11 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content:
+          content: [
             "You edit structured summary fields. Preserve factual claims; do not invent facts. Keep JSON valid and match schema exactly. Do not use possessive framing like his team/her team for co-authors; prefer colleagues, co-authors, or neutral parallel naming.",
+            "Unless the instruction explicitly overrides tone, match this writing style:",
+            toneInstruction,
+          ].join("\n\n"),
         },
         {
           role: "user",

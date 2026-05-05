@@ -1,4 +1,10 @@
+import { appendArticleUrlIfAbsent, articleUrlAlreadyInText } from "@/lib/social-article-url";
 import type { SocialPost } from "./types";
+import { compressBufferForBlueskyEmbed } from "./bluesky-image-compress";
+import { BLUESKY_CHAR_LIMIT } from "./workspace-types";
+
+/** Bluesky `app.bsky.feed.post` record limits (graphemes + UTF-8 bytes). */
+const BSKY_POST_MAX_BYTES = 3000;
 
 type BskyResult = { posts: SocialPost[]; detail?: string };
 
@@ -82,6 +88,10 @@ function mapBskyFeedViewPost(item: {
     embed?: unknown;
     author: { displayName?: string; handle: string; avatar?: string };
     record?: { text?: string; createdAt?: string };
+    replyCount?: number;
+    repostCount?: number;
+    likeCount?: number;
+    quoteCount?: number;
   };
 }): SocialPost {
   const post = item.post;
@@ -101,6 +111,9 @@ function mapBskyFeedViewPost(item: {
     url: `https://bsky.app/profile/${handle}/post/${rkey}`,
     postedAt: parseBskyTime(post.indexedAt ?? post.record?.createdAt),
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+    replyCount: post.replyCount,
+    repostCount: post.repostCount,
+    likeCount: post.likeCount,
     repostedBy:
       isRepost && by
         ? {
@@ -202,6 +215,11 @@ export async function fetchBlueskyMentions(
     const handle = p.author.handle;
     const rkey = p.uri.split("/").pop() ?? "";
     const mediaUrls = collectBskyImageUrls(p.embed);
+    const counts = p as {
+      replyCount?: number;
+      repostCount?: number;
+      likeCount?: number;
+    };
     return {
       id: `bsky:${p.uri}`,
       platform: "bluesky",
@@ -212,7 +230,258 @@ export async function fetchBlueskyMentions(
       url: `https://bsky.app/profile/${handle}/post/${rkey}`,
       postedAt: parseBskyTime(p.indexedAt ?? p.record?.createdAt),
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+      replyCount: counts.replyCount,
+      repostCount: counts.repostCount,
+      likeCount: counts.likeCount,
     };
   });
   return { posts };
+}
+
+async function resolveRepoDid(
+  session: SessionRes & { accessJwt: string },
+  identifier: string,
+): Promise<string | null> {
+  if (session.did?.startsWith("did:")) return session.did;
+  const handle = (session.handle ?? identifier).replace(/^@+/, "").trim();
+  if (!handle) return null;
+  const res = await fetch(
+    `${HOST}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
+  );
+  const raw = (await res.json().catch(() => ({}))) as { did?: string };
+  return typeof raw.did === "string" ? raw.did : null;
+}
+
+type BskyBlob = {
+  $type?: string;
+  ref?: { $link?: string };
+  mimeType?: string;
+  size?: number;
+};
+
+function clipBskyExternalStr(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+/** Fit text to Bluesky post limits so createRecord validation succeeds. */
+export function truncateForBlueskyPost(raw: string): { text: string; truncated: boolean } {
+  const t = raw.trim();
+  if (!t) return { text: t, truncated: false };
+
+  const seg = new Intl.Segmenter("en", { granularity: "grapheme" });
+  const all = Array.from(seg.segment(t), (p) => p.segment);
+
+  let truncated = false;
+  const segments: string[] =
+    all.length > BLUESKY_CHAR_LIMIT
+      ? (() => {
+          truncated = true;
+          return [...all.slice(0, BLUESKY_CHAR_LIMIT - 1), "…"];
+        })()
+      : [...all];
+
+  const byteLen = (s: string) => new TextEncoder().encode(s).length;
+
+  let text = segments.join("");
+  while (byteLen(text) > BSKY_POST_MAX_BYTES && segments.length > 0) {
+    truncated = true;
+    if (segments.at(-1) === "…") segments.pop();
+    if (segments.length > 0) segments.pop();
+    if (segments.length === 0) return { text: "…", truncated: true };
+    segments.push("…");
+    text = segments.join("");
+  }
+
+  return { text, truncated };
+}
+
+/**
+ * Appends the article URL when missing, then truncates so Bluesky limits are met while keeping the
+ * link when possible (image posts are not tappable links to the paper).
+ */
+export function truncateBlueskyPostWithOptionalArticleUrl(
+  baseText: string,
+  articleUrl: string | null | undefined,
+): { text: string; truncated: boolean } {
+  const url = articleUrl?.trim();
+  if (!url) return truncateForBlueskyPost(baseText);
+
+  const base = baseText.trim();
+  if (articleUrlAlreadyInText(base, url)) return truncateForBlueskyPost(base);
+
+  const suffix = `\n\n${url}`;
+  const seg = new Intl.Segmenter("en", { granularity: "grapheme" });
+  const byteLen = (s: string) => new TextEncoder().encode(s).length;
+  const gSegs = (s: string) => Array.from(seg.segment(s), (p) => p.segment);
+  const gCount = (s: string) => gSegs(s).length;
+
+  const suffixSegs = gSegs(suffix);
+  if (suffixSegs.length > BLUESKY_CHAR_LIMIT) {
+    return truncateForBlueskyPost(appendArticleUrlIfAbsent(base, url));
+  }
+
+  const maxBodyGraphemes = BLUESKY_CHAR_LIMIT - suffixSegs.length;
+  const baseSegs = gSegs(base);
+  let truncated = false;
+  let bodySegs: string[] = baseSegs;
+
+  if (bodySegs.length > maxBodyGraphemes) {
+    truncated = true;
+    bodySegs = [...baseSegs.slice(0, Math.max(0, maxBodyGraphemes - 1)), "…"];
+  }
+
+  const join = (segs: string[]) => segs.join("");
+  let text = join(bodySegs) + suffix;
+
+  while (
+    (gCount(text) > BLUESKY_CHAR_LIMIT || byteLen(text) > BSKY_POST_MAX_BYTES) &&
+    bodySegs.length > 0
+  ) {
+    truncated = true;
+    if (bodySegs.at(-1) === "…") bodySegs.pop();
+    if (bodySegs.length > 0) bodySegs.pop();
+    if (bodySegs.length === 0) {
+      return truncateForBlueskyPost(url);
+    }
+    bodySegs.push("…");
+    text = join(bodySegs) + suffix;
+  }
+
+  return { text, truncated };
+}
+
+async function uploadBlueskyImageBlob(
+  accessJwt: string,
+  buffer: Buffer,
+  mime: string,
+): Promise<BskyBlob> {
+  const res = await fetch(`${HOST}/xrpc/com.atproto.repo.uploadBlob`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessJwt}`,
+      "Content-Type": mime,
+    },
+    body: new Uint8Array(buffer),
+  });
+  const raw = (await res.json().catch(() => ({}))) as {
+    blob?: BskyBlob & { ref?: { $link?: string } };
+    message?: string;
+    error?: string;
+  };
+  if (!res.ok || !raw.blob?.ref?.$link) {
+    throw new Error(raw.message ?? raw.error ?? `Bluesky upload failed (${res.status})`);
+  }
+  return raw.blob;
+}
+
+/** Publish a text post as the configured Bluesky account (server env credentials). */
+export async function publishBlueskyText(
+  text: string,
+  options?: {
+    image?: { buffer: Buffer; mime: string };
+    /** External link card (mutually exclusive with image in practice). */
+    linkPreview?: { uri: string; title: string; description: string };
+    /** With {@link image}: append this URL to the caption when missing so readers can open the article. */
+    articleUrl?: string;
+  },
+): Promise<{ uri: string; url: string; truncated?: boolean }> {
+  const truncatedPack =
+    options?.articleUrl?.trim() && !options.linkPreview
+      ? truncateBlueskyPostWithOptionalArticleUrl(text, options.articleUrl)
+      : truncateForBlueskyPost(text);
+  const { text: forPost, truncated } = truncatedPack;
+  if (!forPost) throw new Error("Empty text");
+
+  const identifier = process.env.BSKY_IDENTIFIER?.trim();
+  const appPassword = process.env.BSKY_APP_PASSWORD?.trim();
+  if (!identifier || !appPassword) {
+    const err = new Error("Bluesky credentials not configured");
+    err.name = "BlueskyNotConfigured";
+    throw err;
+  }
+
+  const session = await createSession(identifier, appPassword);
+  if (!session?.accessJwt) {
+    throw new Error("Bluesky session failed");
+  }
+
+  const repo =
+    (await resolveRepoDid({ ...session, accessJwt: session.accessJwt }, identifier)) ?? session.did ?? null;
+  if (!repo?.startsWith("did:")) {
+    throw new Error("Could not resolve Bluesky DID for posting");
+  }
+
+  let embed: Record<string, unknown> | undefined;
+  const lp = options?.linkPreview;
+  if (lp?.uri) {
+    embed = {
+      $type: "app.bsky.embed.external",
+      external: {
+        uri: lp.uri,
+        title: clipBskyExternalStr(lp.title || "Link", 300),
+        description: clipBskyExternalStr(lp.description, 300),
+      },
+    };
+  } else {
+    const img = options?.image;
+    if (img && img.buffer.length > 0 && img.mime.startsWith("image/")) {
+      try {
+        const fitted = await compressBufferForBlueskyEmbed(img.buffer, img.mime);
+        const blob = await uploadBlueskyImageBlob(session.accessJwt, fitted.buffer, fitted.mime);
+        const imageBlob = {
+          $type: "blob" as const,
+          ref: blob.ref,
+          mimeType: blob.mimeType ?? fitted.mime,
+          size: blob.size ?? fitted.buffer.length,
+        };
+        embed = {
+          $type: "app.bsky.embed.images",
+          images: [{ alt: "", image: imageBlob }],
+        };
+      } catch {
+        // Post text-only if upload/embed constraints fail.
+      }
+    }
+  }
+
+  const record: Record<string, unknown> = {
+    $type: "app.bsky.feed.post",
+    text: forPost,
+    createdAt: new Date().toISOString(),
+  };
+  if (embed) record.embed = embed;
+
+  const res = await fetch(`${HOST}/xrpc/com.atproto.repo.createRecord`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session.accessJwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      repo,
+      collection: "app.bsky.feed.post",
+      record,
+    }),
+  });
+
+  const raw = (await res.json().catch(() => ({}))) as {
+    uri?: string;
+    message?: string;
+    error?: string;
+  };
+
+  if (!res.ok || !raw.uri) {
+    throw new Error(raw.message ?? raw.error ?? `Bluesky post failed (${res.status})`);
+  }
+
+  const uri = raw.uri;
+  const rkey = uri.split("/").pop() ?? "";
+  const handle =
+    (session.handle ?? identifier).replace(/^@+/, "").trim().split("/")[0] ?? "";
+  const url =
+    handle && rkey ? `https://bsky.app/profile/${handle}/post/${rkey}` : uri.replace("at://", "https://bsky.app/profile/");
+
+  return { uri, url, ...(truncated ? { truncated: true as const } : {}) };
 }

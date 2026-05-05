@@ -121,7 +121,12 @@ function extractPubmedPmidFromUrl(url: string | null): string | null {
   return m?.[1] ?? null;
 }
 
-type EsummaryAuthorTail = { last: string | null; penultimate: string | null };
+type EsummaryAuthorTail = {
+  last: string | null;
+  penultimate: string | null;
+  /** Full ordered author list from the same eSummary response. */
+  allAuthors: string[];
+};
 
 const PUBMED_ESUMMARY_CHUNK = 200;
 
@@ -164,7 +169,7 @@ async function fetchPubmedEsummaryTailsBatched(pmids: string[]): Promise<Map<str
           : [];
         const last = names.length > 0 ? (names[names.length - 1] ?? null) : null;
         const penultimate = names.length >= 2 ? (names[names.length - 2] ?? null) : null;
-        out.set(suid, { last, penultimate });
+        out.set(suid, { last, penultimate, allAuthors: names });
       }
     } catch {
       // Skip chunk on failure; per-item tails stay unset.
@@ -237,6 +242,7 @@ function mapRow(
     penultimate_author_name: r.category === "paper" ? parsePubmedPenultimateFromRawSummary(r.raw_summary) : null,
     investigators,
     pi_name: r.source_type === "pubmed" ? parsePubmedLastAuthor(r.raw_summary) : null,
+    paper_author_names: null,
     digest_cover: null,
     digestCoverHasAsset: Boolean(r.digest_cover_has_asset),
     summaries,
@@ -419,6 +425,8 @@ export default async function DigestMonthPage({
       const next: DigestItemPayload = {
         ...row,
         penultimate_author_name: tail.penultimate ?? row.penultimate_author_name,
+        paper_author_names:
+          tail.allAuthors.length > 0 ? tail.allAuthors : row.paper_author_names,
       };
       if (!row.pi_name && tail.last) {
         let piName = tail.last;

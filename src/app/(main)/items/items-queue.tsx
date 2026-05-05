@@ -13,7 +13,12 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, ItemStatus } from "@/types/database";
-import { ARCHIVE_REASON_OPTIONS, isValidArchiveReason } from "@/lib/archive-reasons";
+import {
+  ARCHIVE_REASON_OPTIONS,
+  isArchiveReasonConstraintError,
+  isValidArchiveReason,
+  legacySafeArchiveReason,
+} from "@/lib/archive-reasons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -432,7 +437,38 @@ export function ItemsQueue({
       toast.error("Pick a reason, then confirm.");
       return;
     }
-    const ok = await bulkUpdate({ status: "archived", archive_reason: bulkArchiveReason });
+    const ids = [...activeSelected];
+    if (ids.length === 0) {
+      toast.error("Select at least one row");
+      return;
+    }
+    const supabase = createClient();
+    let { error } = await supabase
+      .from("source_items")
+      .update({ status: "archived", archive_reason: bulkArchiveReason })
+      .in("id", ids);
+    let usedFallback = false;
+    if (error && isArchiveReasonConstraintError(error)) {
+      usedFallback = true;
+      const fallbackReason = legacySafeArchiveReason(bulkArchiveReason);
+      const retry = await supabase
+        .from("source_items")
+        .update({ status: "archived", archive_reason: fallbackReason })
+        .in("id", ids);
+      error = retry.error ?? null;
+    }
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(
+      usedFallback
+        ? `Archived ${ids.length} item(s) (legacy reason fallback)`
+        : `Archived ${ids.length} item(s)`,
+    );
+    setSelected(new Set());
+    router.refresh();
+    const ok = true;
     if (ok) {
       setBulkArchivePanelOpen(false);
       setBulkArchiveReason("");
@@ -487,15 +523,25 @@ export function ItemsQueue({
       return;
     }
     const supabase = createClient();
-    const { error } = await supabase
+    let { error } = await supabase
       .from("source_items")
       .update({ status: "archived", archive_reason: rowArchiveReason })
       .eq("id", rowArchiveId);
+    let usedFallback = false;
+    if (error && isArchiveReasonConstraintError(error)) {
+      usedFallback = true;
+      const fallbackReason = legacySafeArchiveReason(rowArchiveReason);
+      const retry = await supabase
+        .from("source_items")
+        .update({ status: "archived", archive_reason: fallbackReason })
+        .eq("id", rowArchiveId);
+      error = retry.error ?? null;
+    }
     if (error) {
       toast.error(error.message);
       return;
     }
-    toast.success("Archived");
+    toast.success(usedFallback ? "Archived (legacy reason fallback)" : "Archived");
     setSelected((s) => {
       const n = new Set(s);
       n.delete(rowArchiveId);

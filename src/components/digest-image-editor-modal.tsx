@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,6 +169,11 @@ export function DigestImageEditorModal({
   onRevertOriginal?: () => Promise<void>;
   disabled?: boolean;
 }) {
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setPortalEl(document.body);
+  }, []);
+
   const imageSrc = activeVisualImageDataUrl(candidate);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -647,9 +653,9 @@ export function DigestImageEditorModal({
     </div>
   );
 
-  return (
+  const overlay = (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-2 sm:p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-2 sm:p-4"
       role="dialog"
       aria-modal
       aria-labelledby="digest-editor-title"
@@ -1006,4 +1012,7 @@ export function DigestImageEditorModal({
       </div>
     </div>
   );
+
+  if (!portalEl) return null;
+  return createPortal(overlay, portalEl);
 }

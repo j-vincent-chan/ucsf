@@ -11,6 +11,9 @@ import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
 
 type VisualTab = "source" | "schematic" | "stock";
 
+/** Which candidates appear in Alternatives (`upload` = none until upload ships). */
+type AlternativesFilterTab = "all" | VisualTab | "upload";
+
 function typeLabel(t: VisualCandidateType): string {
   switch (t) {
     case "source":
@@ -23,6 +26,26 @@ function typeLabel(t: VisualCandidateType): string {
     default:
       return "Illustration";
   }
+}
+
+function rightsStatusShort(r: DigestVisualCandidate["rights"], isSource: boolean): string {
+  switch (r) {
+    case "open_access":
+      return isSource ? "Source-provided" : "Confirmed";
+    case "verify":
+      return "Needs review";
+    case "unknown":
+    default:
+      return "Unknown";
+  }
+}
+
+function altTextStatus(c: DigestVisualCandidate): "Missing" | "Edited" | "Generated" {
+  if (c.caption?.trim()) {
+    if (c.editedFromId || c.editMetadata) return "Edited";
+    return "Generated";
+  }
+  return "Missing";
 }
 
 function rightsLine(r: DigestVisualCandidate["rights"], source: boolean): string {
@@ -44,8 +67,8 @@ function mapTypeToTab(t: VisualCandidateType): VisualTab {
 }
 
 function tabLabel(tab: VisualTab): string {
-  if (tab === "source") return "Source";
-  if (tab === "stock") return "Photos";
+  if (tab === "source") return "Article source";
+  if (tab === "stock") return "Stock photo";
   return "Illustration";
 }
 
@@ -57,16 +80,6 @@ function selectedKindLine(candidate: DigestVisualCandidate): string {
   if (candidate.type === "source") return edited ? "Edited source image" : "Source image";
   if (candidate.type === "stock") return edited ? "Edited photo-style visual" : "Photo-style visual";
   return edited ? "Edited AI-generated illustration" : "AI-generated illustration";
-}
-
-function selectedKindDetail(candidate: DigestVisualCandidate): string {
-  if (candidate.type === "source") {
-    return "From source page. Verify rights before use.";
-  }
-  if (candidate.type === "stock") {
-    return "Verify license and source before publication.";
-  }
-  return "Generated with the digest illustration prompt from ingested research content. Review for scientific accuracy.";
 }
 
 function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandidate[] {
@@ -183,6 +196,7 @@ function CandidateCard({
   onDiscard?: () => void;
   discardBusy?: boolean;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const src = activeVisualImageDataUrl(candidate);
   return (
     <div
@@ -206,6 +220,14 @@ function CandidateCard({
             No image
           </div>
         )}
+      </div>
+      <div className="flex flex-wrap gap-1.5 px-2 pt-2">
+        <span className="rounded-md border border-[color:var(--border)]/70 bg-[color:var(--muted)]/30 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[color:var(--foreground)]/85">
+          Rights · {rightsStatusShort(candidate.rights, candidate.type === "source")}
+        </span>
+        <span className="rounded-md border border-[color:var(--border)]/70 bg-[color:var(--muted)]/22 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">
+          Alt · {altTextStatus(candidate)}
+        </span>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-2">
         <div className="flex flex-wrap items-center gap-1">
@@ -255,10 +277,30 @@ function CandidateCard({
         </div>
       </div>
       {selected ? (
-        <details className="border-t border-[color:var(--border)]/40 px-2 py-1.5 text-[10px] text-[color:var(--muted-foreground)]">
-          <summary className="cursor-pointer select-none font-medium text-[color:var(--foreground)]/80">Details</summary>
-          <p className="mt-1 line-clamp-3">{candidate.rationale}</p>
-        </details>
+        <div className="border-t border-[color:var(--border)]/40 px-2 py-1.5 text-[10px] text-[color:var(--muted-foreground)]">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen((o) => !o)}
+            aria-expanded={detailsOpen}
+            className="flex w-full items-center justify-between gap-2 text-left font-medium text-[color:var(--foreground)]/80"
+          >
+            Details
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={`shrink-0 transition-transform ${detailsOpen ? "rotate-180" : ""}`}
+              aria-hidden
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          {detailsOpen ? <p className="mt-1 line-clamp-3">{candidate.rationale}</p> : null}
+        </div>
       ) : null}
     </div>
   );
@@ -288,7 +330,10 @@ export function DigestVisualPanel({
   } | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [selectorOpen, setSelectorOpen] = useState(digestQueueLayout);
-  const [activeTab, setActiveTab] = useState<VisualTab>("schematic");
+  /** Which acquisition/generate action is active (source has no primary button). */
+  const [acquireTab, setAcquireTab] = useState<VisualTab>("schematic");
+  /** Filters the Alternatives grid only. */
+  const [filterTab, setFilterTab] = useState<AlternativesFilterTab>("all");
   const [optimisticSelectedId, setOptimisticSelectedId] = useState<string | null>(null);
   const [localBundle, setLocalBundle] = useState<DigestVisualBundle | null>(bundle);
 
@@ -387,8 +432,16 @@ export function DigestVisualPanel({
     effectiveBundle?.candidates.find((c) => c.id === selectedId) ??
     getActiveCandidate(effectiveBundle);
   const activeSrc = activeVisualImageDataUrl(active);
-  const tabCandidates =
-    activeTab === "source" ? sourceCandidates : activeTab === "stock" ? stockCandidates : schematicCandidates;
+  const alternativesForFilter: DigestVisualCandidate[] =
+    filterTab === "all"
+      ? sorted
+      : filterTab === "upload"
+        ? []
+        : filterTab === "source"
+          ? sourceCandidates
+          : filterTab === "stock"
+            ? stockCandidates
+            : schematicCandidates;
 
   useEffect(() => {
     if (optimisticSelectedId && effectiveBundle?.selectedId === optimisticSelectedId) {
@@ -420,9 +473,9 @@ export function DigestVisualPanel({
     const wasOpen = digestChooserWasOpenRef.current;
     digestChooserWasOpenRef.current = selectorOpen;
     if (!selectorOpen || wasOpen) return;
-    if (sourceCandidates.length > 0) setActiveTab("source");
-    else if (schematicCandidates.length > 0) setActiveTab("schematic");
-    else setActiveTab("stock");
+    if (sourceCandidates.length > 0) setAcquireTab("source");
+    else if (schematicCandidates.length > 0) setAcquireTab("schematic");
+    else setAcquireTab("stock");
   }, [
     digestQueueLayout,
     selectorOpen,
@@ -459,19 +512,40 @@ export function DigestVisualPanel({
         />
       ) : null}
 
-      <section className="space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+      {digestQueueLayout ? (
+        <header className="space-y-1">
+          <p className="text-sm font-semibold text-[color:var(--foreground)]">Media library</p>
+          <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+            Pick the hero visual for digests and posts, then browse alternates by source.
+          </p>
+        </header>
+      ) : null}
+
+      <section className="rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/80 p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             {!digestQueueLayout ? (
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
-                Selected Visual
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                Selected visual
               </p>
-            ) : null}
+            ) : (
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                Selected asset
+              </p>
+            )}
             {!activeSrc ? (
               <p
-                className={`max-w-md text-sm text-[color:var(--muted-foreground)] ${digestQueueLayout ? "" : "mt-1"}`}
+                className={`max-w-md text-sm text-[color:var(--muted-foreground)] ${digestQueueLayout ? "mt-1" : "mt-1"}`}
               >
-                No visual selected. Choose a source image, generate an illustration, or add AI photo options.
+                {digestQueueLayout ? (
+                  <>
+                    No hero image yet. Use{" "}
+                    <span className="font-medium text-[color:var(--foreground)]">Acquire visuals</span> below to pull
+                    from the article, generate, or find photos.
+                  </>
+                ) : (
+                  "No visual selected. Choose a source image, generate an illustration, or add AI photo options."
+                )}
               </p>
             ) : null}
           </div>
@@ -480,7 +554,7 @@ export function DigestVisualPanel({
               <Button
                 type="button"
                 variant="secondary"
-                className="h-8 px-2.5 text-xs font-medium"
+                className="h-9 px-3 text-xs font-medium"
                 disabled={disabled || working}
                 onClick={() => setSelectorOpen((v) => !v)}
               >
@@ -493,24 +567,15 @@ export function DigestVisualPanel({
               title="Preview"
               aria-label="Preview selected visual"
               onClick={() => active && setImageEditor({ candidate: active, initialMode: "preview" })}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[color:var(--border)]/60 px-2.5 text-xs font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
             >
-              <PreviewIcon />
-            </button>
-            <button
-              type="button"
-              disabled={!active || !activeSrc}
-              title="Copy image or link"
-              aria-label="Copy selected visual"
-              onClick={() => active && void copyDigestVisualCandidate(active)}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
-            >
-              <ClipboardCopyIcon />
+              <PreviewIcon className="h-3.5 w-3.5 shrink-0" />
+              Preview
             </button>
             <Button
               type="button"
               variant="secondary"
-              className="h-8 px-2.5 text-xs font-medium"
+              className="h-9 px-3 text-xs font-medium"
               disabled={!active}
               title="Open image editor"
               aria-label="Edit digest image"
@@ -518,30 +583,54 @@ export function DigestVisualPanel({
             >
               Edit
             </Button>
+            <button
+              type="button"
+              disabled={!active || !activeSrc}
+              title="Copy image or link"
+              aria-label="Copy selected visual"
+              onClick={() => active && void copyDigestVisualCandidate(active)}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/60 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ClipboardCopyIcon />
+            </button>
           </div>
         </div>
         {!activeSrc && digestQueueLayout ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-[color:var(--border)]/40 pt-4">
             <Button
               type="button"
               variant="secondary"
-              className="h-8 px-3 text-xs"
+              className="h-9 px-3 text-xs font-semibold"
               disabled={disabled || working}
               onClick={() => {
-                setActiveTab("source");
+                setFilterTab("all");
+                setSelectorOpen(true);
+              }}
+            >
+              All
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              className="h-9 px-3 text-xs font-semibold"
+              disabled={disabled || working}
+              onClick={() => {
+                setFilterTab("source");
+                setAcquireTab("source");
                 setSelectorOpen(true);
                 void api("discover_source");
               }}
             >
-              Source
+              Article source
             </Button>
             <Button
               type="button"
-              variant="secondary"
-              className="h-8 px-3 text-xs"
+              variant="primary"
+              className="h-9 px-3 text-xs font-semibold"
               disabled={disabled || working}
               onClick={() => {
-                setActiveTab("schematic");
+                setFilterTab("schematic");
+                setAcquireTab("schematic");
                 setSelectorOpen(true);
               }}
             >
@@ -549,21 +638,35 @@ export function DigestVisualPanel({
             </Button>
             <Button
               type="button"
-              variant="secondary"
-              className="h-8 px-3 text-xs"
+              variant="primary"
+              className="h-9 px-3 text-xs font-semibold"
               disabled={disabled || working}
               onClick={() => {
-                setActiveTab("stock");
+                setFilterTab("stock");
+                setAcquireTab("stock");
                 setSelectorOpen(true);
                 void api("generate_stock");
               }}
             >
-              Photos
+              Stock photo
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-9 px-3 text-xs"
+              disabled={disabled || working}
+              title="Filter uploads (upload soon)"
+              onClick={() => {
+                setFilterTab("upload");
+                setSelectorOpen(true);
+              }}
+            >
+              Upload image
             </Button>
           </div>
         ) : null}
         {activeSrc ? (
-          <div className="relative aspect-video max-h-52 w-full min-w-0 overflow-hidden rounded-lg border border-[color:var(--border)]/45 bg-[#faf6ef]">
+          <div className="relative mt-4 aspect-video max-h-[min(22rem,55vh)] w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--border)]/55 bg-[#faf6ef] ring-1 ring-[color:var(--border)]/25">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={activeSrc}
@@ -574,100 +677,195 @@ export function DigestVisualPanel({
           </div>
         ) : null}
         {active ? (
-          <div className="space-y-0.5 text-xs text-[color:var(--muted-foreground)]">
-            <p className="font-medium text-[color:var(--foreground)]">{selectedKindLine(active)}</p>
-            <p>{rightsLine(active.rights, active.type === "source")}</p>
+          <div className="mt-3 space-y-1 text-xs">
+            <p className="font-semibold text-[color:var(--foreground)]">{selectedKindLine(active)}</p>
+            <div className="flex flex-wrap gap-2 text-[11px] text-[color:var(--muted-foreground)]">
+              <span className="rounded-md border border-[color:var(--border)]/65 bg-[color:var(--muted)]/25 px-2 py-0.5 font-medium text-[color:var(--foreground)]/90">
+                Rights · {rightsStatusShort(active.rights, active.type === "source")}
+              </span>
+              <span className="rounded-md border border-[color:var(--border)]/65 bg-[color:var(--muted)]/18 px-2 py-0.5 font-medium">
+                Alt · {altTextStatus(active)}
+              </span>
+            </div>
+            <p className="text-[color:var(--muted-foreground)]">{rightsLine(active.rights, active.type === "source")}</p>
           </div>
         ) : null}
       </section>
 
       {showChooser ? (
-        <section className="space-y-3 border-t border-[color:var(--border)]/40 pt-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
-            Acquisition modes
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1.5">
+        <section className="space-y-4 rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--background)]/60 p-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]/80">
+              Acquire visuals
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+              Choose how to bring in new candidates — generated options appear in the library below.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setFilterTab("all")}
+                className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                  filterTab === "all"
+                    ? "border-[color:var(--accent)]/55 bg-[color:var(--accent)]/16 text-[color:var(--foreground)] shadow-sm ring-1 ring-[color:var(--accent)]/20"
+                    : "border-[color:var(--border)]/70 bg-[color:var(--background)]/90 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)] hover:text-[color:var(--foreground)]"
+                }`}
+              >
+                All
+              </button>
               {(["source", "schematic", "stock"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => {
-                    setActiveTab(tab);
+                    setFilterTab(tab);
+                    setAcquireTab(tab);
                     if (tab === "source" && sourceCandidates.length === 0) {
                       void api("discover_source");
                     }
                   }}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    tab === activeTab
-                      ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/14 text-[color:var(--foreground)]"
-                      : "border-[color:var(--border)]/55 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/90 hover:text-[color:var(--foreground)]"
+                  className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                    filterTab === tab
+                      ? "border-[color:var(--accent)]/55 bg-[color:var(--accent)]/16 text-[color:var(--foreground)] shadow-sm ring-1 ring-[color:var(--accent)]/20"
+                      : "border-[color:var(--border)]/70 bg-[color:var(--background)]/90 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)] hover:text-[color:var(--foreground)]"
                   }`}
                 >
                   {tabLabel(tab)}
                 </button>
               ))}
+              <button
+                type="button"
+                title="Upload coming soon — filter shows empty until then"
+                onClick={() => setFilterTab("upload")}
+                className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                  filterTab === "upload"
+                    ? "border-[color:var(--accent)]/55 bg-[color:var(--accent)]/16 text-[color:var(--foreground)] shadow-sm ring-1 ring-[color:var(--accent)]/20"
+                    : "border border-dashed border-[color:var(--border)]/70 bg-[color:var(--background)]/90 text-[color:var(--muted-foreground)] hover:border-[color:var(--border)] hover:text-[color:var(--foreground)]"
+                }`}
+              >
+                Upload image
+              </button>
             </div>
-            <div className="ml-auto flex shrink-0 items-center">
-              {activeTab === "schematic" ? (
+            {acquireTab === "schematic" ? (
+              <Button
+                type="button"
+                variant="primary"
+                className="h-9 w-fit justify-center px-4 text-xs font-semibold"
+                disabled={disabled || working}
+                title="Runs the illustration model on this signal’s title and summary to add BioRender-style options."
+                onClick={() => void api("generate_illustration")}
+              >
+                {actionBusy === "generate_illustration" ? "Generating…" : "Generate"}
+              </Button>
+            ) : acquireTab === "stock" ? (
+              <div className="flex flex-col gap-1">
                 <Button
                   type="button"
                   variant="primary"
-                  className="h-8 px-3 text-xs font-semibold"
-                  disabled={disabled || working}
-                  title="Runs the illustration model on this signal’s title and summary to add BioRender-style options."
-                  onClick={() => void api("generate_illustration")}
-                >
-                  Generate illustration
-                </Button>
-              ) : activeTab === "stock" ? (
-                <Button
-                  type="button"
-                  variant="primary"
-                  className="h-8 px-3 text-xs font-semibold"
+                  className="h-9 w-fit justify-center px-4 text-xs font-semibold"
                   disabled={disabled || working}
                   title="Runs the photo-style agent on this signal (options appear when available)."
                   onClick={() => void api("generate_stock")}
                 >
-                  Generate photos
+                  {actionBusy === "generate_stock" ? "Generating…" : "Generate"}
                 </Button>
-              ) : null}
-            </div>
+                <p className="text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+                  Photo-style picks appear with your other alternatives.
+                </p>
+              </div>
+            ) : null}
           </div>
-          {!hasBundle ? (
-            <p className="text-sm text-[color:var(--muted-foreground)]">
-              No candidates yet. Use Source, or switch to Illustration / Photos and tap Generate.
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 sm:gap-3.5">
-              {tabCandidates.length === 0 ? (
-                <p className="text-sm text-[color:var(--muted-foreground)]">
-                  {activeTab === "stock"
-                    ? "No photo options in this tab yet. Try Generate photos."
-                    : "No options in this tab yet. Try Generate illustration."}
+
+          {digestQueueLayout ? (
+            <div className="border-t border-[color:var(--border)]/45 pt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]/80">
+                Alternatives
+              </p>
+              <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                The selected hero stays highlighted. Pick another tile to swap what publishes with this signal.
+              </p>
+              {!hasBundle ? (
+                <p className="mt-3 rounded-lg border border-dashed border-[color:var(--border)]/60 bg-[color:var(--muted)]/10 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
+                  No candidates yet. Pick All or a source above, then run the action.
+                </p>
+              ) : sorted.length === 0 ? (
+                <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">No visuals in this bundle.</p>
+              ) : alternativesForFilter.length === 0 ? (
+                <p className="mt-3 rounded-lg border border-dashed border-[color:var(--border)]/55 bg-[color:var(--muted)]/10 px-3 py-5 text-center text-sm text-[color:var(--muted-foreground)]">
+                  {filterTab === "upload"
+                    ? "Upload isn’t available yet. Choose All or another filter to browse visuals."
+                    : "No visuals match this filter. Choose All to see every option."}
                 </p>
               ) : (
-                tabCandidates.map((candidate) => (
-                  <CandidateCard
-                    key={candidate.id}
-                    candidate={candidate}
-                    selected={selectedId === candidate.id}
-                    canDiscard={
-                      sorted.length > 1 &&
-                      (Boolean(candidate.editedFromId) || candidate.aiGenerated === true)
-                    }
-                    discardBusy={actionBusy === "discard"}
-                    onDiscard={() => {
-                      if (!window.confirm("Remove this image option from the digest?")) return;
-                      void api("discard", { candidate_id: candidate.id });
-                    }}
-                    onPreview={() => setImageEditor({ candidate, initialMode: "preview" })}
-                    onSelect={() => {
-                      setOptimisticSelectedId(candidate.id);
-                      void api("select", { candidate_id: candidate.id });
-                    }}
-                  />
-                ))
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {alternativesForFilter.map((candidate) => (
+                    <CandidateCard
+                      key={candidate.id}
+                      candidate={candidate}
+                      selected={selectedId === candidate.id}
+                      canDiscard={
+                        sorted.length > 1 &&
+                        (Boolean(candidate.editedFromId) || candidate.aiGenerated === true)
+                      }
+                      discardBusy={actionBusy === "discard"}
+                      onDiscard={() => {
+                        if (!window.confirm("Remove this image option from the digest?")) return;
+                        void api("discard", { candidate_id: candidate.id });
+                      }}
+                      onPreview={() => setImageEditor({ candidate, initialMode: "preview" })}
+                      onSelect={() => {
+                        setOptimisticSelectedId(candidate.id);
+                        void api("select", { candidate_id: candidate.id });
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="border-t border-[color:var(--border)]/45 pt-4">
+              {!hasBundle ? (
+                <p className="text-sm text-[color:var(--muted-foreground)]">
+                  No candidates yet. Pick All or a source above, then run the action.
+                </p>
+              ) : alternativesForFilter.length === 0 ? (
+                <p className="text-sm text-[color:var(--muted-foreground)]">
+                  {filterTab === "upload"
+                    ? "Upload isn’t available yet. Choose All or another filter to browse visuals."
+                    : filterTab === "all"
+                      ? "No visuals in this bundle."
+                      : filterTab === "stock"
+                        ? "No photo options match this filter. Use Generate above or choose All."
+                        : filterTab === "source"
+                          ? "No article figures match this filter. Use Article source or choose All."
+                          : "No illustration options match this filter. Use Generate above or choose All."}
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 sm:gap-3.5">
+                  {alternativesForFilter.map((candidate) => (
+                    <CandidateCard
+                      key={candidate.id}
+                      candidate={candidate}
+                      selected={selectedId === candidate.id}
+                      canDiscard={
+                        sorted.length > 1 &&
+                        (Boolean(candidate.editedFromId) || candidate.aiGenerated === true)
+                      }
+                      discardBusy={actionBusy === "discard"}
+                      onDiscard={() => {
+                        if (!window.confirm("Remove this image option from the digest?")) return;
+                        void api("discard", { candidate_id: candidate.id });
+                      }}
+                      onPreview={() => setImageEditor({ candidate, initialMode: "preview" })}
+                      onSelect={() => {
+                        setOptimisticSelectedId(candidate.id);
+                        void api("select", { candidate_id: candidate.id });
+                      }}
+                    />
+                  ))}
+                </div>
               )}
             </div>
           )}

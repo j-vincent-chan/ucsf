@@ -2,11 +2,26 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import {
+  DEFAULT_DIGEST_SUMMARY_TONE,
+  digestSummaryToneAdjustExtraRules,
+  digestSummaryTonePromptBlock,
+} from "@/lib/digest-summary-tone";
 
 const bodySchema = z.object({
   text: z.string().min(1),
   target_words: z.number().int().min(10).max(400),
   model: z.string().min(1).optional(),
+  tone: z
+    .enum([
+      "professional",
+      "warm",
+      "strategic",
+      "witty",
+      "thought_leadership",
+      "technical",
+    ])
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -35,7 +50,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const { text, target_words, model: requestedModel } = parsed.data;
+  const { text, target_words, model: requestedModel, tone: requestedTone } = parsed.data;
+  const tone = requestedTone ?? DEFAULT_DIGEST_SUMMARY_TONE;
+  const toneInstruction = digestSummaryTonePromptBlock(tone);
   const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
   const ALLOWED_MODELS = new Set([
     DEFAULT_MODEL,
@@ -54,15 +71,25 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content:
-            "You rewrite text to a target word count while preserving meaning and factual claims. Output ONLY the rewritten text, no quotes, no markdown.",
+          content: [
+            "You are an expert science communications editor. Rewrite the user's text while preserving every factual claim, name, number, and causal relationship. Output ONLY the rewritten text, no quotes, no markdown, no title line unless the input was only a title.",
+            digestSummaryToneAdjustExtraRules(),
+            "Apply BOTH: (1) the writing tone below—voice, register, what gets emphasized, and how ideas connect—so the full piece reads as if originally drafted in that voice; (2) the target word count (within ~10% if needed for clarity).",
+            toneInstruction,
+          ].join("\n\n"),
         },
         {
           role: "user",
-          content: `Rewrite to approximately ${target_words} words.\n\nTEXT:\n${text}`,
+          content: [
+            `Target length: approximately ${target_words} words (stay close).`,
+            "Perform a full rewrite in the selected tone: new phrasing and flow through the whole passage, not an opening hook only.",
+            "",
+            "TEXT:",
+            text,
+          ].join("\n"),
         },
       ],
-      temperature: 0.4,
+      temperature: 0.55,
     });
     const out = completion.choices[0]?.message?.content?.trim() ?? "";
     if (!out) {

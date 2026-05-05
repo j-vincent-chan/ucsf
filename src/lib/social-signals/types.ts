@@ -19,6 +19,12 @@ export type SocialPost = {
   repostedBy?: { displayName: string; handle: string };
   /** X API `conversation_id`: same for all posts in a thread (used to group in the feed). */
   conversationId?: string;
+  /** Live API metrics when available (X `public_metrics`, Bluesky post counts). */
+  replyCount?: number;
+  repostCount?: number;
+  likeCount?: number;
+  /** Impressions (X) — may be omitted depending on API tier. */
+  viewCount?: number;
 };
 
 export type SourceMeta = {

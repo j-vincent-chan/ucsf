@@ -48,6 +48,8 @@ import type {
   DashboardPayload,
   MonthlyPoint,
 } from "@/lib/dashboard-aggregate";
+import type { SocialSignalsDashboardSnapshot } from "@/lib/social-signals/dashboard-snapshot";
+import { SocialSignalsDashboardCard } from "@/components/social-signals-dashboard-card";
 import {
   cumulativeTotalSeries,
   effectiveMonthKey,
@@ -350,6 +352,8 @@ const gridStroke = "rgba(124, 106, 95, 0.18)";
 export function ResearchDashboard({
   data,
   recentItems,
+  socialSnapshot = null,
+  socialSnapshotError = null,
 }: {
   data: DashboardPayload;
   recentItems: {
@@ -360,6 +364,8 @@ export function ResearchDashboard({
     published_at: string | null;
     entityName: string;
   }[];
+  socialSnapshot?: SocialSignalsDashboardSnapshot | null;
+  socialSnapshotError?: string | null;
 }) {
   const router = useRouter();
   const [range, setRange] = useState<ChartRange>("ytd");
@@ -453,7 +459,7 @@ export function ResearchDashboard({
   );
 
   const topEntities = useMemo(
-    () => topEntitiesInRange(data.itemsForVolume, data.entityNameById, range),
+    () => topEntitiesInRange(data.itemsForVolume, data.entityNameById, range, new Date(), 20),
     [data.itemsForVolume, data.entityNameById, range],
   );
 
@@ -777,6 +783,8 @@ export function ResearchDashboard({
           </div>
         </Card>
       </div>
+
+      <SocialSignalsDashboardCard snapshot={socialSnapshot} errorMessage={socialSnapshotError} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

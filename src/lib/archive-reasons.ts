@@ -40,3 +40,25 @@ export function archiveReasonLabel(code: string | null | undefined): string | nu
   if (opt) return opt.label;
   return code.replace(/_/g, " ");
 }
+
+/** DB may still have an older archive_reason check constraint on some environments. */
+export function isArchiveReasonConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybe = error as { message?: unknown; code?: unknown; details?: unknown };
+  const msg = typeof maybe.message === "string" ? maybe.message : "";
+  const details = typeof maybe.details === "string" ? maybe.details : "";
+  const code = typeof maybe.code === "string" ? maybe.code : "";
+  return (
+    code === "23514" &&
+    (msg.includes("source_items_archive_reason_check") || details.includes("source_items_archive_reason_check"))
+  );
+}
+
+/**
+ * Compatibility fallback for older DB constraints that only allow legacy archive reasons.
+ * Keep meaning close by mapping newer reasons to `not_relevant`.
+ */
+export function legacySafeArchiveReason(reason: ItemArchiveReason): ItemArchiveReason {
+  if (reason === "not_accurate" || reason === "not_relevant") return reason;
+  return "not_relevant";
+}

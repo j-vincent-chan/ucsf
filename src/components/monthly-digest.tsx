@@ -14,7 +14,11 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, SourceType, Summary } from "@/types/database";
-import { SummaryEditor } from "@/components/summary-editor";
+import {
+  DigestPublishSettingsInline,
+  SummaryEditor,
+  type DigestPublishAttachmentMode,
+} from "@/components/summary-editor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -23,13 +27,19 @@ import { CategoryTag, SourceTypeTag } from "@/app/(main)/items/queue-cell-tags";
 import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 import { formatYearMonthLabel } from "@/lib/digest-month";
 import {
+  DEFAULT_DIGEST_SUMMARY_TONE,
+  type DigestSummaryTone,
+} from "@/lib/digest-summary-tone";
+import { blurbWordRangeForStyle } from "@/lib/blurb-length-range";
+import {
   type DigestVisualBundle,
   activeVisualImageDataUrl,
   getActiveCandidate,
   hasActiveVisual,
   parseDigestVisualBundleFromDb,
 } from "@/lib/digest-visual-types";
-import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
+import { mergeWhyIntoBlurb, parseBlurbJson, stringifyBlurbContent } from "@/lib/blurb-content";
+import { BLUESKY_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
 import { DigestVisualPanel } from "@/components/digest-visual-panel";
 import scimagoSjrLookupJson from "@/data/scimago-sjr-lookup.json";
 import type { ScimagoSjrLookup } from "@/lib/scimago-sjr-lookup";
@@ -38,7 +48,6 @@ import {
   type ReferencePublicationsSortMode,
   sortOutputPreviewReferenceRows,
 } from "@/lib/digest-reference-sort";
-
 const SCIMAGO_SJR_LOOKUP = scimagoSjrLookupJson as ScimagoSjrLookup;
 
 function CollapseChevron({ open }: { open: boolean }) {
@@ -190,20 +199,17 @@ type DigestWorkflowStatus =
   | "missing_visual"
   | "missing_brief";
 
-function clampText(s: string, max = 180): string {
-  const t = s.replace(/\s+/g, " ").trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max - 1).trimEnd()}…`;
-}
-
-function digestSummaryPreview(summary: Summary | null): { headline: string; blurb: string; words: number } {
-  if (!summary) return { headline: "No summary generated yet", blurb: "", words: 0 };
+/** Full headline + body for the collapsed-card output preview (not single-line clamped). */
+function digestCardOutputPreview(summary: Summary | null): { headline: string; body: string } {
+  if (!summary) return { headline: "No summary generated yet", body: "" };
   const raw = (summary.edited_text ?? summary.generated_text ?? "").trim();
+  if (!raw) return { headline: "No summary generated yet", body: "" };
   const parsed = parseBlurbJson(raw);
-  const headline = clampText(parsed?.headline?.trim() || "Untitled summary", 120);
-  const blurb = clampText(parsed?.blurb?.trim() || raw, 240);
-  const words = blurb ? blurb.split(/\s+/).filter(Boolean).length : 0;
-  return { headline, blurb, words };
+  if (!parsed) return { headline: "Untitled summary", body: raw };
+  const merged = mergeWhyIntoBlurb(parsed);
+  const headline = merged.headline?.trim() || "Untitled summary";
+  const body = merged.blurb?.trim() || raw;
+  return { headline, body };
 }
 
 /** Full headline + body for clipboard (preview uses clamped strings). */
@@ -399,7 +405,11 @@ function DigestCategoryCard({
     }`}>
       <button
         type="button"
-        onClick={onExpand}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onExpand();
+        }}
         className={`flex w-full items-start justify-between gap-3 border-b px-4 py-3.5 text-left transition-colors ${
           expanded
             ? "border-[color:var(--accent)]/35 bg-[color:var(--accent)]/8"
@@ -490,6 +500,8 @@ export type DigestItemPayload = {
   primary_tracked_entity_id: string | null;
   /** For papers, PubMed co–last / co–corresponding (second author from the end) when available. */
   penultimate_author_name: string | null;
+  /** PubMed paper: full author list from eSummary (digest page); link roster overlap in UI. */
+  paper_author_names: string[] | null;
   pi_name: string | null;
   /** Image snapshot bundle: source, schematic, and stock candidates; legacy rows are upgraded on read. */
   digest_cover: DigestVisualBundle | null;
@@ -497,6 +509,64 @@ export type DigestItemPayload = {
   digestCoverHasAsset: boolean;
   summaries: Summary[];
 };
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Whether a PubMed-style author string corresponds to this Member / Watchlist investigator (profile link target). */
+function pubmedAuthorLineMatchesInvestigator(
+  authorLine: string,
+  inv: { name: string; first_name: string; last_name: string },
+): boolean {
+  const line = authorLine.trim().toLowerCase();
+  const last = inv.last_name.trim().toLowerCase();
+  const first = inv.first_name.trim().toLowerCase();
+  const roster = inv.name.trim().toLowerCase();
+  if (!last || line.length < 2) return false;
+  if (!line.includes(last)) return false;
+  if (roster && line === roster) return true;
+  if (first && line.includes(first)) return true;
+  if (roster) {
+    const r = roster.replace(/\s+/g, " ");
+    if (line.includes(r)) return true;
+  }
+  const fi = first.charAt(0);
+  if (
+    fi &&
+    new RegExp(
+      `(^|[\\s,])${escapeRegExp(fi)}\\.?[a-z]?\\.?\\s*${escapeRegExp(last)}`,
+      "i",
+    ).test(authorLine.trim())
+  ) {
+    return true;
+  }
+  // "Krummel MF" / surname-first tail formats: surname plus short token(s), initials overlap roster first name.
+  const stripped = line.replaceAll(last, "").replace(/\./g, "").trim();
+  if (stripped.length > 0 && stripped.length <= 10 && fi && /[\s,]/.test(authorLine)) {
+    const tailTok = stripped.split(/[\s,]+/).filter(Boolean);
+    if (
+      tailTok.some((t) => t.length <= 4 && t.startsWith(fi)) ||
+      tailTok.some((t) => t.length === 1 && t === fi)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function digestSummaryShareText(summary: Summary): string {
+  const raw = summary.edited_text ?? summary.generated_text;
+  const merged = mergeWhyIntoBlurb(
+    parseBlurbJson(raw) ?? {
+      headline: "",
+      blurb: raw,
+      why_it_matters: "",
+      confidence_notes: "",
+    },
+  );
+  return `${merged.headline}\n\n${merged.blurb?.trim() ?? ""}`.trim();
+}
 
 function DigestItemRow({
   item,
@@ -512,20 +582,24 @@ function DigestItemRow({
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
   const [genStyle, setGenStyle] = useState<string>("newsletter");
+  const [summaryTone, setSummaryTone] = useState<DigestSummaryTone>(DEFAULT_DIGEST_SUMMARY_TONE);
   const [generating, setGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(item.summaries.length > 0);
   const [illustrating, setIllustrating] = useState(false);
-  const [summariesSectionOpen, setSummariesSectionOpen] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
-  const actionsMenuRef = useRef<HTMLDivElement | null>(null);
+  /** Button strip (Open / Collapse / More) — excluded from “click outside” menu dismissal. */
+  const actionsToolbarRef = useRef<HTMLDivElement | null>(null);
+  const actionsMenuDropdownRef = useRef<HTMLDivElement | null>(null);
   /** Full `digest_cover` loaded on demand (month list omits JSON from the server). */
   const [fetchedCover, setFetchedCover] = useState<DigestVisualBundle | null>(null);
   const [coverLoading, setCoverLoading] = useState(false);
+  const [postToX, setPostToX] = useState(true);
+  const [postToBluesky, setPostToBluesky] = useState(true);
+  const [publishAttachmentMode, setPublishAttachmentMode] = useState<DigestPublishAttachmentMode>("digest_visual");
+  const [digestStripPosting, setDigestStripPosting] = useState(false);
+  const [digestStripSaving, setDigestStripSaving] = useState(false);
   const activeSummary = summaries[0] ?? null;
-  const briefReady = summaries.some((s) => Boolean(s.edited_text?.trim()));
   const workflowStatus = digestWorkflowStatus(item, summaries);
-  const briefPreview = digestSummaryPreview(activeSummary);
 
   const refreshSummaries = useCallback(async () => {
     const supabase = createClient();
@@ -537,9 +611,127 @@ function DigestItemRow({
     if (!error && data) setSummaries(data as Summary[]);
   }, [item.id]);
 
-  async function generateSummary() {
+  useEffect(() => {
+    setPostToX(true);
+    setPostToBluesky(true);
+    setPublishAttachmentMode("digest_visual");
+  }, [activeSummary?.id]);
+
+  useEffect(() => {
+    if (!item.source_url?.trim()) setPublishAttachmentMode("digest_visual");
+  }, [item.source_url]);
+
+  const digestStripPost = useCallback(async () => {
+    const s = activeSummary;
+    if (!s || s.style !== "bluesky_x") return;
+    const text = digestSummaryShareText(s);
+    if (!text.trim()) {
+      toast.error("Nothing to post yet");
+      return;
+    }
+    if (!postToX && !postToBluesky) {
+      toast.error("Select X and/or Bluesky");
+      return;
+    }
+    setDigestStripPosting(true);
+    const results: string[] = [];
+    const errors: string[] = [];
+    try {
+      const publishPayload: Record<string, unknown> = {
+        text,
+        source_item_id: s.source_item_id,
+        attachment: publishAttachmentMode,
+      };
+      if (postToX) {
+        const res = await fetch("/api/x/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(publishPayload),
+        });
+        const data = (await res.json()) as {
+          error?: string;
+          url?: string;
+          posted_without_media?: boolean;
+        };
+        if (!res.ok) errors.push(`X: ${data.error ?? res.statusText}`);
+        else if (data.url) {
+          results.push(
+            data.posted_without_media
+              ? `X: ${data.url} (text only — X rejected the image attachment)`
+              : `X: ${data.url}`,
+          );
+        } else results.push("X: posted");
+      }
+      if (postToBluesky) {
+        const res = await fetch("/api/bsky/post", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(publishPayload),
+        });
+        const data = (await res.json()) as { error?: string; url?: string; truncated?: boolean };
+        if (!res.ok) errors.push(`Bluesky: ${data.error ?? res.statusText}`);
+        else if (data.url) {
+          results.push(
+            data.truncated
+              ? `Bluesky: ${data.url} (shortened to ${BLUESKY_CHAR_LIMIT} characters)`
+              : `Bluesky: ${data.url}`,
+          );
+        } else results.push("Bluesky: posted");
+      }
+      if (results.length) toast.success(results.join(" · "));
+      if (errors.length) toast.error(errors.join(" · "));
+    } catch {
+      toast.error("Publish request failed");
+    } finally {
+      setDigestStripPosting(false);
+    }
+  }, [activeSummary, postToX, postToBluesky, publishAttachmentMode]);
+
+  const digestStripSave = useCallback(async () => {
+    const s = activeSummary;
+    if (!s) return;
+    setDigestStripSaving(true);
+    try {
+      const raw = s.edited_text ?? s.generated_text;
+      const parsed = parseBlurbJson(raw);
+      const body = mergeWhyIntoBlurb(
+        parsed ?? { headline: "", blurb: raw, why_it_matters: "", confidence_notes: "" },
+      );
+      const edited = stringifyBlurbContent(body);
+      const supabase = createClient();
+      const { error } = await supabase.from("summaries").update({ edited_text: edited }).eq("id", s.id);
+      if (error) throw new Error(error.message);
+      toast.success("Summary updated");
+      await refreshSummaries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setDigestStripSaving(false);
+    }
+  }, [activeSummary, refreshSummaries]);
+
+  const digestStripCopy = useCallback(async () => {
+    const s = activeSummary;
+    if (!s) return;
+    try {
+      await navigator.clipboard.writeText(digestSummaryShareText(s));
+      toast.success("Copied");
+    } catch {
+      toast.error("Copy failed");
+    }
+  }, [activeSummary]);
+
+  async function generateSummary(opts?: {
+    targetBlurbWords?: number;
+    refinement?: string;
+    tone?: DigestSummaryTone;
+  }) {
     setGenerating(true);
     const hadExisting = summaries.length > 0;
+    const range = blurbWordRangeForStyle(genStyle);
+    const targetBlurbWords = opts?.targetBlurbWords ?? range.default;
+    const refinement = opts?.refinement?.trim() ?? "";
+    const tone = opts?.tone ?? summaryTone;
     try {
       const res = await fetch("/api/generate-blurb", {
         method: "POST",
@@ -547,16 +739,17 @@ function DigestItemRow({
         body: JSON.stringify({
           source_item_id: item.id,
           style: genStyle,
+          tone,
           model: model || undefined,
+          target_blurb_words: targetBlurbWords,
+          refinement_instruction: refinement || undefined,
         }),
       });
       const data = (await res.json()) as { error?: string; record?: Summary };
       if (!res.ok) {
         throw new Error(data.error ?? "Request failed");
       }
-      toast.success(hadExisting ? "Summary regenerated" : "Summary drafted");
-      setSummariesSectionOpen(true);
-      setSummaryOpen(true);
+      toast.success(hadExisting ? "Summary generated" : "Summary drafted");
       await refreshSummaries();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Generation failed");
@@ -624,9 +817,10 @@ function DigestItemRow({
   useEffect(() => {
     if (!actionsMenuOpen) return;
     const onPointerDown = (event: MouseEvent) => {
-      if (!actionsMenuRef.current?.contains(event.target as Node)) {
-        setActionsMenuOpen(false);
-      }
+      const t = event.target as Node;
+      if (actionsMenuDropdownRef.current?.contains(t)) return;
+      if (actionsToolbarRef.current?.contains(t)) return;
+      setActionsMenuOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setActionsMenuOpen(false);
@@ -675,7 +869,32 @@ function DigestItemRow({
   }, [expanded, item.digestCoverHasAsset, item.id]);
 
   const visualBundle = fetchedCover ?? item.digest_cover;
-  const imageSrc = activeVisualImageDataUrl(getActiveCandidate(visualBundle));
+  const outputCard = useMemo(
+    () => digestCardOutputPreview(activeSummary),
+    [activeSummary],
+  );
+  /** Collapsed card: single hero image — the selected digest visual only (not the whole library grid). */
+  const selectedPreviewImageUrl = useMemo(() => {
+    const b = visualBundle;
+    if (!b?.candidates?.length) return null;
+    const active = getActiveCandidate(b);
+    return activeVisualImageDataUrl(active);
+  }, [visualBundle]);
+
+  const digestPublishPlatforms = useMemo(
+    () =>
+      activeSummary?.style === "bluesky_x"
+        ? {
+            postToX,
+            postToBluesky,
+            onPostToXChange: setPostToX,
+            onPostToBlueskyChange: setPostToBluesky,
+            attachmentMode: publishAttachmentMode,
+            onAttachmentModeChange: setPublishAttachmentMode,
+          }
+        : undefined,
+    [activeSummary?.style, postToX, postToBluesky, publishAttachmentMode],
+  );
 
   return (
     <Card
@@ -699,7 +918,33 @@ function DigestItemRow({
             </Link>
           </h3>
           <p className="mt-1.5 text-sm leading-snug text-[color:var(--muted-foreground)]">
-            {item.investigators.length > 0 ? (
+            {item.paper_author_names && item.paper_author_names.length > 0 ? (
+              <>
+                {item.paper_author_names.map((authLine, i) => {
+                  const inv = item.investigators.find((x) => pubmedAuthorLineMatchesInvestigator(authLine, x));
+                  const profileUrl = inv ? ucsfProfilesUrl(inv.first_name, inv.last_name) : null;
+                  return (
+                    <Fragment key={`${i}-${authLine.slice(0, 48)}`}>
+                      {i > 0 ? (
+                        <span className="text-[color:var(--muted-foreground)]/45">, </span>
+                      ) : null}
+                      {profileUrl ? (
+                        <a
+                          href={profileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 transition-colors hover:text-[color:var(--foreground)]"
+                        >
+                          {authLine}
+                        </a>
+                      ) : (
+                        <span>{authLine}</span>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </>
+            ) : item.investigators.length > 0 ? (
               <>
                 {item.investigators.map((inv, i) => {
                   const profileUrl = ucsfProfilesUrl(inv.first_name, inv.last_name);
@@ -743,8 +988,11 @@ function DigestItemRow({
             <CategoryTag category={item.category} />
           </div>
           </div>
-          <div className="relative shrink-0" ref={actionsMenuRef}>
-            <div className="inline-flex h-9 items-stretch overflow-hidden rounded-xl border border-[color:var(--border)]/65 bg-[color:var(--background)]/85 text-[color:var(--foreground)]/85 shadow-none">
+          <div className="relative z-20 shrink-0">
+            <div
+              ref={actionsToolbarRef}
+              className="inline-flex h-9 items-stretch overflow-hidden rounded-xl border border-[color:var(--border)]/65 bg-[color:var(--background)]/85 text-[color:var(--foreground)]/85 shadow-none"
+            >
               {item.source_url ? (
                 <a
                   href={item.source_url}
@@ -802,7 +1050,11 @@ function DigestItemRow({
               )}
               <button
                 type="button"
-                onClick={onToggleExpanded}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onToggleExpanded();
+                }}
                 aria-expanded={expanded}
                 title={expanded ? "Collapse" : "Expand"}
                 aria-label={expanded ? "Collapse details" : "Expand details"}
@@ -837,6 +1089,7 @@ function DigestItemRow({
             </div>
             {actionsMenuOpen ? (
               <div
+                ref={actionsMenuDropdownRef}
                 role="menu"
                 aria-label="Signal actions"
                 className="absolute right-0 top-[calc(100%+0.45rem)] z-30 min-w-[12.5rem] overflow-hidden rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--background)]/98 p-1.5 shadow-[0_18px_30px_-20px_rgba(49,31,24,0.7)]"
@@ -917,153 +1170,171 @@ function DigestItemRow({
 
       {!expanded ? (
         <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-          <div className="grid gap-3.5 rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/80 p-3 md:grid-cols-[minmax(0,1fr)_minmax(11rem,28%)]">
-            <div className="min-w-0 space-y-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">Summary preview</p>
-              <p className="line-clamp-1 text-sm font-semibold leading-snug text-[color:var(--foreground)]">{briefPreview.headline}</p>
-              <p className="line-clamp-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                {briefPreview.blurb || "No summary generated yet. Draft one when ready."}
-              </p>
-            </div>
-            <div className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]">
-              {imageSrc ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={imageSrc}
-                  alt=""
-                  className="box-border h-full w-full object-contain object-center"
-                  decoding="async"
-                />
-              ) : digestItemHasVisual(item) ? (
-                <div className="flex min-h-[4.5rem] w-full items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
-                  Expand card to view thumbnail
+          <div className="rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/80 p-4 sm:p-5">
+            <div className="flex flex-col gap-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(12rem,42%)] md:items-start md:gap-6">
+              <div className="min-w-0 space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                  Output preview
+                </p>
+                <p className="text-base font-semibold leading-snug tracking-tight text-[color:var(--foreground)] sm:text-lg">
+                  {outputCard.headline}
+                </p>
+                <div className="max-h-[min(28rem,52vh)] overflow-y-auto text-sm leading-relaxed text-[color:var(--foreground)]/92 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                  {outputCard.body.trim()
+                    ? outputCard.body
+                    : "No summary generated yet. Expand the card to draft copy."}
                 </div>
-              ) : (
-                <div className="flex min-h-[4.5rem] w-full items-center justify-center px-3 text-center text-xs font-medium text-[color:var(--muted-foreground)]">
-                  No visual generated yet
-                </div>
-              )}
+              </div>
+              <div className="min-w-0 space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)] md:sr-only">
+                  Visuals
+                </p>
+                {!selectedPreviewImageUrl ? (
+                  <div className="relative flex min-h-[9rem] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]/90 px-3 text-center">
+                    {digestItemHasVisual(item) ? (
+                      <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
+                        Expand card to load the selected visual
+                      </p>
+                    ) : (
+                      <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
+                        No visuals yet — generate options after expanding
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedPreviewImageUrl}
+                      alt=""
+                      className="box-border h-full w-full object-contain object-center"
+                      decoding="async"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+          {activeSummary?.style === "bluesky_x" ? (
+            <div className="mt-3 rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/80 p-3 shadow-sm sm:p-4">
+              <DigestPublishSettingsInline
+                postToX={postToX}
+                postToBluesky={postToBluesky}
+                onPostToXChange={setPostToX}
+                onPostToBlueskyChange={setPostToBluesky}
+                attachmentMode={publishAttachmentMode}
+                onAttachmentModeChange={setPublishAttachmentMode}
+                sourceUrl={item.source_url}
+                className="border-0 bg-transparent p-0 shadow-none"
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[color:var(--border)]/40 pt-3">
+                <Button
+                  type="button"
+                  className="h-10 px-5 text-sm font-semibold shadow-sm"
+                  disabled={
+                    digestStripPosting ||
+                    (!postToX && !postToBluesky) ||
+                    generating ||
+                    archiving ||
+                    illustrating
+                  }
+                  onClick={() => void digestStripPost()}
+                >
+                  {digestStripPosting ? "Posting…" : "Post"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 px-5 text-sm font-medium"
+                  disabled={digestStripSaving || generating || archiving || illustrating}
+                  onClick={() => void digestStripSave()}
+                >
+                  {digestStripSaving ? "Saving…" : "Save changes"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  title="Copy summary"
+                  aria-label="Copy summary"
+                  className="h-10 w-10 shrink-0 p-0 text-[color:var(--muted-foreground)]"
+                  onClick={() => void digestStripCopy()}
+                >
+                  <ReferencesCopyIcon className="mx-auto h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {expanded ? (
         <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--muted)]/6 px-4 py-4 sm:px-5">
-          {digestQueueChecklist(item, summaries)}
-          <div className="mt-4 grid items-start gap-6 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.14fr)]">
-            <div className="min-w-0 space-y-5">
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-                    Summary
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => void copyBriefPreview()}
-                    disabled={!activeSummary}
-                    title="Copy summary"
-                    aria-label="Copy summary"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[color:var(--border)]/55 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-40"
-                  >
-                    <ReferencesCopyIcon className="h-4 w-4 text-current" />
-                  </button>
-                </div>
-                <div className="rounded-lg border border-[color:var(--border)]/45 bg-[color:var(--background)]/55 px-3 py-3 sm:px-4">
-                  <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px] text-[color:var(--muted-foreground)]">
-                    <StatusPill className="py-0 text-[10px]">{activeSummary?.style ?? "No channel"}</StatusPill>
-                    <span>{briefPreview.words} words</span>
-                  </div>
-                  <p className="text-base font-semibold leading-snug text-[color:var(--foreground)]">{briefPreview.headline}</p>
-                  <p className="mt-1.5 text-sm leading-relaxed text-[color:var(--foreground)]/90">
-                    {briefPreview.blurb || "No summary generated yet. Draft one when ready."}
-                  </p>
-                </div>
-              </div>
-              <div className="h-px bg-[color:var(--border)]/35" aria-hidden />
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setSummariesSectionOpen((o) => !o)}
-                  aria-expanded={summariesSectionOpen}
-                  className="flex w-full items-center justify-between gap-2 rounded-lg py-1.5 text-left transition-colors hover:bg-[color:var(--muted)]/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-                >
-                  <div className="min-w-0">
-                    <span className="text-sm font-semibold text-[color:var(--foreground)]">Refine summary</span>
-                    <span className="mt-0.5 block text-xs text-[color:var(--muted-foreground)]">
-                      Channel, length, and AI-assisted edits.
-                    </span>
-                  </div>
-                  <CollapseChevron open={summariesSectionOpen} />
-                </button>
-                {summariesSectionOpen ? (
-                  <div className="mt-3 space-y-3 pl-0.5">
-                    <div className="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-end">
-                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[14rem]">
-                        <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">Channel</span>
-                        <Select
-                          value={genStyle}
-                          onChange={(e) => setGenStyle(e.target.value)}
-                          className="w-full"
-                          aria-label="Summary format"
-                        >
-                          <option value="newsletter">Newsletter</option>
-                          <option value="linkedin">LinkedIn</option>
-                          <option value="bluesky_x">Social Media</option>
-                        </Select>
-                      </div>
+          <div className="grid isolate items-stretch gap-6 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] xl:gap-8">
+            <div className="relative z-10 flex min-h-0 min-w-0 flex-col gap-5">
+              <header className="space-y-1">
+                <p className="text-sm font-semibold text-[color:var(--foreground)]">Content studio</p>
+                <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                  Create, refine, and adapt written summaries, headlines, and posts for different channels.
+                </p>
+              </header>
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
+                {summaries.length === 0 ? (
+                  <div className="rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--background)]/60 px-4 py-6 text-center">
+                    <p className="text-sm text-[color:var(--muted-foreground)]">
+                      No draft yet. Choose a default channel and tap{" "}
+                      <span className="font-medium text-[color:var(--foreground)]">Draft summary</span>{" "}
+                      (toolbar below opens generation).
+                    </p>
+                    <div className="mx-auto mt-4 flex max-w-xs flex-col gap-2 text-left">
+                      <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
+                        Channel for first draft
+                      </span>
+                      <Select
+                        value={genStyle}
+                        onChange={(e) => setGenStyle(e.target.value)}
+                        className="w-full py-2.5 leading-normal"
+                        aria-label="Summary format"
+                      >
+                        <option value="newsletter">Newsletter</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="bluesky_x">Social media</option>
+                      </Select>
                       <Button
                         type="button"
-                        onClick={generateSummary}
+                        onClick={() => void generateSummary()}
                         disabled={generating || archiving || illustrating}
-                        className="h-8 whitespace-nowrap px-3 text-xs"
+                        variant="primary"
+                        className="h-10 w-full text-sm font-semibold"
                       >
-                        {generating ? "Drafting…" : summaries.length > 0 ? "Regenerate" : "Draft summary"}
+                        {generating ? "Drafting…" : "Draft summary"}
                       </Button>
-                      <button
-                        type="button"
-                        onClick={() => setSummaryOpen((o) => !o)}
-                        className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          summaryOpen
-                            ? "border-[color:var(--accent)]/45 bg-[color:var(--accent)]/10 text-[color:var(--foreground)]"
-                            : "border-[color:var(--border)]/70 bg-transparent text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-                        }`}
-                      >
-                        {summaryOpen ? "Hide editor" : "Show editor"}
-                      </button>
                     </div>
-                    {summaryOpen ? (
-                      <div className="w-full min-w-0 pt-1">
-                        {summaries.length === 0 ? (
-                          <p className="py-4 text-center text-sm text-[color:var(--muted-foreground)]">
-                            No draft yet. Pick a channel and tap{" "}
-                            <span className="font-medium text-[color:var(--foreground)]">Draft summary</span>.
-                          </p>
-                        ) : (
-                          <SummaryEditor
-                            key={summaries[0]!.id}
-                            summary={summaries[0]!}
-                            onSaved={refreshSummaries}
-                            variant="embedded"
-                            onRequestClose={() => setSummaryOpen(false)}
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-                        Open the editor to lock in digest-ready copy.
-                      </p>
-                    )}
                   </div>
-                ) : null}
+                ) : (
+                  <SummaryEditor
+                    key={summaries[0]!.id}
+                    summary={summaries[0]!}
+                    onSaved={refreshSummaries}
+                    variant="embedded"
+                    omitPublishChrome={summaries[0]!.style === "bluesky_x"}
+                    publishPlatforms={digestPublishPlatforms}
+                    tone={summaryTone}
+                    onToneChange={setSummaryTone}
+                    sourceUrl={item.source_url}
+                    digestWorkflow={{
+                      genStyle,
+                      onGenStyleChange: setGenStyle,
+                      onRegenerate: generateSummary,
+                      regenerateBusy: generating,
+                      disableActions: archiving || illustrating,
+                    }}
+                  />
+                )}
               </div>
             </div>
-            <div className="min-w-0 xl:border-l xl:border-[color:var(--border)]/35 xl:pl-6">
-              <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-                Selected Visual
-              </h4>
+            <div className="relative z-0 flex min-h-0 min-w-0 flex-col xl:border-l xl:border-[color:var(--border)]/40 xl:pl-6">
               {item.digestCoverHasAsset && coverLoading && !visualBundle ? (
-                <p className="rounded-lg border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
+                <p className="rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
                   Loading visuals…
                 </p>
               ) : (
@@ -1082,6 +1353,9 @@ function DigestItemRow({
                 />
               )}
             </div>
+          </div>
+          <div className="mt-6 border-t border-[color:var(--border)]/35 pt-4">
+            {digestQueueChecklist(item, summaries)}
           </div>
         </div>
       ) : null}
@@ -1221,7 +1495,12 @@ export function MonthlyDigestView({
       setExpandedDigestItemId(null);
       return;
     }
-    if (!expandedDigestItemId || !filteredDigestItems.some((i) => i.id === expandedDigestItemId)) {
+    // Keep all cards collapsed when expandedDigestItemId is null ("Collapse all").
+    // Only recover when the expanded id is non-null but no longer in the filtered list (e.g. queue filter changed).
+    if (
+      expandedDigestItemId !== null &&
+      !filteredDigestItems.some((i) => i.id === expandedDigestItemId)
+    ) {
       setExpandedDigestItemId(filteredDigestItems[0]!.id);
     }
   }, [filteredDigestItems, expandedDigestItemId]);

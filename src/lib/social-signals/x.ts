@@ -72,6 +72,14 @@ function parseTwitterTime(iso: string | undefined): string {
 }
 
 type XTweetRef = { type?: string; id?: string };
+type XTweetPublicMetrics = {
+  reply_count?: number;
+  retweet_count?: number;
+  like_count?: number;
+  quote_count?: number;
+  impression_count?: number;
+};
+
 type XTweetObj = {
   id: string;
   text?: string;
@@ -80,7 +88,23 @@ type XTweetObj = {
   conversation_id?: string;
   attachments?: { media_keys?: string[] };
   referenced_tweets?: XTweetRef[];
+  public_metrics?: XTweetPublicMetrics;
 };
+
+function metricsFromX(m: XTweetPublicMetrics | undefined): {
+  replyCount?: number;
+  repostCount?: number;
+  likeCount?: number;
+  viewCount?: number;
+} {
+  if (!m) return {};
+  return {
+    replyCount: m.reply_count,
+    repostCount: m.retweet_count,
+    likeCount: m.like_count,
+    viewCount: m.impression_count,
+  };
+}
 
 function mapXTweetsResponse(raw: {
   data?: XTweetObj[];
@@ -112,6 +136,7 @@ function mapXTweetsResponse(raw: {
           postedAt: parseTwitterTime(orig.created_at),
           mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
           conversationId: conv,
+          ...metricsFromX(orig.public_metrics),
           repostedBy: rtAuthor
             ? {
                 displayName: rtAuthor.name ?? rtAuthor.username ?? "Unknown",
@@ -136,13 +161,15 @@ function mapXTweetsResponse(raw: {
       postedAt: parseTwitterTime(t.created_at),
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       conversationId: t.conversation_id,
+      ...metricsFromX(t.public_metrics),
     };
   });
 }
 
 const X_TIMELINE_PARAMS = new URLSearchParams({
   max_results: "30",
-  "tweet.fields": "created_at,author_id,attachments,referenced_tweets,conversation_id",
+  "tweet.fields":
+    "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
   expansions:
     "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys",
   "user.fields": "name,username,profile_image_url",
@@ -183,7 +210,8 @@ export async function fetchXMentionSearch(
   const params = new URLSearchParams({
     query,
     max_results: "30",
-    "tweet.fields": "created_at,author_id,attachments,referenced_tweets,conversation_id",
+    "tweet.fields":
+      "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
     expansions:
       "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys",
     "user.fields": "name,username,profile_image_url",

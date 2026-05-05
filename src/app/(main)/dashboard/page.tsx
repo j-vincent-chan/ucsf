@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { ResearchDashboard } from "@/components/research-dashboard";
 import { buildDashboardPayload, type RawEntity, type RawItem } from "@/lib/dashboard-aggregate";
+import { formatPostgrestError } from "@/lib/format-postgrest-error";
+import { fetchSocialSignalsDashboardSnapshot } from "@/lib/social-signals/dashboard-snapshot";
+import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +33,7 @@ async function fetchAllCommunitySourceItemsForDashboard(
       .order("id", { ascending: true })
       .range(offset, offset + DASH_ITEMS_PAGE - 1);
     if (error) {
-      return { data: [], error: { message: error.message } };
+      return { data: [], error: { message: formatPostgrestError(error) } };
     }
     const chunk = (data ?? []) as RawItem[];
     out.push(...chunk);
@@ -42,9 +45,20 @@ async function fetchAllCommunitySourceItemsForDashboard(
 export default async function DashboardPage() {
   const { profile } = await requireProfile();
   const communityId = profile.community_id;
+  if (!communityId) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <p className="mt-4 text-amber-800 dark:text-amber-200">
+          Analytics require a community on your profile. Ask an administrator to assign you to a community, then
+          refresh this page.
+        </p>
+      </div>
+    );
+  }
   const supabase = await createClient();
 
-  const [entitiesRes, itemsPaged, recentRes, countRes] = await Promise.all([
+  const [entitiesRes, itemsPaged, recentRes, countRes, socialSnapshotResult] = await Promise.all([
     supabase
       .from("tracked_entities")
       .select("id, name, created_at, active, entity_type, member_status, institution")
@@ -52,31 +66,47 @@ export default async function DashboardPage() {
     fetchAllCommunitySourceItemsForDashboard(supabase, communityId),
     supabase
       .from("source_items")
-      .select(
-        `
-        id,
-        title,
-        status,
-        category,
-        published_at,
-        tracked_entities!tracked_entity_id ( name )
-      `,
-      )
+      .select("id, title, status, category, published_at, tracked_entity_id")
       .eq("community_id", communityId)
       .order("created_at", { ascending: false })
       .limit(10),
     supabase
       .from("source_items")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("community_id", communityId),
+    (async () => {
+      try {
+        const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
+        const workspaceCfg = socialFeedIngestFromWorkspace(social);
+        const data = await fetchSocialSignalsDashboardSnapshot(workspaceCfg);
+        return { ok: true as const, data };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error("[dashboard] social snapshot failed:", e);
+        return { ok: false as const, error: message };
+      }
+    })(),
   ]);
 
   const err = entitiesRes.error ?? itemsPaged.error ?? recentRes.error ?? countRes.error;
   if (err) {
+    const failedQuery =
+      entitiesRes.error != null
+        ? "tracked_entities"
+        : itemsPaged.error != null
+          ? "source_items (paginated load)"
+          : recentRes.error != null
+            ? "source_items (recent)"
+            : countRes.error != null
+              ? "source_items (count)"
+              : "unknown";
+    console.error(`[dashboard] analytics query failed (${failedQuery}, raw error):`, err);
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-3xl px-4 py-8">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-4 text-red-600">Failed to load analytics: {err.message}</p>
+        <p className="mt-4 text-red-600 dark:text-red-400">
+          Failed to load analytics ({failedQuery}): {formatPostgrestError(err)}
+        </p>
       </div>
     );
   }
@@ -93,10 +123,13 @@ export default async function DashboardPage() {
         .select("source_item_id, tracked_entity_id")
         .in("source_item_id", chunk);
       if (linkErr) {
+        console.error("[dashboard] source_item_tracked_entities query failed (raw error):", linkErr);
         return (
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto max-w-3xl px-4 py-8">
             <h1 className="text-2xl font-semibold">Dashboard</h1>
-            <p className="mt-4 text-red-600">Failed to load analytics: {linkErr.message}</p>
+            <p className="mt-4 text-red-600 dark:text-red-400">
+              Failed to load analytics (source_item_tracked_entities): {formatPostgrestError(linkErr)}
+            </p>
           </div>
         );
       }
@@ -130,17 +163,7 @@ export default async function DashboardPage() {
   };
 
   const recentRows = recentRes.data ?? [];
-  type RecentRow = (typeof recentRows)[number];
-  const entityName = (r: RecentRow) => {
-    const te = r.tracked_entities;
-    const row =
-      te && typeof te === "object"
-        ? Array.isArray(te)
-          ? te[0]
-          : (te as { name?: string })
-        : null;
-    return row?.name ?? "—";
-  };
+  const entityNameById = new Map(entities.map((e) => [e.id, e.name]));
 
   const recentItems = recentRows.map((r) => ({
     id: r.id,
@@ -148,13 +171,19 @@ export default async function DashboardPage() {
     status: r.status,
     category: r.category,
     published_at: r.published_at,
-    entityName: entityName(r),
+    entityName:
+      r.tracked_entity_id != null ? (entityNameById.get(r.tracked_entity_id) ?? "—") : "—",
   }));
+
+  const socialSnapshot = socialSnapshotResult.ok ? socialSnapshotResult.data : null;
+  const socialSnapshotError = socialSnapshotResult.ok ? null : socialSnapshotResult.error;
 
   return (
     <ResearchDashboard
       data={payload}
       recentItems={recentItems}
+      socialSnapshot={socialSnapshot}
+      socialSnapshotError={socialSnapshotError}
     />
   );
 }

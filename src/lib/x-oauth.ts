@@ -1,11 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 
-/** Scopes needed for posting and token refresh (offline access). */
+/** Scopes needed for posting, v2 media upload, and token refresh (offline access). */
 export const X_OAUTH_SCOPES = [
   "tweet.read",
   "tweet.write",
   "users.read",
   "offline.access",
+  /** Required for POST /2/media/upload/* (see docs.x.com x-api/media). */
+  "media.write",
 ] as const;
 
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";
@@ -120,4 +122,99 @@ export async function exchangeCodeForTokens(code: string, codeVerifier: string):
     token_type,
     scope,
   };
+}
+
+/** Stored JSON shape in `profiles.x_oauth` (plus legacy rows missing fields). */
+export type StoredXOAuth = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+  expires_in?: number;
+  token_type?: string;
+  scope?: string;
+};
+
+export function bundleFromStored(raw: unknown): XOAuthTokenBundle | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as StoredXOAuth;
+  const access_token = typeof o.access_token === "string" ? o.access_token : "";
+  if (!access_token) return null;
+  const refresh_token = typeof o.refresh_token === "string" ? o.refresh_token : undefined;
+  const expires_at = typeof o.expires_at === "number" ? o.expires_at : undefined;
+  const expires_in = typeof o.expires_in === "number" ? o.expires_in : undefined;
+  const token_type = typeof o.token_type === "string" ? o.token_type : "bearer";
+  const scope = typeof o.scope === "string" ? o.scope : undefined;
+  return {
+    access_token,
+    refresh_token,
+    expires_in,
+    expires_at,
+    token_type,
+    scope,
+  };
+}
+
+/** Rotate access token using refresh_token (OAuth 2.0). */
+export async function refreshAccessToken(refreshToken: string): Promise<XOAuthTokenBundle> {
+  const clientId = process.env.X_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.X_OAUTH_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing X_OAUTH_CLIENT_ID or X_OAUTH_CLIENT_SECRET");
+  }
+  const basic = Buffer.from(`${clientId}:${clientSecret}`, "utf8").toString("base64");
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${basic}`,
+    },
+    body: body.toString(),
+  });
+
+  const raw = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg =
+      typeof raw.error_description === "string"
+        ? raw.error_description
+        : typeof raw.error === "string"
+          ? raw.error
+          : res.statusText;
+    throw new Error(`X token refresh failed: ${msg}`);
+  }
+
+  const access_token = typeof raw.access_token === "string" ? raw.access_token : "";
+  const refresh_token =
+    typeof raw.refresh_token === "string" ? raw.refresh_token : refreshToken;
+  const expires_in = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
+  const token_type = typeof raw.token_type === "string" ? raw.token_type : "bearer";
+  const scope = typeof raw.scope === "string" ? raw.scope : undefined;
+
+  if (!access_token) throw new Error("X refresh response missing access_token");
+
+  const expires_at =
+    expires_in !== undefined ? Date.now() + expires_in * 1000 : undefined;
+
+  return {
+    access_token,
+    refresh_token,
+    expires_in,
+    expires_at,
+    token_type,
+    scope,
+  };
+}
+
+const ACCESS_SKEW_MS = 90_000;
+
+/** Returns true if access token should be refreshed before use. */
+export function accessTokenLikelyExpired(bundle: XOAuthTokenBundle): boolean {
+  if (bundle.expires_at === undefined) return false;
+  return Date.now() >= bundle.expires_at - ACCESS_SKEW_MS;
 }

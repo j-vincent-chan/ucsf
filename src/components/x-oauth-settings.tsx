@@ -36,11 +36,19 @@ export function XOAuthSettings({
         </p>
       ) : null}
       <p className="text-sm text-[color:var(--muted-foreground)]">
-        Authorize Community Signal to post to X as your workspace account (OAuth 2.0). Uses the callback URL you
-        registered in the X Developer Portal — set{" "}
+        Authorize Community Signal to post to X as your workspace account (OAuth 2.0), including photo uploads via X API
+        v2 (<span className="font-mono text-[11px]">media.write</span> scope). Uses the callback URL you registered in the
+        X Developer Portal — set{" "}
         <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">X_OAUTH_REDIRECT_URI</code> or{" "}
         <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">NEXT_PUBLIC_SITE_URL</code> so
-        it matches exactly.
+        it matches exactly. If posting worked as text-only before, disconnect and connect again so your token picks up
+        current scopes.
+      </p>
+      <p className="mt-3 text-xs text-[color:var(--muted-foreground)]">
+        The <span className="font-medium text-[color:var(--foreground)]/90">Access Token</span> on the Developer Portal is
+        separate from Community Signal: use <span className="font-medium">Connect X</span> here so we store your
+        user-context token. Ensure deployment env <span className="font-mono text-[11px]">X_OAUTH_CLIENT_ID</span> matches
+        that same app.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {connected ? (

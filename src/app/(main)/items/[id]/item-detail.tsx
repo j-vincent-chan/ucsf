@@ -9,11 +9,13 @@ import type { ItemCategory, ItemStatus, SourceItem, Summary } from "@/types/data
 import {
   ARCHIVE_REASON_OPTIONS,
   archiveReasonFormOptions,
+  isArchiveReasonConstraintError,
+  legacySafeArchiveReason,
   isPersistableArchiveReason,
   isValidArchiveReason,
 } from "@/lib/archive-reasons";
 import { sourceTypeDisplayLabel } from "../queue-cell-tags";
-import { SummaryEditor } from "@/components/summary-editor";
+import { SummaryEditor, type SummaryRegeneratePayload } from "@/components/summary-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +53,7 @@ export function ItemDetail({
   );
   const [savingMeta, setSavingMeta] = useState(false);
   const [summaries, setSummaries] = useState(initialSummaries);
+  const [regeneratingSummaryId, setRegeneratingSummaryId] = useState<string | null>(null);
 
   const refreshSummaries = useCallback(async () => {
     const supabase = createClient();
@@ -61,6 +64,46 @@ export function ItemDetail({
       .order("created_at", { ascending: false });
     if (!error && data) setSummaries(data as Summary[]);
   }, [item.id]);
+
+  const regenerateSummary = useCallback(
+    async (s: Summary, payload: SummaryRegeneratePayload) => {
+      const allowed = new Set([
+        "newsletter",
+        "donor",
+        "social",
+        "concise",
+        "linkedin",
+        "bluesky_x",
+      ]);
+      if (!allowed.has(s.style)) {
+        toast.error("Generate isn’t available for this summary format.");
+        return;
+      }
+      setRegeneratingSummaryId(s.id);
+      try {
+        const res = await fetch("/api/generate-blurb", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_item_id: item.id,
+            style: s.style,
+            tone: payload.tone,
+            target_blurb_words: payload.targetBlurbWords,
+            refinement_instruction: payload.refinement || undefined,
+          }),
+        });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Request failed");
+        toast.success("Summary generated");
+        await refreshSummaries();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Generation failed");
+      } finally {
+        setRegeneratingSummaryId(null);
+      }
+    },
+    [item.id, refreshSummaries],
+  );
 
   const quickSetStatus = useCallback(async (s: ItemStatus) => {
     const supabase = createClient();
@@ -160,19 +203,30 @@ export function ItemDetail({
       return;
     }
     const supabase = createClient();
-    const { error } = await supabase
+    let { error } = await supabase
       .from("source_items")
       .update({ status: "archived", archive_reason: quickArchiveReason })
       .eq("id", item.id);
+    let appliedReason = quickArchiveReason;
+    let usedFallback = false;
+    if (error && isArchiveReasonConstraintError(error)) {
+      usedFallback = true;
+      appliedReason = legacySafeArchiveReason(quickArchiveReason);
+      const retry = await supabase
+        .from("source_items")
+        .update({ status: "archived", archive_reason: appliedReason })
+        .eq("id", item.id);
+      error = retry.error ?? null;
+    }
     if (error) {
       toast.error(error.message);
       return;
     }
     setStatus("archived");
-    setArchiveReason(quickArchiveReason);
+    setArchiveReason(appliedReason);
     setQuickArchiveReason("");
     setArchivePanelOpen(false);
-    toast.success("Archived");
+    toast.success(usedFallback ? "Archived (legacy reason fallback)" : "Archived");
     router.refresh();
   }
 
@@ -449,7 +503,16 @@ export function ItemDetail({
           <p className="text-sm text-neutral-500">No summaries yet.</p>
         ) : (
           summaries.map((s) => (
-            <SummaryEditor key={s.id} summary={s} onSaved={refreshSummaries} />
+            <SummaryEditor
+              key={s.id}
+              summary={s}
+              onSaved={refreshSummaries}
+              sourceUrl={item.source_url}
+              standaloneRegenerate={{
+                onRegenerate: (payload) => regenerateSummary(s, payload),
+                busy: regeneratingSummaryId === s.id,
+              }}
+            />
           ))
         )}
       </aside>

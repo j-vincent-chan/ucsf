@@ -8,6 +8,11 @@ import {
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
 import type { SummaryStyle } from "@/types/database";
+import {
+  DEFAULT_DIGEST_SUMMARY_TONE,
+  digestSummaryTonePromptBlock,
+  type DigestSummaryTone,
+} from "@/lib/digest-summary-tone";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -21,9 +26,30 @@ const bodySchema = z.object({
     "bluesky_x",
   ]),
   model: z.string().min(1).optional(),
+  tone: z
+    .enum([
+      "professional",
+      "warm",
+      "strategic",
+      "witty",
+      "thought_leadership",
+      "technical",
+    ])
+    .optional(),
+  /** Legacy discrete length (used only when target_blurb_words is omitted). */
+  length_tier: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+  /** Target word count for the blurb body — preferred over length_tier when set. */
+  target_blurb_words: z.number().int().min(15).max(400).optional(),
+  refinement_instruction: z.string().max(4000).optional(),
 });
 
-const PROMPT_VERSION = "v3.5";
+const LENGTH_TIER_GUIDANCE: Record<0 | 1 | 2, string> = {
+  0: "Editorial length target: Short — tighter than the channel default (fewer words, sharper cuts). Still respect the channel hard caps.",
+  1: "Editorial length target: Medium — follow the channel word-range guidance.",
+  2: "Editorial length target: Long — richer than the channel default within channel norms (more context; stay concise).",
+};
+
+const PROMPT_VERSION = "v3.6";
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
 const GLOBAL_RULES = `You write platform-specific versions of the same research update for an oncology immunotherapy community (ImmunoX / OCR context).
@@ -97,6 +123,7 @@ function systemPrompt(
   style: Exclude<SummaryStyle, "instagram">,
   publicationLead: string | null,
   leadOnPeopleList: boolean,
+  tone: DigestSummaryTone,
 ): string {
   const lead = publicationLead?.trim() || null;
   const publicationLeadRules = lead
@@ -119,9 +146,13 @@ function systemPrompt(
 `
     : "";
 
+  const toneBlock = digestSummaryTonePromptBlock(tone);
+
   return `${GLOBAL_RULES}
 
 ${publicationLeadRules}When the source is a paper/publication and linked watchlist investigators are provided, mention all linked investigators by name naturally in the copy (unless character limits force abbreviation; if so, keep at least key names and avoid inventing any). 
+
+${toneBlock}
 
 ${PLATFORM[style]}`;
 }
@@ -184,7 +215,22 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { source_item_id, style, model: requestedModel } = parsed.data;
+  const {
+    source_item_id,
+    style,
+    model: requestedModel,
+    tone: requestedTone,
+    length_tier: lengthTierRaw,
+    target_blurb_words: targetBlurbWordsRaw,
+    refinement_instruction: refinementRaw,
+  } = parsed.data;
+  const tone = requestedTone ?? DEFAULT_DIGEST_SUMMARY_TONE;
+  const lengthTier = lengthTierRaw ?? 1;
+  const targetBlurbWords =
+    typeof targetBlurbWordsRaw === "number" && Number.isFinite(targetBlurbWordsRaw)
+      ? Math.round(targetBlurbWordsRaw)
+      : null;
+  const refinementInstruction = refinementRaw?.trim() ?? "";
 
   /** Latest summary for this item, if any — regenerating overwrites this row and removes extras. */
   const { data: existingRows, error: existingErr } = await supabase
@@ -320,6 +366,20 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n");
 
+  const lengthGuidance =
+    targetBlurbWords != null
+      ? `Editorial length target: aim for approximately ${targetBlurbWords} words in the blurb (headline is separate). If this conflicts with the channel word-range rules in the system prompt, follow the channel rules first.`
+      : LENGTH_TIER_GUIDANCE[lengthTier];
+
+  const editorialBlock = [
+    lengthGuidance,
+    refinementInstruction
+      ? `Additional editor direction (honor when compatible with facts):\n${refinementInstruction}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
   const ALLOWED_MODELS = new Set([
     DEFAULT_MODEL,
@@ -337,11 +397,11 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content: systemPrompt(style, publicationLastAuthor, leadOnPeopleList),
+          content: systemPrompt(style, publicationLastAuthor, leadOnPeopleList, tone),
         },
         {
           role: "user",
-          content: `Generate the ${style} version only (structured fields) from this source item:\n\n${userContent}`,
+          content: `Generate the ${style} version only (structured fields) from this source item. Apply the selected writing tone throughout headline, blurb, and why_it_matters.\n\n${userContent}\n\n---\n${editorialBlock}`,
         },
       ],
       response_format: zodResponseFormat(blurbJsonSchema, "digest_blurb"),

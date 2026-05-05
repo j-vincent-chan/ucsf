@@ -5,6 +5,7 @@ import { dedupeSocialPostsById } from "@/lib/social-signals/dedupe-posts";
 import { groupPostsForFeedDisplay } from "@/lib/social-signals/group-feed-rows";
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
 import { PlatformBadge } from "./platform-badge";
+import { PostEngagementBar } from "./post-engagement-bar";
 
 type ListenStyles = {
   cardClass: string;
@@ -85,11 +86,12 @@ function PostListItem({ post: p, ...s }: ListenStyles & { post: SocialPost }) {
               ))}
             </div>
           ) : null}
+          <PostEngagementBar post={p} textSizeClass={s.metaClass} />
           <a
             href={p.url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`mt-2.5 inline-block font-medium text-[color:var(--foreground)] underline underline-offset-4 ${s.metaClass}`}
+            className={`mt-2 inline-block font-medium text-[color:var(--foreground)] underline underline-offset-4 ${s.metaClass}`}
           >
             Open post
           </a>
@@ -99,9 +101,71 @@ function PostListItem({ post: p, ...s }: ListenStyles & { post: SocialPost }) {
   );
 }
 
+/** Max posts shown before “Show more replies” (root + replies). */
+const THREAD_COLLAPSE_AFTER = 5;
+
+/** Unique @handles for posts before index `i` (conversation context). */
+function replyParticipantHandles(posts: SocialPost[], beforeIndex: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let j = 0; j < beforeIndex && j < posts.length; j++) {
+    const raw = posts[j]!.authorHandle.trim();
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const h = raw.startsWith("@") ? raw : `@${raw}`;
+    out.push(h);
+  }
+  return out;
+}
+
+/** Slightly smaller avatars on reply rows (matches X-style thread). */
+function replyAvatarClassFromRoot(rootAvatarClass: string): string {
+  if (rootAvatarClass.includes("h-14")) return "h-11 w-11";
+  if (rootAvatarClass.includes("h-11")) return "h-9 w-9";
+  return "h-9 w-9";
+}
+
+function ThreadAuthorAvatar({
+  post,
+  size,
+  avatarClass,
+  avatarFallbackText,
+}: {
+  post: SocialPost;
+  size: "root" | "reply";
+  avatarClass: string;
+  avatarFallbackText: string;
+}) {
+  const cls = size === "root" ? avatarClass : replyAvatarClassFromRoot(avatarClass);
+  return post.authorAvatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={post.authorAvatarUrl}
+      alt=""
+      className={`${cls} shrink-0 rounded-full border border-[color:var(--border)]/55 object-cover`}
+    />
+  ) : (
+    <div
+      className={`flex ${cls} shrink-0 items-center justify-center rounded-full border border-[color:var(--border)]/55 bg-[color:var(--muted)]/35 font-semibold text-[color:var(--foreground)] ${avatarFallbackText}`}
+    >
+      {post.authorName.trim().charAt(0).toUpperCase() || "?"}
+    </div>
+  );
+}
+
 function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] }) {
+  const [threadExpanded, setThreadExpanded] = useState(false);
   const first = posts[0];
-  const lineTop = s.density ? "top-14" : "top-11";
+  const needsCollapse = posts.length > THREAD_COLLAPSE_AFTER;
+  const visiblePosts =
+    needsCollapse && !threadExpanded ? posts.slice(0, THREAD_COLLAPSE_AFTER) : posts;
+  const hiddenReplyCount = needsCollapse ? posts.length - THREAD_COLLAPSE_AFTER : 0;
+
+  const lineTop = s.density ? "top-[3.25rem]" : "top-[2.75rem]";
+  const avatarCol = s.density ? "w-[3.25rem]" : "w-11";
+
   return (
     <li className={`border border-[color:var(--border)]/55 bg-[color:var(--background)]/90 ${s.cardClass}`}>
       <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-[color:var(--border)]/40 pb-2.5">
@@ -124,7 +188,7 @@ function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] })
           rel="noopener noreferrer"
           className={`${s.metaClass} ml-auto font-medium text-[color:var(--foreground)] underline underline-offset-4`}
         >
-          Open on X
+          Open on {first.platform === "bluesky" ? "Bluesky" : "X"}
         </a>
       </div>
 
@@ -151,39 +215,39 @@ function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] })
       ) : null}
 
       <div className="relative">
-        {posts.length > 1 ? (
+        {visiblePosts.length > 1 ? (
           <div
-            className={`pointer-events-none absolute left-7 ${lineTop} bottom-5 w-px -translate-x-1/2 bg-[color:var(--border)]/75`}
+            className={`pointer-events-none absolute ${avatarCol === "w-11" ? "left-[1.375rem]" : "left-[1.625rem]"} ${lineTop} bottom-8 w-px -translate-x-1/2 bg-[color:var(--border)]/80`}
             aria-hidden
           />
         ) : null}
-        {posts.map((p, i) => (
-          <div key={p.id} className={`relative flex ${s.rowGap} ${i < posts.length - 1 ? "pb-6" : ""}`}>
-            <div className="relative z-10 flex w-14 shrink-0 justify-center">
-              {i === 0 ? (
-                p.authorAvatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={p.authorAvatarUrl}
-                    alt=""
-                    className={`${s.avatarClass} rounded-full border border-[color:var(--border)]/55 object-cover`}
-                  />
-                ) : (
-                  <div
-                    className={`flex ${s.avatarClass} items-center justify-center rounded-full border border-[color:var(--border)]/55 bg-[color:var(--muted)]/35 font-semibold text-[color:var(--foreground)] ${s.avatarFallbackText}`}
-                  >
-                    {p.authorName.trim().charAt(0).toUpperCase() || "?"}
-                  </div>
-                )
-              ) : (
-                <div className={`flex ${s.avatarClass} items-center justify-center`} aria-hidden>
-                  <div className="h-2.5 w-2.5 rounded-full border-2 border-[color:var(--border)]/70 bg-[color:var(--background)] shadow-[0_0_0_1px_color-mix(in_srgb,var(--background)_90%,transparent)]" />
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              {i === 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
+        {visiblePosts.map((p, i) => {
+          const handles = replyParticipantHandles(posts, i);
+          const handleLine =
+            handles.length > 0
+              ? handles.length <= 6
+                ? handles.join(" ")
+                : `${handles.slice(0, 6).join(" ")} +${handles.length - 6}`
+              : "";
+          const isRoot = i === 0;
+          return (
+            <div key={p.id} className={`relative flex ${s.rowGap} ${i < visiblePosts.length - 1 ? "pb-6" : ""}`}>
+              <div className={`relative z-10 flex ${avatarCol} shrink-0 justify-center pt-0.5`}>
+                <ThreadAuthorAvatar
+                  post={p}
+                  size={isRoot ? "root" : "reply"}
+                  avatarClass={s.avatarClass}
+                  avatarFallbackText={s.avatarFallbackText}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                {!isRoot && handleLine ? (
+                  <p className={`${s.metaClass} mb-1 text-[color:var(--muted-foreground)]`}>
+                    <span className="font-medium text-[color:var(--foreground)]/80">Replying to </span>
+                    <span className="break-words text-[color:var(--muted-foreground)]">{handleLine}</span>
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <PlatformBadge platform={p.platform} size={s.density ? "sm" : "xs"} />
                   <span className={`${s.authorNameClass} font-semibold text-[color:var(--foreground)]`}>{p.authorName}</span>
                   <span className={`${s.metaClass} text-[color:var(--muted-foreground)]`}>{p.authorHandle}</span>
@@ -191,44 +255,75 @@ function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] })
                     · {new Date(p.postedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                   </span>
                 </div>
-              ) : (
-                <p className={`${s.metaClass} text-[color:var(--muted-foreground)]`}>
-                  {new Date(p.postedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                </p>
-              )}
-              <p
-                className={`${i === 0 ? "mt-2.5" : "mt-2"} whitespace-pre-wrap text-[color:var(--foreground)] ${s.bodyClass}`}
-              >
-                {p.text}
-              </p>
-              {p.mediaUrls && p.mediaUrls.length > 0 ? (
-                <div
-                  className={`mt-3 grid gap-1.5 overflow-hidden rounded-xl border border-[color:var(--border)]/45 bg-black/5 ${
-                    p.mediaUrls.length === 1 ? "grid-cols-1" : "grid-cols-2"
-                  }`}
+                <p
+                  className={`${isRoot ? "mt-2.5" : "mt-2"} whitespace-pre-wrap text-[color:var(--foreground)] ${s.bodyClass}`}
                 >
-                  {p.mediaUrls.slice(0, 4).map((src, mi) => (
-                    <div
-                      key={`${p.id}-m-${mi}`}
-                      className={`relative aspect-video ${s.density ? "min-h-[6rem] sm:min-h-[7rem]" : "min-h-[4.5rem]"}`}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt="" className="h-full w-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <a
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`mt-2.5 inline-block font-medium text-[color:var(--foreground)] underline underline-offset-4 ${s.metaClass}`}
-              >
-                Open post
-              </a>
+                  {p.text}
+                </p>
+                {p.mediaUrls && p.mediaUrls.length > 0 ? (
+                  <div
+                    className={`mt-3 grid gap-1.5 overflow-hidden rounded-xl border border-[color:var(--border)]/45 bg-black/5 ${
+                      p.mediaUrls.length === 1 ? "grid-cols-1" : "grid-cols-2"
+                    }`}
+                  >
+                    {p.mediaUrls.slice(0, 4).map((src, mi) => (
+                      <div
+                        key={`${p.id}-m-${mi}`}
+                        className={`relative aspect-video ${s.density ? "min-h-[6rem] sm:min-h-[7rem]" : "min-h-[4.5rem]"}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <PostEngagementBar post={p} textSizeClass={s.metaClass} />
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`mt-2 inline-block font-medium text-[color:var(--foreground)] underline underline-offset-4 ${s.metaClass}`}
+                >
+                  Open post
+                </a>
+              </div>
             </div>
+          );
+        })}
+
+        {needsCollapse && !threadExpanded ? (
+          <div className="relative flex pb-1 pt-1">
+            <div className={`flex ${avatarCol} shrink-0 justify-center`} aria-hidden>
+              <div className="h-px w-px" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setThreadExpanded(true)}
+              className={`${s.metaClass} text-left font-semibold text-sky-700 underline decoration-sky-700/35 underline-offset-4 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300`}
+            >
+              Show replies
+              <span className="font-normal text-[color:var(--muted-foreground)]">
+                {" "}
+                ({hiddenReplyCount} more)
+              </span>
+            </button>
           </div>
-        ))}
+        ) : null}
+
+        {needsCollapse && threadExpanded ? (
+          <div className="relative flex pt-3">
+            <div className={`flex ${avatarCol} shrink-0 justify-center`} aria-hidden>
+              <div className="h-px w-px" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setThreadExpanded(false)}
+              className={`${s.metaClass} font-medium text-[color:var(--muted-foreground)] underline decoration-[color:var(--border)] underline-offset-4 hover:text-[color:var(--foreground)]`}
+            >
+              Show less
+            </button>
+          </div>
+        ) : null}
       </div>
     </li>
   );
