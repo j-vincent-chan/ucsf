@@ -84,6 +84,7 @@ function mapBskyFeedViewPost(item: {
   reason?: { $type?: string; by?: { displayName?: string; handle: string; avatar?: string } };
   post: {
     uri: string;
+    cid?: string;
     indexedAt?: string;
     embed?: unknown;
     author: { displayName?: string; handle: string; avatar?: string };
@@ -114,6 +115,7 @@ function mapBskyFeedViewPost(item: {
     replyCount: post.replyCount,
     repostCount: post.repostCount,
     likeCount: post.likeCount,
+    ...(post.cid ? { bskyRecordCid: post.cid } : {}),
     repostedBy:
       isRepost && by
         ? {
@@ -216,6 +218,7 @@ export async function fetchBlueskyMentions(
     const rkey = p.uri.split("/").pop() ?? "";
     const mediaUrls = collectBskyImageUrls(p.embed);
     const counts = p as {
+      cid?: string;
       replyCount?: number;
       repostCount?: number;
       likeCount?: number;
@@ -233,6 +236,7 @@ export async function fetchBlueskyMentions(
       replyCount: counts.replyCount,
       repostCount: counts.repostCount,
       likeCount: counts.likeCount,
+      ...(counts.cid ? { bskyRecordCid: counts.cid } : {}),
     };
   });
   return { posts };
@@ -352,6 +356,260 @@ export function truncateBlueskyPostWithOptionalArticleUrl(
   return { text, truncated };
 }
 
+export type BlueskyStrongRef = { uri: string; cid: string };
+
+export type BlueskyWorkspaceSession = {
+  accessJwt: string;
+  repo: string;
+  /** Display handle (no @) for public URLs. */
+  handleLabel: string;
+};
+
+/** App-password session for the workspace Bluesky account (server env). */
+export async function getBlueskyWorkspaceSession(): Promise<BlueskyWorkspaceSession> {
+  const identifier = process.env.BSKY_IDENTIFIER?.trim();
+  const appPassword = process.env.BSKY_APP_PASSWORD?.trim();
+  if (!identifier || !appPassword) {
+    const err = new Error("Bluesky credentials not configured");
+    err.name = "BlueskyNotConfigured";
+    throw err;
+  }
+  const session = await createSession(identifier, appPassword);
+  if (!session?.accessJwt) {
+    throw new Error("Bluesky session failed");
+  }
+  const repo =
+    (await resolveRepoDid({ ...session, accessJwt: session.accessJwt }, identifier)) ??
+    session.did ??
+    null;
+  if (!repo?.startsWith("did:")) {
+    throw new Error("Could not resolve Bluesky DID for posting");
+  }
+  const handleLabel = (session.handle ?? identifier).replace(/^@+/, "").trim().split("/")[0] ?? "";
+  return { accessJwt: session.accessJwt, repo, handleLabel };
+}
+
+async function bskyRepoCreateRecord(
+  accessJwt: string,
+  repo: string,
+  collection: string,
+  record: Record<string, unknown>,
+): Promise<{ uri: string }> {
+  const res = await fetch(`${HOST}/xrpc/com.atproto.repo.createRecord`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessJwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repo, collection, record }),
+  });
+  const raw = (await res.json().catch(() => ({}))) as {
+    uri?: string;
+    message?: string;
+    error?: string;
+  };
+  if (!res.ok || !raw.uri) {
+    throw new Error(raw.message ?? raw.error ?? `Bluesky record failed (${res.status})`);
+  }
+  return { uri: raw.uri };
+}
+
+/** Resolve CID for a post AT URI (uses feed cache when {@link hintCid} is set). */
+export async function resolveBskyPostStrongRef(
+  accessJwt: string,
+  atUri: string,
+  hintCid?: string | null,
+): Promise<BlueskyStrongRef> {
+  const uri = atUri.trim();
+  const hint = hintCid?.trim();
+  if (hint) return { uri, cid: hint };
+
+  const params = new URLSearchParams();
+  params.append("uris", uri);
+  const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getPosts?${params}`, {
+    headers: { Authorization: `Bearer ${accessJwt}` },
+  });
+  const raw = (await res.json().catch(() => ({}))) as {
+    posts?: Array<{ uri?: string; cid?: string }>;
+    message?: string;
+  };
+  if (!res.ok) {
+    throw new Error(raw.message ?? `Bluesky getPosts failed (${res.status})`);
+  }
+  const p = raw.posts?.[0];
+  if (!p) {
+    throw new Error("Could not resolve Bluesky post CID — refresh the feed and try again.");
+  }
+  const cid = typeof p.cid === "string" ? p.cid : "";
+  if (!cid) {
+    throw new Error("Could not resolve Bluesky post CID — refresh the feed and try again.");
+  }
+  return { uri: p.uri ?? uri, cid };
+}
+
+function bskyReplyThreadRefsForTarget(
+  target: BlueskyStrongRef,
+  record: unknown,
+): { root: BlueskyStrongRef; parent: BlueskyStrongRef } {
+  const parent = target;
+  if (!record || typeof record !== "object") {
+    return { root: target, parent };
+  }
+  const r = record as Record<string, unknown>;
+  const reply = r.reply;
+  if (!reply || typeof reply !== "object") {
+    return { root: target, parent };
+  }
+  const rep = reply as Record<string, unknown>;
+  const root = rep.root as Record<string, unknown> | undefined;
+  const rootUri = typeof root?.uri === "string" ? root.uri : "";
+  const rootCid = typeof root?.cid === "string" ? root.cid : "";
+  if (rootUri && rootCid) {
+    return { root: { uri: rootUri, cid: rootCid }, parent };
+  }
+  return { root: target, parent };
+}
+
+async function fetchBskyPostRecordBundle(
+  accessJwt: string,
+  strong: BlueskyStrongRef,
+): Promise<{ strong: BlueskyStrongRef; record: unknown }> {
+  const params = new URLSearchParams();
+  params.append("uris", strong.uri);
+  const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getPosts?${params}`, {
+    headers: { Authorization: `Bearer ${accessJwt}` },
+  });
+  const raw = (await res.json().catch(() => ({}))) as {
+    posts?: Array<{ uri?: string; cid?: string; record?: unknown }>;
+    message?: string;
+  };
+  if (!res.ok) {
+    throw new Error(raw.message ?? `Bluesky getPosts failed (${res.status})`);
+  }
+  const p = raw.posts?.[0];
+  const cid = typeof p?.cid === "string" ? p.cid : strong.cid;
+  const uri = typeof p?.uri === "string" ? p.uri : strong.uri;
+  return { strong: { uri, cid }, record: p?.record };
+}
+
+export async function blueskyEngageLike(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+): Promise<void> {
+  await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.like", {
+    $type: "app.bsky.feed.like",
+    subject: { uri: subject.uri, cid: subject.cid },
+    createdAt: new Date().toISOString(),
+  });
+}
+
+export async function blueskyEngageRepost(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+): Promise<void> {
+  await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.repost", {
+    $type: "app.bsky.feed.repost",
+    subject: { uri: subject.uri, cid: subject.cid },
+    createdAt: new Date().toISOString(),
+  });
+}
+
+export async function blueskyEngageReply(
+  accessJwt: string,
+  repo: string,
+  handleLabel: string,
+  target: BlueskyStrongRef,
+  text: string,
+  options?: { image?: { buffer: Buffer; mime: string } },
+): Promise<{ uri: string; url: string }> {
+  const bundle = await fetchBskyPostRecordBundle(accessJwt, target);
+  const { root, parent } = bskyReplyThreadRefsForTarget(bundle.strong, bundle.record);
+
+  let embed: Record<string, unknown> | undefined;
+  const img = options?.image;
+  if (img && img.buffer.length > 0 && img.mime.startsWith("image/")) {
+    try {
+      const fitted = await compressBufferForBlueskyEmbed(img.buffer, img.mime);
+      const blob = await uploadBlueskyImageBlob(accessJwt, fitted.buffer, fitted.mime);
+      const imageBlob = {
+        $type: "blob" as const,
+        ref: blob.ref,
+        mimeType: blob.mimeType ?? fitted.mime,
+        size: blob.size ?? fitted.buffer.length,
+      };
+      embed = {
+        $type: "app.bsky.embed.images",
+        images: [{ alt: "", image: imageBlob }],
+      };
+    } catch {
+      // Fall back to text-only reply if embed fails.
+    }
+  }
+
+  const { text: forPostRaw } = truncateForBlueskyPost(text);
+  const trimmed = forPostRaw.trim();
+  if (!trimmed && !embed) throw new Error("Reply text is empty");
+  /** ZWNJ survives `.trim()` but stays invisible in clients when paired with an image embed. */
+  const forPost = trimmed ? forPostRaw : "\u200c";
+
+  const record: Record<string, unknown> = {
+    $type: "app.bsky.feed.post",
+    text: forPost,
+    createdAt: new Date().toISOString(),
+    reply: {
+      root: { uri: root.uri, cid: root.cid },
+      parent: { uri: parent.uri, cid: parent.cid },
+    },
+  };
+  if (embed) record.embed = embed;
+
+  const created = await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.post", record);
+  const rkey = created.uri.split("/").pop() ?? "";
+  const handle = handleLabel.replace(/^@+/, "").trim().split("/")[0] ?? "";
+  const url =
+    handle && rkey ? `https://bsky.app/profile/${handle}/post/${rkey}` : created.uri.replace("at://", "https://bsky.app/profile/");
+  return { uri: created.uri, url };
+}
+
+function isBlueskyDuplicateRecordError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes("duplicate") || m.includes("already exists");
+}
+
+/** Like; returns false if the account already liked this post. */
+export async function blueskyEngageLikeAllowDuplicate(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+): Promise<boolean> {
+  try {
+    await blueskyEngageLike(accessJwt, repo, subject);
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (isBlueskyDuplicateRecordError(msg)) return false;
+    throw e;
+  }
+}
+
+/** Repost; returns false if already reposted. */
+export async function blueskyEngageRepostAllowDuplicate(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+): Promise<boolean> {
+  try {
+    await blueskyEngageRepost(accessJwt, repo, subject);
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "";
+    if (isBlueskyDuplicateRecordError(msg)) return false;
+    throw e;
+  }
+}
+
 async function uploadBlueskyImageBlob(
   accessJwt: string,
   buffer: Buffer,
@@ -394,24 +652,7 @@ export async function publishBlueskyText(
   const { text: forPost, truncated } = truncatedPack;
   if (!forPost) throw new Error("Empty text");
 
-  const identifier = process.env.BSKY_IDENTIFIER?.trim();
-  const appPassword = process.env.BSKY_APP_PASSWORD?.trim();
-  if (!identifier || !appPassword) {
-    const err = new Error("Bluesky credentials not configured");
-    err.name = "BlueskyNotConfigured";
-    throw err;
-  }
-
-  const session = await createSession(identifier, appPassword);
-  if (!session?.accessJwt) {
-    throw new Error("Bluesky session failed");
-  }
-
-  const repo =
-    (await resolveRepoDid({ ...session, accessJwt: session.accessJwt }, identifier)) ?? session.did ?? null;
-  if (!repo?.startsWith("did:")) {
-    throw new Error("Could not resolve Bluesky DID for posting");
-  }
+  const { accessJwt, repo, handleLabel } = await getBlueskyWorkspaceSession();
 
   let embed: Record<string, unknown> | undefined;
   const lp = options?.linkPreview;
@@ -429,7 +670,7 @@ export async function publishBlueskyText(
     if (img && img.buffer.length > 0 && img.mime.startsWith("image/")) {
       try {
         const fitted = await compressBufferForBlueskyEmbed(img.buffer, img.mime);
-        const blob = await uploadBlueskyImageBlob(session.accessJwt, fitted.buffer, fitted.mime);
+        const blob = await uploadBlueskyImageBlob(accessJwt, fitted.buffer, fitted.mime);
         const imageBlob = {
           $type: "blob" as const,
           ref: blob.ref,
@@ -453,33 +694,10 @@ export async function publishBlueskyText(
   };
   if (embed) record.embed = embed;
 
-  const res = await fetch(`${HOST}/xrpc/com.atproto.repo.createRecord`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${session.accessJwt}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      repo,
-      collection: "app.bsky.feed.post",
-      record,
-    }),
-  });
-
-  const raw = (await res.json().catch(() => ({}))) as {
-    uri?: string;
-    message?: string;
-    error?: string;
-  };
-
-  if (!res.ok || !raw.uri) {
-    throw new Error(raw.message ?? raw.error ?? `Bluesky post failed (${res.status})`);
-  }
-
-  const uri = raw.uri;
+  const created = await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.post", record);
+  const uri = created.uri;
   const rkey = uri.split("/").pop() ?? "";
-  const handle =
-    (session.handle ?? identifier).replace(/^@+/, "").trim().split("/")[0] ?? "";
+  const handle = handleLabel.replace(/^@+/, "").trim().split("/")[0] ?? "";
   const url =
     handle && rkey ? `https://bsky.app/profile/${handle}/post/${rkey}` : uri.replace("at://", "https://bsky.app/profile/");
 

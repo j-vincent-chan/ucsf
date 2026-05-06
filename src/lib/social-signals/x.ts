@@ -176,6 +176,44 @@ const X_TIMELINE_PARAMS = new URLSearchParams({
   "media.fields": "url,preview_image_url,type,media_key",
 });
 
+/** GET /2/tweets — same fields as timelines (no `max_results`). */
+const X_TWEET_LOOKUP_PARAMS = new URLSearchParams({
+  "tweet.fields":
+    "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
+  expansions:
+    "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id,referenced_tweets.id.attachments.media_keys",
+  "user.fields": "name,username,profile_image_url",
+  "media.fields": "url,preview_image_url,type,media_key",
+});
+
+/**
+ * Fetch tweets by id (e.g. conversation roots missing from search/timeline results).
+ * Up to 100 ids per request; larger batches are chunked.
+ */
+export async function fetchXTweetsByIds(bearer: string, ids: string[]): Promise<XResult> {
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (unique.length === 0) return { posts: [] };
+  const all: SocialPost[] = [];
+  let detail: string | undefined;
+  for (let i = 0; i < unique.length; i += 100) {
+    const chunk = unique.slice(i, i + 100);
+    const params = new URLSearchParams(X_TWEET_LOOKUP_PARAMS);
+    params.set("ids", chunk.join(","));
+    const res = await fetch(`${BASE}/tweets?${params}`, {
+      headers: authHeaders(bearer),
+    });
+    const raw = (await res.json().catch(() => ({}))) as Parameters<typeof mapXTweetsResponse>[0] & {
+      errors?: { detail?: string }[];
+    };
+    if (!res.ok) {
+      detail = raw.errors?.[0]?.detail ?? res.statusText;
+      continue;
+    }
+    all.push(...mapXTweetsResponse(raw));
+  }
+  return { posts: all, detail };
+}
+
 /**
  * X list timeline: watch a List the community curates (Bearer has access to the list).
  * Create a list in X, add accounts, put the list ID in X_LIST_ID.

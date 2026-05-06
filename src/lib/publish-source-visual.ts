@@ -3,7 +3,8 @@ import type { Database, Json } from "@/types/database";
 import { bufferFromDigestVisualCandidate } from "@/lib/digest-visual-media";
 import {
   getActiveCandidate,
-  parseDigestVisualBundleFromDb,
+  getBundleForChannel,
+  parseDigestCoverStoreFromDb,
 } from "@/lib/digest-visual-types";
 
 export type ResolvedPublishVisual = {
@@ -33,7 +34,8 @@ export async function resolvePublishVisualForSourceItem(
     .maybeSingle();
   if (iErr || !item || item.community_id !== profile.community_id) return null;
 
-  const bundle = parseDigestVisualBundleFromDb(item.digest_cover as Json);
+  const store = parseDigestCoverStoreFromDb(item.digest_cover as Json);
+  const bundle = getBundleForChannel(store, "bluesky_x");
   const candidate = getActiveCandidate(bundle);
   if (!candidate) return null;
 

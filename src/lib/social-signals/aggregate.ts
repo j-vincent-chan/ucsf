@@ -6,8 +6,8 @@ import {
   fetchBlueskyMentions,
   fetchBlueskyProfileSummary,
 } from "./bluesky";
-import { fetchLinkedInPlaceholder } from "./linkedin";
-import { fetchXListTimeline, fetchXMentionSearch, fetchXUserByUsername } from "./x";
+import { fetchXListTimeline, fetchXMentionSearch, fetchXTweetsByIds, fetchXUserByUsername } from "./x";
+import { missingXThreadRootTweetIds } from "./group-feed-rows";
 
 /** Workspace social ingest targets (Bearer / Bluesky app password stay in env only). */
 export type SocialFeedWorkspaceConfig = {
@@ -38,9 +38,6 @@ export async function fetchSocialFeed(
   const bskyListUri =
     workspaceCfg?.blueskyListAtUri?.trim() || process.env.BSKY_LIST_AT_URI?.trim();
 
-  const linkedinToken = process.env.LINKEDIN_ACCESS_TOKEN?.trim();
-  const linkedinUrn = process.env.LINKEDIN_ORGANIZATION_URN?.trim();
-
   const xConfiguredForTab = Boolean(
     bearer &&
       ((tab === "mentions" && xCommunityHandle) ||
@@ -61,11 +58,6 @@ export async function fetchSocialFeed(
     },
     bluesky: {
       configured: bskyConfiguredForTab,
-      detail: undefined,
-    },
-    linkedin: {
-      configured: Boolean(linkedinToken && linkedinUrn),
-      comingSoon: true,
       detail: undefined,
     },
   };
@@ -171,15 +163,17 @@ export async function fetchSocialFeed(
     }
   }
 
-  tasks.push(
-    (async () => {
-      const { posts, detail } = await fetchLinkedInPlaceholder();
-      collected.push(...posts);
-      if (detail) sourceMeta.linkedin = { ...sourceMeta.linkedin, detail };
-    })(),
-  );
-
   await Promise.all(tasks);
+
+  /** Mention/list APIs often omit the thread root; fetch by id so grouped threads show root → replies. */
+  if (bearer) {
+    const missingRoots = missingXThreadRootTweetIds(collected);
+    if (missingRoots.length > 0) {
+      const { posts: roots, detail } = await fetchXTweetsByIds(bearer, missingRoots);
+      collected.push(...roots);
+      if (detail) sourceMeta.x = { ...sourceMeta.x, detail };
+    }
+  }
 
   const syncedAt = new Date().toISOString();
   const accounts = {
@@ -203,14 +197,6 @@ export async function fetchSocialFeed(
       configured: false,
       detail:
         "Add BSKY_IDENTIFIER and BSKY_APP_PASSWORD (Bluesky app password) to server env — for Vercel: Project → Settings → Environment Variables (Production).",
-    };
-  }
-
-  if (!linkedinToken && !linkedinUrn) {
-    sourceMeta.linkedin = {
-      ...sourceMeta.linkedin,
-      comingSoon: true,
-      detail: "LinkedIn publishing is not available yet. Reserved for future org-based workflows.",
     };
   }
 

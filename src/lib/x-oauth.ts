@@ -8,6 +8,8 @@ export const X_OAUTH_SCOPES = [
   "offline.access",
   /** Required for POST /2/media/upload/* (see docs.x.com x-api/media). */
   "media.write",
+  /** Likes from Social Signals feed (reconnect X in Settings if likes fail). */
+  "like.write",
 ] as const;
 
 const AUTHORIZE_URL = "https://twitter.com/i/oauth2/authorize";

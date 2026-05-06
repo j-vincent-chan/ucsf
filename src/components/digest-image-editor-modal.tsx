@@ -7,8 +7,21 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { DigestImageAspectPreset, DigestVisualCandidate, DigestVisualEditMetadata } from "@/lib/digest-visual-types";
+import { Textarea } from "@/components/ui/textarea";
+import { DigestIllustrationOverlays } from "@/components/digest-illustration-overlays";
+import {
+  DEFAULT_ILLUSTRATION_LABEL_FONT_PX,
+  type DigestIllustrationTextLayer,
+  type DigestImageAspectPreset,
+  type DigestVisualCandidate,
+  type DigestVisualEditMetadata,
+} from "@/lib/digest-visual-types";
 import { activeVisualImageDataUrl } from "@/lib/digest-visual-types";
+import {
+  ILLUSTRATION_LABEL_PILL_SURFACE,
+  clampPillSurfaceIndex,
+  hashPillSurfaceIndex,
+} from "@/lib/digest-illustration-pill-palette";
 import {
   type Adjustments,
   type FilterId,
@@ -28,7 +41,7 @@ import {
 } from "@/lib/digest-image-editor-utils";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
-export type EditorToolTab = "preview" | "crop" | "resize" | "adjust" | "filters";
+export type EditorToolTab = "preview" | "crop" | "resize" | "adjust" | "filters" | "labels";
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Point = { x: number; y: number };
@@ -134,19 +147,59 @@ function selectedKindTitle(candidate: DigestVisualCandidate): string {
     Boolean(candidate.editOriginal) ||
     Boolean(candidate.editMetadata);
   if (edited) {
+    if (candidate.type === "upload") return "Edited uploaded image";
     if (candidate.type === "source") return "Edited source image";
     if (candidate.type === "stock") return "Edited photo-style visual";
     return "Edited AI-generated thumbnail";
   }
+  if (candidate.type === "upload") return "Uploaded image";
   if (candidate.type === "source") return "Source image";
   if (candidate.type === "stock") return "Photo-style visual";
   return "AI-generated thumbnail";
 }
 
 function selectedKindSubtitle(candidate: DigestVisualCandidate): string {
+  if (candidate.type === "upload") return "Uploaded by you. Confirm publication rights before distribution.";
   if (candidate.type === "source") return "From source page. Verify rights before use.";
   if (candidate.type === "stock") return "Verify license and source before publication.";
-  return "Generated with the digest thumbnail prompt from ingested research content. Review for scientific accuracy.";
+  return "Raster from the thumbnail prompt—overlay labels are editable metadata, not burned into PNG when extraction succeeds.";
+}
+
+function captionLayersFromCandidate(c: DigestVisualCandidate): DigestIllustrationTextLayer[] {
+  if (!c.illustrationTextLayers?.length) return [];
+  return c.illustrationTextLayers.map((L) => ({ ...L }));
+}
+
+function newCaptionLayerId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `cap_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Trim and drop empty rows — matches what we persist to the bundle. */
+function persistableCaptionLayers(layers: DigestIllustrationTextLayer[]): DigestIllustrationTextLayer[] {
+  return layers
+    .map((L) => {
+      const text = L.text.trim();
+      const next: DigestIllustrationTextLayer = { ...L, text };
+      if (L.fontSizePx != null && Number.isFinite(L.fontSizePx)) {
+        next.fontSizePx = Math.min(48, Math.max(8, Math.round(L.fontSizePx)));
+      }
+      if (L.pillPaddingPx != null && Number.isFinite(L.pillPaddingPx)) {
+        next.pillPaddingPx = Math.min(48, Math.max(0, Math.round(L.pillPaddingPx)));
+      }
+      if (L.pillSurfaceIndex != null && Number.isFinite(L.pillSurfaceIndex)) {
+        next.pillSurfaceIndex = clampPillSurfaceIndex(L.pillSurfaceIndex);
+      }
+      if (next.fontBold !== true) delete next.fontBold;
+      if (next.fontItalic !== true) delete next.fontItalic;
+      if (next.fontUnderline !== true) delete next.fontUnderline;
+      return next;
+    })
+    .filter((L) => L.text.length > 0);
+}
+
+function captionPayloadSignature(layers: DigestIllustrationTextLayer[]): string {
+  return JSON.stringify(persistableCaptionLayers(layers));
 }
 
 export function DigestImageEditorModal({
@@ -154,6 +207,8 @@ export function DigestImageEditorModal({
   initialMode = "preview",
   onClose,
   onSaveEdited,
+  onSaveIllustrationLayers,
+  onSaveImageAlt,
   onRevertOriginal,
   disabled,
 }: {
@@ -164,7 +219,12 @@ export function DigestImageEditorModal({
     base64: string;
     mime: string;
     editMetadata: DigestVisualEditMetadata;
+    illustrationTextLayers?: DigestIllustrationTextLayer[];
   }) => Promise<void>;
+  /** Persist overlay labels without re-uploading raster (digest schematic assets). */
+  onSaveIllustrationLayers?: (layers: DigestIllustrationTextLayer[]) => Promise<void>;
+  /** Persist image alt / accessibility caption (stored as `candidate.caption` on the bundle). */
+  onSaveImageAlt?: (caption: string) => Promise<void>;
   /** When the candidate has a stored pre-edit snapshot, reset can restore it (server). */
   onRevertOriginal?: () => Promise<void>;
   disabled?: boolean;
@@ -181,7 +241,7 @@ export function DigestImageEditorModal({
   const [nh, setNh] = useState(0);
 
   const [activeTool, setActiveTool] = useState<EditorToolTab>(initialMode === "preview" ? "preview" : "crop");
-  const [aspectPreset, setAspectPreset] = useState<DigestImageAspectPreset>("16:9");
+  const [aspectPreset, setAspectPreset] = useState<DigestImageAspectPreset>("original");
   const [crop, setCrop] = useState<Rect>({ x: 0, y: 0, w: 0, h: 0 });
   const [resizePreset, setResizePreset] = useState<ResizePresetKey | "custom">("digest_card");
   const [resizeW, setResizeW] = useState(1280);
@@ -189,6 +249,19 @@ export function DigestImageEditorModal({
   const [lockAspect, setLockAspect] = useState(true);
   const [adjustments, setAdjustments] = useState<Adjustments>({ ...DEFAULT_ADJUSTMENTS });
   const [filterId, setFilterId] = useState<FilterId>("none");
+
+  const supportsCaptionOverlays = candidate.type === "schematic";
+  const [captionLayers, setCaptionLayers] = useState<DigestIllustrationTextLayer[]>(() =>
+    captionLayersFromCandidate(candidate),
+  );
+  /** In-progress font size strings so clamping does not break typing (e.g. "1" before "14"). */
+  const [labelFontSizeDrafts, setLabelFontSizeDrafts] = useState<Record<string, string>>({});
+  /** In-progress pill padding (blur commits; empty = responsive Auto). */
+  const [labelPillPaddingDrafts, setLabelPillPaddingDrafts] = useState<Record<string, string>>({});
+  const captionBaselineRef = useRef<string>(captionPayloadSignature(captionLayersFromCandidate(candidate)));
+
+  const [altDraft, setAltDraft] = useState(() => candidate.caption ?? "");
+  const altBaselineRef = useRef((candidate.caption ?? "").trim());
 
   const baselineRef = useRef<SessionSnapshot | null>(null);
   const [saving, setSaving] = useState(false);
@@ -233,19 +306,19 @@ export function DigestImageEditorModal({
         const h = img.naturalHeight;
         setNw(w);
         setNh(h);
-        const initialCrop = clampCropToImage(cropForAspectPreset(w, h, "16:9"), w, h);
+        const initialCrop = clampCropToImage(cropForAspectPreset(w, h, "original"), w, h);
         setCrop(initialCrop);
         const rd = resizePresetDimensions("digest_card", initialCrop.w, initialCrop.h);
         const capped = capExportDimensions(rd.w, rd.h);
         setResizeW(capped.w);
         setResizeH(capped.h);
         setResizePreset("digest_card");
-        setAspectPreset("16:9");
+        setAspectPreset("original");
         setAdjustments({ ...DEFAULT_ADJUSTMENTS });
         setFilterId("none");
         setActiveTool(initialMode === "preview" ? "preview" : "crop");
         const snap: SessionSnapshot = {
-          aspectPreset: "16:9",
+          aspectPreset: "original",
           crop: initialCrop,
           resizeW: capped.w,
           resizeH: capped.h,
@@ -268,6 +341,23 @@ export function DigestImageEditorModal({
       cancelled = true;
     };
   }, [candidate.id, imageSrc, initialMode]);
+
+  useEffect(() => {
+    const snap = captionLayersFromCandidate(candidate);
+    setCaptionLayers(snap);
+    captionBaselineRef.current = captionPayloadSignature(snap);
+  }, [candidate.id, candidate.illustrationTextLayers]);
+
+  useEffect(() => {
+    setLabelFontSizeDrafts({});
+    setLabelPillPaddingDrafts({});
+  }, [candidate.id]);
+
+  useEffect(() => {
+    const t = (candidate.caption ?? "").trim();
+    altBaselineRef.current = t;
+    setAltDraft(candidate.caption ?? "");
+  }, [candidate.id, candidate.caption]);
 
   const layout = useMemo(() => {
     const maxW = canvasBox.w;
@@ -300,6 +390,35 @@ export function DigestImageEditorModal({
     }),
     [layout.ox, layout.oy, layout.scale],
   );
+
+  /** Same letterboxed image rect as `redrawMini` — used to align label overlays on the digest card preview. */
+  const digestMiniPreviewFrame = useMemo(() => {
+    const frameW = 200;
+    const frameH = 112;
+    if (nw <= 0 || crop.w <= 0 || crop.h <= 0) return null;
+    const cropAspect = crop.w / crop.h;
+    const frameAspect = frameW / frameH;
+    let destW: number;
+    let destH: number;
+    let dx: number;
+    let dy: number;
+    if (cropAspect > frameAspect) {
+      destW = frameW;
+      destH = frameW / cropAspect;
+      dx = 0;
+      dy = (frameH - destH) / 2;
+    } else {
+      destH = frameH;
+      destW = frameH * cropAspect;
+      dx = (frameW - destW) / 2;
+      dy = 0;
+    }
+    return {
+      frameW,
+      frameH,
+      imageRect: { x: dx, y: dy, w: destW, h: destH },
+    };
+  }, [crop.h, crop.w, nw]);
 
   const redrawMain = useCallback(() => {
     const canvas = mainCanvasRef.current;
@@ -345,32 +464,16 @@ export function DigestImageEditorModal({
   const redrawMini = useCallback(() => {
     const canvas = miniCanvasRef.current;
     const img = imgRef.current;
-    if (!canvas || !img || nw === 0 || loadState !== "ready") return;
+    const miniLayout = digestMiniPreviewFrame;
+    if (!canvas || !img || nw === 0 || loadState !== "ready" || !miniLayout) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const frameW = 200;
-    const frameH = 112;
+    const { frameW, frameH, imageRect } = miniLayout;
+    const { x: dx, y: dy, w: destW, h: destH } = imageRect;
     canvas.width = frameW;
     canvas.height = frameH;
     ctx.fillStyle = "rgba(245, 239, 230, 0.9)";
     ctx.fillRect(0, 0, frameW, frameH);
-    const cropAspect = crop.w / Math.max(1, crop.h);
-    const frameAspect = frameW / frameH;
-    let destW: number;
-    let destH: number;
-    let dx: number;
-    let dy: number;
-    if (cropAspect > frameAspect) {
-      destW = frameW;
-      destH = frameW / cropAspect;
-      dx = 0;
-      dy = (frameH - destH) / 2;
-    } else {
-      destH = frameH;
-      destW = frameH * cropAspect;
-      dx = (frameW - destW) / 2;
-      dy = 0;
-    }
     ctx.filter = buildCanvasFilter(adjustments, filterId);
     try {
       ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, dx, dy, destW, destH);
@@ -380,7 +483,7 @@ export function DigestImageEditorModal({
     ctx.filter = "none";
     ctx.strokeStyle = "rgba(120, 100, 88, 0.35)";
     ctx.strokeRect(0.5, 0.5, frameW - 1, frameH - 1);
-  }, [adjustments, crop.h, crop.w, crop.x, crop.y, filterId, loadState, nh, nw]);
+  }, [adjustments, crop, digestMiniPreviewFrame, filterId, loadState, nw]);
 
   useEffect(() => {
     redrawMain();
@@ -435,8 +538,26 @@ export function DigestImageEditorModal({
   const isDirty =
     baselineRef.current != null && !imageEditPayloadEqual(currentSession, baselineRef.current);
 
+  const captionDirty =
+    supportsCaptionOverlays && captionPayloadSignature(captionLayers) !== captionBaselineRef.current;
+
+  const captionDragEnabled =
+    supportsCaptionOverlays &&
+    loadState === "ready" &&
+    nw > 0 &&
+    nh > 0 &&
+    (activeTool === "preview" || activeTool === "labels");
+
+  const handleCaptionPositionNorm = useCallback((id: string, xNorm: number, yNorm: number) => {
+    setCaptionLayers((rows) => rows.map((r) => (r.id === id ? { ...r, xNorm, yNorm } : r)));
+  }, []);
+
+  const altDirty = onSaveImageAlt != null && altDraft.trim() !== altBaselineRef.current;
+
+  const canSaveRasterOrCaptions = isDirty || captionDirty || altDirty;
+
   const canRevertStoredOriginal = Boolean(candidate.editOriginal && onRevertOriginal);
-  const canFooterReset = isDirty || canRevertStoredOriginal;
+  const canFooterReset = isDirty || canRevertStoredOriginal || altDirty;
 
   const resetAll = () => {
     const b = baselineRef.current;
@@ -563,10 +684,16 @@ export function DigestImageEditorModal({
     return { base64: dataUrlToBase64(dataUrl), mime };
   }, [adjustments, crop, filterId, resizeH, resizeW]);
 
+  const cropCanvasRect = useMemo(
+    () => (nw > 0 ? canvasFromNaturalRect(crop) : null),
+    [canvasFromNaturalRect, crop, nw],
+  );
+
   const buildMetadata = useCallback((): DigestVisualEditMetadata => {
     return {
       v: 1,
       originalCandidateId: candidate.id,
+      ...(nw > 0 && nh > 0 ? { sourceNaturalPixels: { w: nw, h: nh } } : {}),
       aspectPreset,
       cropPixels: { ...crop },
       resizePixels: { w: resizeW, h: resizeH },
@@ -575,22 +702,43 @@ export function DigestImageEditorModal({
       filterId,
       editedAt: new Date().toISOString(),
     };
-  }, [adjustments, aspectPreset, candidate.id, crop, filterId, lockAspect, resizeH, resizeW]);
+  }, [adjustments, aspectPreset, candidate.id, crop, filterId, lockAspect, nh, nw, resizeH, resizeW]);
 
   const handleSave = async () => {
     const img = imgRef.current;
-    if (!img || loadState !== "ready") return;
+    const needsRasterSession = isDirty || captionDirty;
+    if (needsRasterSession && (!img || loadState !== "ready")) return;
+    if (!canSaveRasterOrCaptions) return;
+    const persisted = persistableCaptionLayers(captionLayers);
     setSaving(true);
     try {
-      const { base64, mime } = runExport();
-      await onSaveEdited({
-        base64,
-        mime,
-        editMetadata: buildMetadata(),
-      });
+      if (isDirty) {
+        const { base64, mime } = runExport();
+        await onSaveEdited({
+          base64,
+          mime,
+          editMetadata: buildMetadata(),
+          illustrationTextLayers: supportsCaptionOverlays ? persisted : undefined,
+        });
+      } else if (captionDirty) {
+        if (!onSaveIllustrationLayers) {
+          throw new Error("Label save is not available for this editor.");
+        }
+        await onSaveIllustrationLayers(persisted);
+      }
+
+      if (altDirty) {
+        if (!onSaveImageAlt) {
+          throw new Error("Alt text save is not available for this editor.");
+        }
+        await onSaveImageAlt(altDraft.trim());
+        altBaselineRef.current = altDraft.trim();
+      }
+
+      captionBaselineRef.current = captionPayloadSignature(captionLayers);
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not save image");
+      toast.error(err instanceof Error ? err.message : "Could not save");
     } finally {
       setSaving(false);
     }
@@ -599,6 +747,10 @@ export function DigestImageEditorModal({
   const handleFooterReset = async () => {
     if (isDirty) {
       resetAll();
+      return;
+    }
+    if (altDirty) {
+      setAltDraft(candidate.caption ?? "");
       return;
     }
     if (canRevertStoredOriginal && onRevertOriginal) {
@@ -614,10 +766,10 @@ export function DigestImageEditorModal({
   };
 
   const aspectButtons: { id: DigestImageAspectPreset; label: string }[] = [
+    { id: "original", label: "Original" },
     { id: "16:9", label: "Widescreen 16:9" },
     { id: "1:1", label: "Square 1:1" },
     { id: "4:5", label: "Portrait 4:5" },
-    { id: "original", label: "Original" },
     { id: "freeform", label: "Freeform" },
   ];
 
@@ -704,26 +856,43 @@ export function DigestImageEditorModal({
                 </div>
               ) : null}
               {loadState === "ready" ? (
-                <canvas
-                  ref={mainCanvasRef}
-                  className={`max-h-[min(calc(58vh*1.25),650px)] max-w-full touch-none ${
-                    activeTool === "crop" ? "cursor-crosshair" : "cursor-default"
-                  }`}
-                  style={
-                    layout.maxW > 0 && layout.maxH > 0
-                      ? {
-                          width: `min(100%, ${layout.maxW}px)`,
-                          aspectRatio: `${layout.maxW} / ${layout.maxH}`,
-                          height: "auto",
-                          maxHeight: "min(calc(58vh * 1.25), 650px)",
-                        }
-                      : undefined
-                  }
-                  onPointerDown={onPointerDownMain}
-                  onPointerMove={onPointerMoveMain}
-                  onPointerUp={onPointerUpMain}
-                  onPointerCancel={onPointerUpMain}
-                />
+                <div className="relative mx-auto w-fit max-w-full max-h-[min(calc(58vh*1.25),650px)]">
+                  <canvas
+                    ref={mainCanvasRef}
+                    className={`block max-h-[min(calc(58vh*1.25),650px)] max-w-full touch-none ${
+                      activeTool === "crop" ? "cursor-crosshair" : "cursor-default"
+                    }`}
+                    style={
+                      layout.maxW > 0 && layout.maxH > 0
+                        ? {
+                            width: `min(100%, ${layout.maxW}px)`,
+                            aspectRatio: `${layout.maxW} / ${layout.maxH}`,
+                            height: "auto",
+                            maxHeight: "min(calc(58vh * 1.25), 650px)",
+                          }
+                        : undefined
+                    }
+                    onPointerDown={onPointerDownMain}
+                    onPointerMove={onPointerMoveMain}
+                    onPointerUp={onPointerUpMain}
+                    onPointerCancel={onPointerUpMain}
+                  />
+                  {supportsCaptionOverlays ? (
+                    <DigestIllustrationOverlays
+                      layers={captionLayers}
+                      layoutBoxPx={cropCanvasRect}
+                      layoutCoordinateSpace={
+                        layout.maxW > 0 && layout.maxH > 0
+                          ? { w: layout.maxW, h: layout.maxH }
+                          : null
+                      }
+                      naturalSize={{ w: nw, h: nh }}
+                      cropNatural={crop}
+                      dragEnabled={captionDragEnabled}
+                      onLayerPositionNormChange={handleCaptionPositionNorm}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -731,7 +900,25 @@ export function DigestImageEditorModal({
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
                   Digest card preview (16:9)
                 </p>
-                <canvas ref={miniCanvasRef} className="mt-1 rounded-md border border-[color:var(--border)]/50" />
+                <div className="relative mt-1 h-[112px] w-[200px] shrink-0">
+                  <canvas
+                    ref={miniCanvasRef}
+                    className="absolute inset-0 rounded-md border border-[color:var(--border)]/50"
+                  />
+                  {loadState === "ready" && supportsCaptionOverlays && digestMiniPreviewFrame ? (
+                    <DigestIllustrationOverlays
+                      layers={captionLayers}
+                      layoutBoxPx={digestMiniPreviewFrame.imageRect}
+                      layoutCoordinateSpace={{
+                        w: digestMiniPreviewFrame.frameW,
+                        h: digestMiniPreviewFrame.frameH,
+                      }}
+                      naturalSize={{ w: nw, h: nh }}
+                      cropNatural={crop}
+                      dragEnabled={false}
+                    />
+                  ) : null}
+                </div>
               </div>
               <p className="max-w-xs text-[11px] leading-snug text-[color:var(--muted-foreground)]">
                 Edits are preview-only until you save. The original candidate stays in the bundle.
@@ -800,6 +987,18 @@ export function DigestImageEditorModal({
                   </svg>
                 }
               />
+              {supportsCaptionOverlays ? (
+                <ToolTabButton
+                  active={activeTool === "labels"}
+                  onClick={() => setActiveTool("labels")}
+                  label="Labels"
+                  icon={
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
+                    </svg>
+                  }
+                />
+              ) : null}
             </nav>
 
             <div className="border-t border-[color:var(--border)]/35 pt-3">
@@ -807,7 +1006,36 @@ export function DigestImageEditorModal({
                 <div className="space-y-3">
                   <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
                     Review the image at full size. Open a tool to crop, resize, tune color, or apply a subtle filter.
+                    {supportsCaptionOverlays ? (
+                      <>
+                        {" "}
+                        For illustrations, use{" "}
+                        <span className="font-medium text-[color:var(--foreground)]">Labels</span> to edit overlay text
+                        stored in the bundle (not baked into the PNG). Drag labels on the preview to position them and set
+                        per-label font sizes.
+                      </>
+                    ) : null}
                   </p>
+                  {onSaveImageAlt ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="digest-image-alt" className="text-[11px] font-medium text-[color:var(--foreground)]">
+                        Image alt text (accessibility)
+                      </Label>
+                      <textarea
+                        id="digest-image-alt"
+                        value={altDraft}
+                        disabled={disabled}
+                        onChange={(e) => setAltDraft(e.target.value.slice(0, 500))}
+                        rows={4}
+                        placeholder="Describe this image for screen readers and social platforms (optional but recommended)."
+                        className="w-full resize-y rounded-lg border border-[color:var(--border)]/70 bg-[color:var(--background)] px-2.5 py-2 text-xs leading-relaxed text-[color:var(--foreground)] outline-none placeholder:text-[color:var(--muted-foreground)]/65 focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:opacity-45"
+                      />
+                      <div className="flex justify-between text-[10px] text-[color:var(--muted-foreground)]">
+                        <span>{altDraft.length}/500</span>
+                        <span>Use Save all changes to persist.</span>
+                      </div>
+                    </div>
+                  ) : null}
                   <Button type="button" className="w-full" onClick={() => setActiveTool("crop")}>
                     Edit image
                   </Button>
@@ -817,9 +1045,10 @@ export function DigestImageEditorModal({
               {activeTool === "crop" ? (
                 <div className="space-y-3">
                   <p className="text-[11px] text-[color:var(--muted-foreground)]">
-                    <span className="font-medium text-[color:var(--foreground)]">Digest wide (16:9)</span> is the
-                    default crop. Drag the crop box to reposition (fixed ratios), or choose freeform and drag a new
-                    rectangle.
+                    <span className="font-medium text-[color:var(--foreground)]">Original</span> (full image) is the
+                    default crop. Switch to <span className="font-medium text-[color:var(--foreground)]">Widescreen 16:9</span>{" "}
+                    or another ratio for digest cards, drag the crop box to reposition, or use{" "}
+                    <span className="font-medium text-[color:var(--foreground)]">Freeform</span> and drag a new rectangle.
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {aspectButtons.map((b) => (
@@ -976,6 +1205,247 @@ export function DigestImageEditorModal({
                   </div>
                 </div>
               ) : null}
+
+              {supportsCaptionOverlays && activeTool === "labels" ? (
+                <div className="space-y-3">
+                  <p className="text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+                    Overlay labels use a fixed size on the image (extra lines are clipped). Press Enter for line breaks.
+                    Labels are saved on the candidate. Clearing a row removes that label after you save (empty rows are not
+                    stored). Drag labels on the main preview while this panel or Preview is open to position them.
+                  </p>
+                  <div className="space-y-2">
+                    {captionLayers.map((L, idx) => (
+                      <div
+                        key={L.id}
+                        className="rounded-lg border border-[color:var(--border)]/55 bg-[color:var(--background)]/85 p-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">
+                            Label {idx + 1}
+                          </span>
+                          <button
+                            type="button"
+                            className="text-[10px] font-medium text-[#8f4d45] underline-offset-2 hover:underline"
+                            onClick={() => {
+                              setLabelFontSizeDrafts((p) => {
+                                const next = { ...p };
+                                delete next[L.id];
+                                return next;
+                              });
+                              setLabelPillPaddingDrafts((p) => {
+                                const next = { ...p };
+                                delete next[L.id];
+                                return next;
+                              });
+                              setCaptionLayers((rows) => rows.filter((r) => r.id !== L.id));
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <Textarea
+                          value={L.text}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setCaptionLayers((rows) => rows.map((r) => (r.id === L.id ? { ...r, text: v } : r)));
+                          }}
+                          placeholder="Label text (Enter for a new line)"
+                          maxLength={160}
+                          rows={3}
+                          className="mt-1.5 min-h-[4.75rem] resize-y py-2 text-xs"
+                        />
+                        <Label className="mt-2 block text-[10px] text-[color:var(--muted-foreground)]">
+                          Font size (px)
+                        </Label>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            aria-label={`Font size in pixels for label ${idx + 1}`}
+                            value={
+                              labelFontSizeDrafts[L.id] !== undefined
+                                ? labelFontSizeDrafts[L.id]!
+                                : String(L.fontSizePx ?? DEFAULT_ILLUSTRATION_LABEL_FONT_PX)
+                            }
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/\D/g, "");
+                              setLabelFontSizeDrafts((prev) => ({ ...prev, [L.id]: digits }));
+                              const n = parseInt(digits, 10);
+                              if (digits !== "" && Number.isFinite(n) && n >= 8 && n <= 48) {
+                                setCaptionLayers((rows) =>
+                                  rows.map((r) => (r.id === L.id ? { ...r, fontSizePx: n } : r)),
+                                );
+                              }
+                            }}
+                            onBlur={() => {
+                              const draft = labelFontSizeDrafts[L.id];
+                              setLabelFontSizeDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[L.id];
+                                return next;
+                              });
+                              const n =
+                                draft !== undefined && draft !== "" ? parseInt(draft, 10) : Number.NaN;
+                              const final = Number.isFinite(n)
+                                ? clamp(n, 8, 48)
+                                : DEFAULT_ILLUSTRATION_LABEL_FONT_PX;
+                              setCaptionLayers((rows) =>
+                                rows.map((r) => (r.id === L.id ? { ...r, fontSizePx: final } : r)),
+                              );
+                            }}
+                            className="h-9 min-w-[4rem] flex-1 text-xs"
+                          />
+                          <div
+                            className="flex shrink-0 items-center gap-0.5"
+                            role="group"
+                            aria-label={`Label ${idx + 1} text style`}
+                          >
+                            {(
+                              [
+                                { key: "fontBold" as const, label: "B", title: "Bold" },
+                                { key: "fontItalic" as const, label: "I", title: "Italic" },
+                                { key: "fontUnderline" as const, label: "U", title: "Underline" },
+                              ] as const
+                            ).map(({ key, label, title }) => {
+                              const active = !!L[key];
+                              return (
+                                <button
+                                  key={key}
+                                  type="button"
+                                  title={title}
+                                  aria-label={`${title} for label ${idx + 1}`}
+                                  aria-pressed={active}
+                                  onClick={() =>
+                                    setCaptionLayers((rows) =>
+                                      rows.map((r) =>
+                                        r.id === L.id ? { ...r, [key]: !r[key] } : r,
+                                      ),
+                                    )
+                                  }
+                                  className={`h-9 min-w-[2rem] shrink-0 rounded-md border text-xs font-semibold transition-colors ${
+                                    active
+                                      ? "border-[color:var(--accent)] bg-[color:var(--accent)]/15 text-[color:var(--foreground)]"
+                                      : "border-[color:var(--border)]/60 bg-[color:var(--background)]/85 text-[color:var(--muted-foreground)] hover:bg-[color:var(--muted)]/30"
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <Label className="mt-2 block text-[10px] text-[color:var(--muted-foreground)]">
+                          Label padding (px)
+                        </Label>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            placeholder="Auto"
+                            aria-label={`Background padding in pixels for label ${idx + 1}; leave empty for automatic sizing`}
+                            value={
+                              labelPillPaddingDrafts[L.id] !== undefined
+                                ? labelPillPaddingDrafts[L.id]!
+                                : L.pillPaddingPx != null
+                                  ? String(L.pillPaddingPx)
+                                  : ""
+                            }
+                            onChange={(e) => {
+                              const digits = e.target.value.replace(/\D/g, "");
+                              setLabelPillPaddingDrafts((prev) => ({ ...prev, [L.id]: digits }));
+                            }}
+                            onBlur={() => {
+                              const draft = labelPillPaddingDrafts[L.id];
+                              setLabelPillPaddingDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[L.id];
+                                return next;
+                              });
+                              if (draft === undefined || draft === "") {
+                                setCaptionLayers((rows) =>
+                                  rows.map((r) =>
+                                    r.id === L.id ? { ...r, pillPaddingPx: undefined } : r,
+                                  ),
+                                );
+                                return;
+                              }
+                              const n = parseInt(draft, 10);
+                              const final = Number.isFinite(n) ? clamp(n, 0, 48) : undefined;
+                              setCaptionLayers((rows) =>
+                                rows.map((r) =>
+                                  r.id === L.id ? { ...r, pillPaddingPx: final } : r,
+                                ),
+                              );
+                            }}
+                            className="h-9 min-w-[4rem] flex-1 text-xs"
+                          />
+                          <div
+                            className="flex shrink-0 items-center gap-1"
+                            role="group"
+                            aria-label={`Bubble color for label ${idx + 1}`}
+                          >
+                            {(() => {
+                              const effectiveSwatch =
+                                L.pillSurfaceIndex != null && Number.isFinite(L.pillSurfaceIndex)
+                                  ? clampPillSurfaceIndex(L.pillSurfaceIndex)
+                                  : hashPillSurfaceIndex(L.id, 0);
+                              return ILLUSTRATION_LABEL_PILL_SURFACE.map((surfaceClass, swIdx) => {
+                                const swatchActive = effectiveSwatch === swIdx;
+                                return (
+                                  <button
+                                    key={swIdx}
+                                    type="button"
+                                    title={`Bubble color ${swIdx + 1}`}
+                                    aria-label={`Bubble color ${swIdx + 1} of ${ILLUSTRATION_LABEL_PILL_SURFACE.length}`}
+                                    aria-pressed={swatchActive}
+                                    onClick={() =>
+                                      setCaptionLayers((rows) =>
+                                        rows.map((r) =>
+                                          r.id === L.id ? { ...r, pillSurfaceIndex: swIdx } : r,
+                                        ),
+                                      )
+                                    }
+                                    className={`h-8 w-8 shrink-0 rounded-full shadow-sm transition-[box-shadow,opacity] ${surfaceClass} ${
+                                      swatchActive
+                                        ? "ring-2 ring-[color:var(--accent)] ring-offset-2 ring-offset-[color:var(--background)]"
+                                        : "opacity-85 hover:opacity-100"
+                                    } `}
+                                  />
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full text-xs"
+                    onClick={() =>
+                      setCaptionLayers((rows) => {
+                        const idx = rows.length;
+                        const yNorm = clamp(0.14 + idx * 0.16, 0.1, 0.86);
+                        return [
+                          ...rows,
+                          {
+                            id: newCaptionLayerId(),
+                            text: "",
+                            xNorm: 0.5,
+                            yNorm,
+                            fontSizePx: DEFAULT_ILLUSTRATION_LABEL_FONT_PX,
+                          },
+                        ];
+                      })
+                    }
+                  >
+                    Add label
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>
@@ -1003,10 +1473,28 @@ export function DigestImageEditorModal({
           <Button
             type="button"
             className="h-9 text-xs"
-            disabled={saving || reverting || disabled || loadState !== "ready" || !isDirty}
+            disabled={
+              saving ||
+              reverting ||
+              disabled ||
+              !canSaveRasterOrCaptions ||
+              ((isDirty || captionDirty) && loadState !== "ready")
+            }
             onClick={() => void handleSave()}
           >
-            Save edited image
+            {saving
+              ? "Saving…"
+              : (() => {
+                  const alt = altDirty && onSaveImageAlt;
+                  if (isDirty && captionDirty && alt) return "Save image, overlays & alt";
+                  if (isDirty && captionDirty) return "Save image & labels";
+                  if (isDirty && alt) return "Save image & alt text";
+                  if (captionDirty && alt) return "Save labels & alt text";
+                  if (alt && !isDirty && !captionDirty) return "Save alt text";
+                  if (isDirty) return "Save edited image";
+                  if (captionDirty) return "Save labels";
+                  return "Save all changes";
+                })()}
           </Button>
         </footer>
       </div>

@@ -13,28 +13,30 @@ export const DIGEST_THUMBNAIL_PROMPT_TEMPLATE = `Create a BioRender-inspired bio
 - If the key finding is a mechanism or immune interaction without a dual-state contrast, use a single central mechanism scene with thin dashed lines or subtle curved arrows for direction—not a crowded pathway map.
 - If the research focuses on a tissue, tumor, organ, lesion, lymph node, or disease niche, use a compact microenvironment scene with one dominant anatomical or tissue focal when possible.
 - If it describes a method, platform, assay, screen, sequencing approach, AI model, or data pipeline, use a compact input → platform → insight visual.
-- If it describes clinical or translational research, use a compact patient/sample → lab/data → insight visual, or a single strong biological focal plus a small editorial label rail if that reads clearer.
+- If it describes clinical or translational research, use a compact patient/sample → lab/data → insight visual, or a single strong biological focal.
 - If it is broad, strategic, or conceptual, use a single symbolic editorial spot illustration.
 
 TARGET LOOK: High-end journal-style BioRender figure thumbnail (2.5D—not a full multi-panel paper Figure 1). Soft volumetric shading: readable 3D hybrid with gentle gradients and subtle depth, not a flat poster or evenly weighted horizontal "banner" strips. Cells and vesicles as translucent matte spheres with soft internal gradients, packed in organic clusters ("grapes"), gentle contact shadows between forms, diffuse lighting (e.g. soft top-left)—no harsh black outlines, not hyper-glossy glass beads. When macro vs micro matters (organ/tissue vs cells, parasites, or vessel pathology), you MAY add exactly ONE magnified inset or magnifying-glass callout.
 
 BACKGROUND (pick one): For cellular, immune, islet, tumor-microenvironment, or dense tissue-mechanism stories, use a very light warm pink or neutral flesh-toned field—high key—with subtle diffuse vascular or ECM wisps for context; keep it airy and readable, not dark or noisy. For devices, assays, data pipelines, or strongly conceptual thumbnails, use pure white or clinical white (#FFFFFF feel). In all cases avoid muddy low-contrast tan-on-beige poster floods and stock "diagram wallpaper."
 
-LABELS: Maximum 2–4 short strings (2–5 words each). Use rounded pills or rounded rectangles with pastel fills keyed to the element (e.g. light red, light green, light blue), dark navy or charcoal sans-serif type; optional tiny flat icons—sparse sidebar or under-panel captions, not a dense legend.
+LEGENDS AND CAPTION SLOTS (**STRICT**): Do **not** add any legend, key, sidebar “icon strip,” vertical stack of symbols in rounded boxes, blank rounded pills, empty callout rectangles, reserved caption gutters, or non-text UI chrome whose only purpose is to hold future labels. The raster must be only the scientific illustration—headline-style text is overlaid in software later, not baked in. Do not leave empty pastel shapes “for labels.”
 
 ACCENTS: Restrained professional palette (muted greens, blues, purples, clinical reds as needed); encode roles with color consistently in multi-panel scenes.
 
 IMPORTANT: News article thumbnail—immediate comprehension and memorability over mechanistic completeness; one rich focal or two balanced panels.
 
-CANVAS: Horizontal widescreen (~16:9); full width—subject left/center, optional label margin—not portrait.
+CANVAS: Horizontal widescreen (~16:9); full width—subject left/center—not portrait.
 
 COMPOSITION: Default one strong focal; two main panels when contrast is essential. Clear hierarchy, limited clutter. Avoid step-by-step workflows unless the research demands them.
 
-TEXT: No paragraphs, dense annotations, fake text, or illegible pseudo-writing.
+TEXT GRAPHICS (**STRICT**): The image must contain **ZERO legible alphanumeric characters** anywhere—no axis numbers, captions, watermark text, pretend DNA/agRNA strings, microscopic scale numbers, gene names spelled out inside the illustration, banners, bullets with letters, signage, logos, or fake UI typography. Symbols like arrows/lines/outlines allowed only without letters. Editorial wording is stored as metadata, not rasterized text.
+
+TEXT: No paragraphs, dense annotations, fake text, or illegible pseudo-writing (see strict rule above).
 
 SCIENTIFIC ACCURACY: Core biology accurate; key actors visually distinct (cell types, compartments, signals, agents, disease states).
 
-AVOID: Photorealism, gore, crowded pathway maps, multi-step schematics, large legends, unnecessary DNA helices, generic lab benches, doctors or patients unless clinically necessary, decorative logos or watermarks, overcomplicated diagrams, dense icon grids, stock infographic clutter with many equal-weight elements.
+AVOID: Photorealism, gore, crowded pathway maps, multi-step schematics, legends, sidebar keys, icon-in-pill rows, blank label placeholders, large multi-entry figure keys, unnecessary DNA helices, generic lab benches, doctors or patients unless clinically necessary, decorative logos or watermarks, overcomplicated diagrams, dense icon grids, stock infographic clutter with many equal-weight elements.
 
 RESEARCH CONTENT:`;
 

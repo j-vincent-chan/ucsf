@@ -141,6 +141,32 @@ export function capExportDimensions(w: number, h: number): { w: number; h: numbe
   return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
 }
 
+/**
+ * Inner rectangle where {@link renderPipelineToDataUrl} draws the cropped region inside the export canvas
+ * (letterboxing when crop aspect ≠ canvas aspect). Overlay DOM must match this rect on the saved JPEG/PNG.
+ */
+export function exportCropDrawRect(
+  cropW: number,
+  cropH: number,
+  canvasW: number,
+  canvasH: number,
+): { x: number; y: number; w: number; h: number } {
+  const cropAspect = cropW / Math.max(1e-6, cropH);
+  const outAspect = canvasW / Math.max(1e-6, canvasH);
+  let dx = 0;
+  let dy = 0;
+  let dw = canvasW;
+  let dh = canvasH;
+  if (cropAspect > outAspect) {
+    dh = canvasW / cropAspect;
+    dy = (canvasH - dh) / 2;
+  } else {
+    dw = canvasH * cropAspect;
+    dx = (canvasW - dw) / 2;
+  }
+  return { x: dx, y: dy, w: dw, h: dh };
+}
+
 export function renderPipelineToDataUrl(
   img: HTMLImageElement,
   crop: { x: number; y: number; w: number; h: number },
@@ -158,19 +184,7 @@ export function renderPipelineToDataUrl(
   if (!ctx) throw new Error("Could not get canvas context");
   ctx.fillStyle = "#faf6ef";
   ctx.fillRect(0, 0, tw, th);
-  const cropAspect = crop.w / Math.max(1e-6, crop.h);
-  const outAspect = tw / Math.max(1e-6, th);
-  let dx = 0;
-  let dy = 0;
-  let dw = tw;
-  let dh = th;
-  if (cropAspect > outAspect) {
-    dh = tw / cropAspect;
-    dy = (th - dh) / 2;
-  } else {
-    dw = th * cropAspect;
-    dx = (tw - dw) / 2;
-  }
+  const { x: dx, y: dy, w: dw, h: dh } = exportCropDrawRect(crop.w, crop.h, tw, th);
   ctx.filter = buildCanvasFilter(adj, filterId);
   try {
     ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, dx, dy, dw, dh);

@@ -157,7 +157,7 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
   },
   {
     id: "c5",
-    name: "OCR Services Awareness",
+    name: "Imaging Core Services Awareness",
     goal: "Program update reach for internal + partner labs.",
     audience: "internal",
     platforms: ["x"],
@@ -172,7 +172,7 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
 export const INITIAL_ASSETS: WorkspaceAsset[] = [
   {
     id: "as1",
-    name: "UCSF ImmunoX wordmark (approved)",
+    name: "Program wordmark — approved crop",
     kind: "logo",
     usageNotes: "Clear space ≥ 0.25× height; light backgrounds only in social crops.",
     previewHint: "Logo",
@@ -218,11 +218,11 @@ export const INITIAL_ASSETS: WorkspaceAsset[] = [
   },
   {
     id: "as7",
-    name: "Program boilerplate — OCR services",
+    name: "Program boilerplate — imaging core services",
     kind: "boilerplate",
-    campaign: "OCR Services Awareness",
+    campaign: "Imaging Core Services Awareness",
     usageNotes: "Pair with service URL from program update signal.",
-    body: "OCR supports compliant imaging workflows for multicenter studies.",
+    body: "Core imaging supports compliant multicenter workflows and traceable study data.",
   },
 ];
 
@@ -246,7 +246,7 @@ export const INITIAL_ANALYTICS: AnalyticsSummary = {
     "Funding & RFAs",
     "Training / colloquia",
   ],
-  topInvestigators: ["Lab networks tied to ImmunoX", "Cross-campus OCR collaborators"],
+  topInvestigators: ["Lab networks in translational immunology", "Cross-campus imaging collaborators"],
   bestContentType: "Funding opportunity + clear deadline",
   bestPlatform: "bluesky",
   bestVisualStyle: "Single schematic + short caption",
@@ -257,8 +257,8 @@ export const INITIAL_ANALYTICS: AnalyticsSummary = {
 function basePost(p: Partial<WorkspaceSocialPost> & Pick<WorkspaceSocialPost, "id" | "platform" | "status" | "text">): WorkspaceSocialPost {
   const limit = p.platform === "x" ? X_CHAR_LIMIT : BLUESKY_CHAR_LIMIT;
   return {
-    accountHandle: p.platform === "x" ? "@ImmunoX" : "@immunox.bsky.social",
-    displayName: p.platform === "x" ? "ImmunoX" : "ImmunoX",
+    accountHandle: p.platform === "x" ? "@YourProgram" : "@yourprogram.bsky.social",
+    displayName: p.platform === "x" ? "Your program" : "Your program",
     sourceSignalType: "paper",
     sourceSignalTitle: "Research signal",
     hashtags: [],
@@ -357,8 +357,8 @@ export const INITIAL_WORKSPACE_POSTS: WorkspaceSocialPost[] = [
     platform: "bluesky",
     status: "needs_image",
     sourceSignalType: "program_update",
-    sourceSignalTitle: "OCR services workflow update",
-    text: "Program update: OCR services refined onboarding steps for imaging cores — reduces rework for multicenter trials. Details in the internal handbook + office hours Thursday.",
+    sourceSignalTitle: "Imaging core workflow update",
+    text: "Program update: refined onboarding steps for imaging cores — reduces rework for multicenter trials. Details in the internal handbook + office hours Thursday.",
     altTextStatus: "missing",
     characterLimit: BLUESKY_CHAR_LIMIT,
     reviewFlags: ["needs_program_comms_review"],
@@ -477,7 +477,7 @@ export const DEMO_SIGNAL_OPTIONS = [
   { id: "sig2", label: "News — Schistosomiasis-associated pulmonary hypertension" },
   { id: "sig3", label: "Funding — Biospecimen Pipeline RFA" },
   { id: "sig4", label: "Event — ImmunoDiverse Colloquia" },
-  { id: "sig5", label: "Program update — OCR services" },
+  { id: "sig5", label: "Program update — imaging core services" },
   { id: "sig6", label: "Award — High-impact UCSF publication" },
   { id: "sig7", label: "Funding — UCSF investigator bridge award" },
 ] as const;

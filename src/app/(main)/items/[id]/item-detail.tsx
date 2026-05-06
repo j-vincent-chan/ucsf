@@ -74,6 +74,10 @@ export function ItemDetail({
         "concise",
         "linkedin",
         "bluesky_x",
+        "x",
+        "bluesky",
+        "web_blurb",
+        "internal_digest",
       ]);
       if (!allowed.has(s.style)) {
         toast.error("Generate isn’t available for this summary format.");
@@ -88,7 +92,7 @@ export function ItemDetail({
             source_item_id: item.id,
             style: s.style,
             tone: payload.tone,
-            target_blurb_words: payload.targetBlurbWords,
+            target_blurb_chars: payload.targetBlurbChars,
             refinement_instruction: payload.refinement || undefined,
           }),
         });

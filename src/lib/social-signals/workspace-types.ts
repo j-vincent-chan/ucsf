@@ -1,4 +1,4 @@
-/** Platforms users can publish to from the workspace (LinkedIn excluded from this union). */
+/** Platforms users can publish to from Social Signals (live ingest matches these). */
 export type PublishPlatform = "x" | "bluesky";
 
 export type PostStatus =
@@ -175,7 +175,6 @@ export type RecentActivityItem = {
 };
 
 export type SocialWorkspaceSection =
-  | "dashboard"
   | "feed"
   | "composer"
   | "review"

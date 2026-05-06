@@ -300,15 +300,65 @@ function formatTweetCreateError(raw: unknown, httpStatus: number): string {
 
 const TWEET_CREATE_URLS = [`${X_API_V2_BASE}/tweets`, "https://api.twitter.com/2/tweets"] as const;
 
+export async function fetchXAuthenticatedUserId(accessToken: string): Promise<string> {
+  const res = await fetch(`${X_API_V2_BASE}/users/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(extractXProblemMessage(raw) ?? `X users/me failed (${res.status})`);
+  }
+  const id = (raw as { data?: { id?: string } }).data?.id;
+  if (!id) throw new Error("X API returned no user id");
+  return id;
+}
+
+export async function xLikeTweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
+  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/likes`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tweet_id: tweetId }),
+  });
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(formatTweetCreateError(raw, res.status));
+  }
+}
+
+export async function xRetweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
+  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tweet_id: tweetId }),
+  });
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(formatTweetCreateError(raw, res.status));
+  }
+}
+
 /** Create a tweet with OAuth 2.0 user context (not app-only Bearer). */
 export async function createTweet(
   accessToken: string,
   text: string,
-  options?: { mediaIds?: string[] },
+  options?: { mediaIds?: string[]; reply?: { in_reply_to_tweet_id: string } },
 ): Promise<XPostResult> {
-  const payload: { text: string; media?: { media_ids: string[] } } = { text };
+  const payload: {
+    text: string;
+    media?: { media_ids: string[] };
+    reply?: { in_reply_to_tweet_id: string };
+  } = { text };
   if (options?.mediaIds?.length) {
     payload.media = { media_ids: options.mediaIds };
+  }
+  if (options?.reply?.in_reply_to_tweet_id) {
+    payload.reply = { in_reply_to_tweet_id: options.reply.in_reply_to_tweet_id };
   }
 
   const body = JSON.stringify(payload);

@@ -8,6 +8,7 @@ import {
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
 import type { SummaryStyle } from "@/types/database";
+import { blurbCharRangeForStyle } from "@/lib/blurb-length-range";
 import {
   DEFAULT_DIGEST_SUMMARY_TONE,
   digestSummaryTonePromptBlock,
@@ -15,16 +16,22 @@ import {
 } from "@/lib/digest-summary-tone";
 import { z } from "zod";
 
+const GENERATE_BLURB_STYLES = [
+  "newsletter",
+  "donor",
+  "social",
+  "concise",
+  "linkedin",
+  "bluesky_x",
+  "x",
+  "bluesky",
+  "web_blurb",
+  "internal_digest",
+] as const;
+
 const bodySchema = z.object({
   source_item_id: z.string().uuid(),
-  style: z.enum([
-    "newsletter",
-    "donor",
-    "social",
-    "concise",
-    "linkedin",
-    "bluesky_x",
-  ]),
+  style: z.enum(GENERATE_BLURB_STYLES),
   model: z.string().min(1).optional(),
   tone: z
     .enum([
@@ -36,23 +43,23 @@ const bodySchema = z.object({
       "technical",
     ])
     .optional(),
-  /** Legacy discrete length (used only when target_blurb_words is omitted). */
+  /** Discrete length — used only when target_blurb_chars is omitted. */
   length_tier: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
-  /** Target word count for the blurb body — preferred over length_tier when set. */
-  target_blurb_words: z.number().int().min(15).max(400).optional(),
+  /** Target character count for the blurb body (headline separate) — preferred over length_tier when set. */
+  target_blurb_chars: z.number().int().min(100).max(2000).optional(),
   refinement_instruction: z.string().max(4000).optional(),
 });
 
 const LENGTH_TIER_GUIDANCE: Record<0 | 1 | 2, string> = {
-  0: "Editorial length target: Short — tighter than the channel default (fewer words, sharper cuts). Still respect the channel hard caps.",
-  1: "Editorial length target: Medium — follow the channel word-range guidance.",
+  0: "Editorial length target: Short — tighter than the channel default (shorter blurbs, sharper cuts). Still respect the channel rules/hard caps.",
+  1: "Editorial length target: Medium — follow the channel length guidance.",
   2: "Editorial length target: Long — richer than the channel default within channel norms (more context; stay concise).",
 };
 
-const PROMPT_VERSION = "v3.6";
+const PROMPT_VERSION = "v3.8";
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
-const GLOBAL_RULES = `You write platform-specific versions of the same research update for an oncology immunotherapy community (ImmunoX / OCR context).
+const GLOBAL_RULES = `You write platform-specific versions of the same research update for oncology and immunotherapy research audiences—internal summaries, newsletters, or professional channels where accuracy and clarity matter.
 
 Output valid JSON only, matching the schema exactly: headline, blurb, why_it_matters, confidence_notes (all strings).
 
@@ -60,7 +67,8 @@ Cross-platform rules:
 - This version is for ONE channel only. Do not reuse the same sentences or parallel "template" wording you would use on another platform; each channel must read like distinct copy, not a resized draft of the same text.
 - Keep facts aligned with the source; never invent claims. If something is uncertain, note it briefly in confidence_notes.
 - Co-authorship: do not imply other named investigators belong to one person. Avoid possessive "his team", "her team", "his lab", "her lab", or similar for mixed authorship. Prefer neutral wording ("colleagues", "co-authors", "the authors") or name people in parallel without subordinating them to someone else's "team".
-- When the user message gives a publication last author, do not attribute sole "conducted by", "led by", "headed by", or "spearheaded by" to a different person (first author in abstract, watchlist order, or "Tracked investigator") unless the source clearly identifies that other person as the same individual as the last author.
+- Attribution in headlines/blurbs (every channel/tone): **Do not roster every investigator linked on the workspace watchlist.** When crediting authors in prose: (1) If Summary/Full text clearly identifies **corresponding author(s)**, cite **those names only**, then bridge with **and colleagues**, **and coworkers**, **and co-authors**, **with their team**, **with collaborators**, or similar—pick what fits rhythm. (2) If correspondence is unstated but a **Publication last author** line appears in metadata, cite that person alone as senior/corresponding-style lead plus the same colleague phrasing—not a stacked list from the watchlist. (3) If neither is workable, orient on the findings without a dense author tally.
+- When the metadata gives a publication last author, do not assign sole **"conducted by"**, **"led by"**, **"headed by"**, or **"spearheaded by"** to a different person (abstract first authorship order, arbitrary watchlist order, or unrelated "Tracked investigator") unless the source clearly identifies that other person as the same individual named in the correspondent/last-author rule above.
 
 Field roles:
 - headline: a channel-appropriate hook (length and tone match the platform below).
@@ -74,7 +82,7 @@ const PLATFORM = {
   newsletter: `CHANNEL: Newsletter (longest version).
 - Aim ~110–170 words in blurb (headline separate). This is the richest, most editorial pass.
 - Add context, synthesis, and why it matters inside the flow—polished and useful for reporting or internal briefings.
-- Do not repeat the source title verbatim. Name people/groups and tie to ImmunoX, OCR, or the broader immunotherapy landscape where the source supports it.`,
+- Do not repeat the source title verbatim. Name people sparingly—the correspondent anchor rule in global instructions applies here—and connect the work to the broader oncology and immunotherapy landscape where the source supports it.`,
 
   linkedin: `CHANNEL: LinkedIn (medium length).
 - Aim ~70–115 words in blurb. Professional, credible, skimmable.
@@ -85,6 +93,23 @@ const PLATFORM = {
 - One idea per post. Blurb is the post: aim under 260 characters when possible (hard cap 280). Sharp, immediate, zero fluff.
 - Prefer plain language. At most one hashtag if it clearly helps; often none.
 - Headline: optional 3–8 word stake in the ground that does not duplicate the blurb verbatim. why_it_matters: one short clause (not a second post).`,
+
+  x: `CHANNEL: X (Twitter).
+- One idea per post. Blurb is the post: aim under 260 characters when possible (hard cap 280). Sharp, immediate, zero fluff.
+- Prefer plain language. At most one hashtag if it clearly helps; often none.
+- Headline: optional 3–8 word stake that does not duplicate the blurb verbatim. why_it_matters: one short clause (not a second post).`,
+
+  bluesky: `CHANNEL: Bluesky.
+- One idea per post. Blurb is the post: aim under 280 characters when possible; stay within Bluesky norms. Sharp and readable.
+- Prefer plain language. Hashtags sparingly. Headline optional and non-redundant with blurb.`,
+
+  web_blurb: `CHANNEL: Website / listing blurb (short public teaser).
+- Aim ~45–90 words in blurb. Plain language; skimmable; credible. No hashtag stuffing.
+- Headline: crisp hook suitable for a card or listing.`,
+
+  internal_digest: `CHANNEL: Internal team digest / briefing.
+- Aim ~90–140 words in blurb. Practical: what changed, why it matters for the team, no outward-marketing hype.
+- Headline: direct and specific.`,
 
   donor: `CHANNEL: Donor-facing (legacy).
 - Warm, precise, impact-oriented. Blurb under ~120 words. No sensationalism.`,
@@ -128,20 +153,18 @@ function systemPrompt(
   const lead = publicationLead?.trim() || null;
   const publicationLeadRules = lead
     ? leadOnPeopleList
-      ? `Publication lead / senior investigator (last author) — on People list; follow when this block appears:
-- The publication last author to treat as senior/lead for narrative framing is: "${lead}".
-- Open the headline and the blurb by centering this person as the lead or principal investigator (e.g. "Justin Eyquem and colleagues…" / "In work led by …"). Do not open by featuring the first author or another co-author as the primary lead unless they are the same person as this last author. If you use sole "conducted by" / "led by" with one name, it must be "${lead}"—not a different watchlist investigator. When naming co-authors, never use "his team" / "her team"—other investigators are not their subordinates; use "colleagues" or list names without possessive team framing.
-- If the string is in PubMed-style "LastName initials" form, expand to the fullest name that appears with that surname in the supplied author list, Summary, or Full text.
-- In headline and blurb, always write this person using their full given name(s) and surname (for example "Jingjing Li"). Never use surname plus bare initials alone (do not write "Li J").
-- Still mention every other linked watchlist investigator by name naturally in the copy where it fits (unless tight character limits force abbreviation).
+      ? `Publication correspondent / senior lead (matched to workspace People list via last-author metadata); follow when this block appears:
+- Treat **"${lead}"** as the named correspondent/senior attribution anchor when correspondence labels are absent—if Summary/Full text names **explicit corresponding author(s)** instead (or additionally), prioritize those for naming; tie them to colleagues phrasing (**and colleagues**, **and coworkers**, **and co-authors**, etc.).
+- Open headline and/or blurb with that anchor when you credit the lab (e.g. "${lead}" and colleagues / **In work led by** … **and collaborators**). Sole **conducted by** / **led by** constructions must honor the correspondent/metadata rule—not a random watchlist name. Avoid possessive lab framing for collaborators.
+- Expand PubMed-style "LastName initials" to fullest name from supplied author lists, Summary, or Full text. Write anchors with **full given name(s) and surname** (e.g. "Jingjing Li"); never bare "Li J"-style initials alone.
+- **Do not enumerate** other workspace-linked investigators in the prose unless the excerpts themselves materially name additional people or ultra-tight caps leave no room—even then skip watchlist rostering.
 
 `
-      : `Publication last author — not on People list; follow when this block appears:
-- The publication last author for factual context is: "${lead}". They are not on the provided People / watchlist names—do not use their name in the headline and do not make them the headline hook (no "Name leads…" / solo billing).
-- Headline: Focus on the science, impact, or the research community in general terms (ImmunoX / UCSF / OCR context is fine). You may refer vaguely to investigators in the community (e.g. work involving our watchlist researchers, community-linked investigators, the team) without centering the non-listed last author.
-- Blurb: There is no single People-list lead—treat all named investigators as peers. List everyone you name from the linked watchlist (and the publication last author "${lead}" when you credit authorship) together in one neutral run: same grammatical level, e.g. "Alexis J. Combes, Adrian Erlebacher, Tippi C. MacKenzie, and Robert Blelloch report…" or "In work by X, Y, Z, and W, …". Do not write one investigator as the main subject and the others only as "and colleagues" / "and his or her colleagues" / "along with". Never use "his team" / "her team" / "his lab" for co-authors. If only one person is named, keep a neutral clause; if no watchlist names are provided, open with the science or journal framing without a hierarchical author hook.
-- Wrong conductorship: Never open with "Conducted by [Name]…" / "Led by [Name]…" using only a watchlist-linked name when that person is not "${lead}" (the publication last author). Open study-first ("In a Nature study, …") or use one balanced author list that includes "${lead}" alongside watchlist names—never incorrect sole credit to a non-last author.
-- If the string is in PubMed-style "LastName initials" form, expand to the fullest name from the supplied author list, Summary, or Full text.
+      : `Publication last author — not flagged on People/watchlist; follow when this block appears:
+- Last-author metadata for grounding: "${lead}". **Do not** make them headline bait (no lone "Name leads…" hype). Prefer science- or outlet-first framing in the headline unless editorial discipline allows a subdued correspondent cue.
+- **Do not roster** workspace-linked investigator names together in the blurb. If excerpts state **who is corresponding**, name only those correspondent(s), then colleague phrasing (**and colleagues**, etc.). Else if attribution needs a hook, cite **"${lead}"** once as senior/contact-style anchor plus colleagues phrasing—not every linked watchlist name in a comma barrage.
+- Wrong conductorship: Never attribute sole conductorship to a tracked/watched name solely because they're linked when that clashes with excerpts or anchor rules. Prefer study-first framing when unsure.
+- Expand PubMed-style names from supplied author lists, Summary, or Full text.
 
 `
     : "";
@@ -150,7 +173,7 @@ function systemPrompt(
 
   return `${GLOBAL_RULES}
 
-${publicationLeadRules}When the source is a paper/publication and linked watchlist investigators are provided, mention all linked investigators by name naturally in the copy (unless character limits force abbreviation; if so, keep at least key names and avoid inventing any). 
+${publicationLeadRules}Linked watchlist investigators indicate **community linkage only**—not an authorship checklist. Mention them sparingly unless the excerpts name them organically or the refinement instruction requests specific names.
 
 ${toneBlock}
 
@@ -221,24 +244,24 @@ export async function POST(req: Request) {
     model: requestedModel,
     tone: requestedTone,
     length_tier: lengthTierRaw,
-    target_blurb_words: targetBlurbWordsRaw,
+    target_blurb_chars: targetBlurbCharsRaw,
     refinement_instruction: refinementRaw,
   } = parsed.data;
   const tone = requestedTone ?? DEFAULT_DIGEST_SUMMARY_TONE;
   const lengthTier = lengthTierRaw ?? 1;
-  const targetBlurbWords =
-    typeof targetBlurbWordsRaw === "number" && Number.isFinite(targetBlurbWordsRaw)
-      ? Math.round(targetBlurbWordsRaw)
+  const targetBlurbChars =
+    typeof targetBlurbCharsRaw === "number" && Number.isFinite(targetBlurbCharsRaw)
+      ? Math.round(targetBlurbCharsRaw)
       : null;
   const refinementInstruction = refinementRaw?.trim() ?? "";
 
-  /** Latest summary for this item, if any — regenerating overwrites this row and removes extras. */
-  const { data: existingRows, error: existingErr } = await supabase
+  /** One row per channel — upsert by (source_item_id, style) without deleting sibling outputs. */
+  const { data: styleRow, error: existingErr } = await supabase
     .from("summaries")
     .select("id")
     .eq("source_item_id", source_item_id)
-    .order("created_at", { ascending: false })
-    .limit(1);
+    .eq("style", style)
+    .maybeSingle();
   if (existingErr) {
     console.error("generate-blurb: existing blurb lookup", existingErr);
     return NextResponse.json(
@@ -246,7 +269,7 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
-  const existingId = existingRows?.[0]?.id ?? null;
+  const existingId = styleRow?.id ?? null;
 
   const { data: item, error: itemErr } = await supabase
     .from("source_items")
@@ -347,16 +370,16 @@ export async function POST(req: Request) {
   const userContent = [
     `Title: ${item.title}`,
     publicationLastAuthor
-      ? `Publication last author: ${publicationLastAuthor}. On People/watchlist (name match): ${leadOnPeopleList ? "yes" : "no"}. If no: do not name them in the headline (science / community framing). In the blurb, list all named linked investigators—and the last author when crediting authorship—in one neutral comma-style group, not one name plus "and colleagues" for the rest.`
+      ? `Publication last author (biblio-position anchor; treat as correspondent/senior lead when excerpts do not explicitly name differing corresponding author(s)): ${publicationLastAuthor}. On People/watchlist (name match): ${leadOnPeopleList ? "yes" : "no"}. Crediting prose: correspondent(s) from excerpts **if labeled**; otherwise this anchor alone + **and colleagues** (or analogous)—**not** a roll call of linked investigators when only metadata links exist.`
       : "",
     trackedName && publicationLastAuthor && !trackedIsPublicationLast
       ? `Important: Workspace "Tracked investigator" (${trackedName}) is not the publication last author (${publicationLastAuthor}). Do not use "${trackedName}" alone in "conducted by", "led by", or similar—those constructions would misstate authorship.`
       : "",
     entityName ? `Tracked investigator: ${entityName}` : "",
     linkedInvestigatorNames.length && publicationLastAuthor
-      ? `Linked watchlist investigators (not manuscript authorship order): ${linkedInvestigatorNames.join(", ")}. Do not pick who "conducted" or "led" the study from this list order or from the first author in the abstract unless that person is the publication last author.`
+      ? `Workspace-linked investigator names (${linkedInvestigatorNames.join("; ")}) signal community relevance only—not a roster requirement. Do **not** string them together as co-equal attributions solely because they appear here.`
       : linkedInvestigatorNames.length
-        ? `Linked watchlist investigators: ${linkedInvestigatorNames.join(", ")}`
+        ? `Workspace-linked investigators (community context—not automatic prose roster): ${linkedInvestigatorNames.join("; ")}.`
         : "",
     item.source_url ? `URL: ${item.source_url}` : "",
     item.published_at ? `Published: ${item.published_at}` : "",
@@ -367,8 +390,8 @@ export async function POST(req: Request) {
     .join("\n");
 
   const lengthGuidance =
-    targetBlurbWords != null
-      ? `Editorial length target: aim for approximately ${targetBlurbWords} words in the blurb (headline is separate). If this conflicts with the channel word-range rules in the system prompt, follow the channel rules first.`
+    targetBlurbChars != null
+      ? `Editorial length target: aim for approximately ${targetBlurbChars} characters in the blurb (headline is separate; count plain text characters). If this conflicts with the channel caps or norms in the system prompt (e.g. very short social posts), follow those channel rules first.`
       : LENGTH_TIER_GUIDANCE[lengthTier];
 
   const editorialBlock = [
@@ -423,6 +446,26 @@ export async function POST(req: Request) {
   }
 
   const generatedText = JSON.stringify(structured);
+  const storedTargetBlurbChars =
+    targetBlurbChars != null
+      ? Math.round(targetBlurbChars)
+      : blurbCharRangeForStyle(style).default;
+  const characterCount = [...`${structured.headline}\n\n${structured.blurb}`.trim()].length;
+  const generatedAtIso = new Date().toISOString();
+
+  const persistPayload = {
+    style,
+    prompt_version: PROMPT_VERSION,
+    generated_text: generatedText,
+    model_name: model,
+    edited_text: null,
+    final_text: null,
+    digest_tone: tone,
+    target_blurb_chars: storedTargetBlurbChars,
+    output_status: "draft" as const,
+    character_count: characterCount,
+    generated_at: generatedAtIso,
+  };
 
   function mapBlurbSaveError(message: string): string {
     const m = message.toLowerCase();
@@ -443,14 +486,7 @@ export async function POST(req: Request) {
   if (existingId) {
     const { data: updated, error: updateErr } = await supabase
       .from("summaries")
-      .update({
-        style,
-        prompt_version: PROMPT_VERSION,
-        generated_text: generatedText,
-        model_name: model,
-        edited_text: null,
-        final_text: null,
-      })
+      .update(persistPayload)
       .eq("id", existingId)
       .select("id, generated_text, style, created_at, model_name, prompt_version");
 
@@ -472,18 +508,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: dupes } = await supabase
-      .from("summaries")
-      .select("id")
-      .eq("source_item_id", source_item_id);
-    const toDelete = (dupes ?? []).map((r) => r.id).filter((id) => id !== existingId);
-    if (toDelete.length > 0) {
-      const { error: delErr } = await supabase.from("summaries").delete().in("id", toDelete);
-      if (delErr) {
-        console.error("generate-blurb: prune duplicate summaries", delErr);
-      }
-    }
-
     return NextResponse.json({ blurb: structured, record: blurb });
   }
 
@@ -491,11 +515,8 @@ export async function POST(req: Request) {
     .from("summaries")
     .insert({
       source_item_id,
-      style,
-      prompt_version: PROMPT_VERSION,
-      generated_text: generatedText,
-      model_name: model,
       created_by: user.id,
+      ...persistPayload,
     })
     .select("id, generated_text, style, created_at, model_name, prompt_version")
     .single();

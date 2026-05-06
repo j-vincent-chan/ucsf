@@ -126,32 +126,6 @@ export function BulkUploadEntities({ communityId }: { communityId: string }) {
   return (
     <Card>
       <CardTitle>Bulk upload (CSV)</CardTitle>
-      <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-        Required columns: <code className="text-xs">Last Name</code>,{" "}
-        <code className="text-xs">First Name</code>, and member status (header{" "}
-        <code className="text-xs">Member status</code> or{" "}
-        <code className="text-xs">Associate/Full Member</code>). Values:{" "}
-        <code className="text-xs">Member</code>, <code className="text-xs">Associate</code>, or{" "}
-        <code className="text-xs">Leadership Committee</code> (legacy{" "}
-        <code className="text-xs">Full Member</code> is treated as Member). Optional:{" "}
-        <code className="text-xs">Middle Initial</code>,{" "}
-        <code className="text-xs">slug</code> (auto from last-first if empty),{" "}
-        <code className="text-xs">institution</code> (for discovery disambiguation; synonyms separated by{" "}
-        <code className="text-xs">;</code> or <code className="text-xs">|</code>),{" "}
-        <code className="text-xs">pubmed_url</code> (or <code className="text-xs">PubMed URL</code>),{" "}
-        <code className="text-xs">lab_website</code> (or <code className="text-xs">Lab website</code>; lab RSS on Discover),{" "}
-        <code className="text-xs">google_alert_query</code> (Google News RSS on Discover),{" "}
-        <code className="text-xs">nih_profile_id</code> (NIH profile ID → Discover funding),{" "}
-        <code className="text-xs">active</code>. Priority tier is set from member status (Leadership
-        1, Member 2, Associate 3).
-        Rows upsert by <code className="text-xs">slug</code> within your community (no need to put
-        community in the CSV); display name is synced in the database.
-        <span className="mt-3 block text-[#8f644f]">
-          <strong>First-time Supabase:</strong> run{" "}
-          <code className="text-xs">supabase/apply_faculty_schema.sql</code> in the SQL Editor if
-          upload fails with a missing <code className="text-xs">first_name</code> column error.
-        </span>
-      </p>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <input
           ref={inputRef}

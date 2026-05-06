@@ -632,7 +632,7 @@ export function ResearchDashboard({
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <KpiCard label="Faculty tracked" value={data.watchlistFaculty} sub="ImmunoX roster" />
+        <KpiCard label="Faculty tracked" value={data.watchlistFaculty} sub="Community roster" />
         <KpiCard
           label="Publications"
           value={kpis.paper}

@@ -452,7 +452,7 @@ export function topEntitiesInRange(
     .slice(0, limit);
 }
 
-/** Running total of ingested items (ImmunoX signal volume) — stock-style line. */
+/** Running total of ingested items (community signal volume) — stock-style line. */
 export function cumulativeTotalSeries(
   rows: MonthlyPoint[],
 ): { month: string; shortLabel: string; cumulative: number }[] {

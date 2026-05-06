@@ -295,7 +295,7 @@ export function EntityForm({
       </p>
       <div className="flex gap-2 pt-2">
         <Button type="submit" disabled={loading}>
-          {loading ? "Saving…" : isEdit ? "Save changes" : "Create"}
+          {loading ? "Saving…" : isEdit ? "Save all changes" : "Create"}
         </Button>
       </div>
     </form>

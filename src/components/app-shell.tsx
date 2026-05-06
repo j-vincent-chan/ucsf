@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ProfileRole } from "@/types/database";
 
 const defaultBrandName = () =>
-  process.env.NEXT_PUBLIC_APP_BRAND_NAME?.trim() || "ImmunoX";
+  process.env.NEXT_PUBLIC_APP_BRAND_NAME?.trim() || "Community Signal";
 import { SignalLogo } from "@/components/signal-logo";
 import { recentYearMonths } from "@/lib/digest-month";
 import { SidebarNav } from "@/components/sidebar-nav";

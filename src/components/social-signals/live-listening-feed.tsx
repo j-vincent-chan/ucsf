@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { dedupeSocialPostsById } from "@/lib/social-signals/dedupe-posts";
 import { groupPostsForFeedDisplay } from "@/lib/social-signals/group-feed-rows";
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
@@ -278,14 +278,6 @@ function ThreadListItem({ posts, ...s }: ListenStyles & { posts: SocialPost[] })
                   </div>
                 ) : null}
                 <PostEngagementBar post={p} textSizeClass={s.metaClass} />
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`mt-2 inline-block font-medium text-[color:var(--foreground)] underline underline-offset-4 ${s.metaClass}`}
-                >
-                  Open post
-                </a>
               </div>
             </div>
           );
@@ -335,6 +327,7 @@ export function LiveListeningFeed({
   sourceMeta,
   onIngestSuccess,
   layout = "default",
+  headerActions,
 }: {
   initialTab: SocialFeedTab;
   initialPosts: SocialPost[];
@@ -344,6 +337,8 @@ export function LiveListeningFeed({
   onIngestSuccess?: (feed: AggregatedFeed) => void;
   /** `full` = taller list on the dedicated Feed page. */
   layout?: "default" | "full";
+  /** Rendered beside Refresh in the top row (e.g. Create post). */
+  headerActions?: ReactNode;
 }) {
   const [tab, setTab] = useState<SocialFeedTab>(initialTab);
   const [posts, setPosts] = useState<SocialPost[]>(() => dedupeSocialPostsById(initialPosts));
@@ -392,9 +387,17 @@ export function LiveListeningFeed({
   }, [onIngestSuccess]);
 
   function tabBtn(active: boolean) {
+    if (density) {
+      /** Segmented control aligned with other primary chrome (e.g. digest acquire pills ~h-10 / text-sm). */
+      const base =
+        "flex-1 min-w-0 min-h-10 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight transition-colors sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-[15px]";
+      return active
+        ? `${base} border-2 border-[color:var(--accent)]/55 bg-[color:var(--accent)]/16 text-[color:var(--foreground)] shadow-sm ring-1 ring-[color:var(--accent)]/20`
+        : `${base} border-2 border-[color:var(--border)]/60 bg-[color:var(--card)]/95 text-[color:var(--foreground)]/85 hover:border-[color:var(--border)] hover:bg-[color:var(--muted)]/22 hover:text-[color:var(--foreground)]`;
+    }
     return active
-      ? "rounded-lg bg-[color:var(--muted)] px-3 py-1.5 text-xs font-semibold text-[color:var(--foreground)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_80%,white)]"
-      : "rounded-lg px-3 py-1.5 text-xs font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/50 hover:text-[color:var(--foreground)]";
+      ? "rounded-lg bg-[color:var(--muted)] px-3 py-2 text-xs font-semibold text-[color:var(--foreground)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--border)_80%,white)]"
+      : "rounded-lg border border-[color:var(--border)]/65 bg-[color:var(--background)]/90 px-3 py-2 text-xs font-semibold text-[color:var(--foreground)]/78 transition-colors hover:bg-[color:var(--muted)]/40 hover:text-[color:var(--foreground)]";
   }
 
   return (
@@ -404,30 +407,31 @@ export function LiveListeningFeed({
       }`}
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-            Live listening
-          </p>
-          <p className="mt-0.5 text-xs text-[color:var(--muted-foreground)]">
-            <span className="font-medium text-[color:var(--foreground)]">Investigators</span>: your curated X list plus a Bluesky list (
-            <span className="font-mono">at://…/app.bsky.graph.list/…</span> in Settings or <span className="font-mono">BSKY_LIST_AT_URI</span>
-            ).{" "}
-            <span className="font-medium text-[color:var(--foreground)]">Mentions</span>: recent posts mentioning your program on X and Bluesky.{" "}
-            <span className="font-medium text-[color:var(--foreground)]">Others</span>: the same X list plus your Bluesky home timeline. Requires{" "}
-            <span className="font-mono">X_BEARER_TOKEN</span> and Bluesky app password.
-          </p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+          Live listening
+        </p>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {headerActions}
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void refresh(tab)}
+            className="rounded-lg border border-[color:var(--border)]/70 bg-[color:var(--background)]/95 px-3 py-2 text-xs font-semibold text-[color:var(--foreground)] disabled:opacity-50"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void refresh(tab)}
-          className="rounded-lg border border-[color:var(--border)]/70 bg-[color:var(--background)]/95 px-3 py-1.5 text-xs font-semibold text-[color:var(--foreground)] disabled:opacity-50"
-        >
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
       </div>
 
-      <div className="mt-3 flex shrink-0 flex-wrap gap-2" role="tablist" aria-label="Listening feed">
+      <div
+        className={
+          density
+            ? "mt-4 flex w-full shrink-0 gap-1.5 rounded-2xl border border-[color:var(--border)]/70 bg-[color:var(--muted)]/20 p-1.5 shadow-[inset_0_1px_0_rgba(255,252,248,0.5)]"
+            : "mt-3 flex shrink-0 flex-wrap gap-2"
+        }
+        role="tablist"
+        aria-label="Listening feed"
+      >
         <button type="button" role="tab" aria-selected={tab === "lists"} className={tabBtn(tab === "lists")} onClick={() => void refresh("lists")}>
           Investigators
         </button>
@@ -447,7 +451,7 @@ export function LiveListeningFeed({
 
       <ul
         className={`mt-4 overflow-y-auto pr-1 ${
-          density ? "min-h-0 flex-1 space-y-4" : "max-h-[28rem] space-y-3"
+          density ? "min-h-0 flex-1 space-y-4" : "max-h-[35rem] space-y-3"
         }`}
       >
         {displayRows.length === 0 ? (

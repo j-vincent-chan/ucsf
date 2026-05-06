@@ -96,7 +96,7 @@ async function ensureProfileForSignedInUser(
     .maybeSingle();
   if (exErr || existing) return;
 
-  // Prefer ImmunoX default slug, then first available community.
+  // Prefer seeded default community (slug immunox), then first available.
   let communityId: string | null = null;
   const { data: immunox } = await admin
     .from("communities")

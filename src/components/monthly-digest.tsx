@@ -13,9 +13,8 @@ import {
   type ReactNode,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { ItemCategory, SourceType, Summary } from "@/types/database";
+import type { ItemCategory, Json, SourceType, Summary, SummaryStyle } from "@/types/database";
 import {
-  DigestPublishSettingsInline,
   SummaryEditor,
   type DigestPublishAttachmentMode,
 } from "@/components/summary-editor";
@@ -28,19 +27,43 @@ import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 import { formatYearMonthLabel } from "@/lib/digest-month";
 import {
   DEFAULT_DIGEST_SUMMARY_TONE,
+  DIGEST_SUMMARY_TONE_OPTIONS,
   type DigestSummaryTone,
 } from "@/lib/digest-summary-tone";
-import { blurbWordRangeForStyle } from "@/lib/blurb-length-range";
 import {
+  DigestStudioOutputTabs,
+  DigestStudioTabLeadingIcon,
+  type DigestStudioOutputTab,
+} from "@/components/digest-studio-output-tabs";
+import { DigestIllustrationOverlays } from "@/components/digest-illustration-overlays";
+import {
+  DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS,
+  DIGEST_CONTENT_STUDIO_STYLES,
+  digestSummaryHasGeneratedText,
+  isDigestSocialOutputStyle,
+  pickDefaultDigestOutputId,
+  sortSummariesForDigestOutputs,
+} from "@/lib/digest-output-styles";
+import {
+  isDigestStudioPlaceholderSummary,
+  makeDigestStudioPlaceholderSummary,
+} from "@/lib/digest-studio-placeholder-summary";
+import { blurbCharRangeForStyle } from "@/lib/blurb-length-range";
+import {
+  type DigestCoverStore,
   type DigestVisualBundle,
   activeVisualImageDataUrl,
+  digestCoverStoreHasHeroSelection,
   getActiveCandidate,
-  hasActiveVisual,
-  parseDigestVisualBundleFromDb,
+  getBundleForChannel,
+  parseDigestCoverStoreFromDb,
+  type DigestVisualChannelStyle,
 } from "@/lib/digest-visual-types";
 import { mergeWhyIntoBlurb, parseBlurbJson, stringifyBlurbContent } from "@/lib/blurb-content";
 import { BLUESKY_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
-import { DigestVisualPanel } from "@/components/digest-visual-panel";
+import { DigestVisualPanel, DIGEST_MEDIA_LIBRARY_SUBTITLE } from "@/components/digest-visual-panel";
+import { digestHeroIllustrationOverlayLayout } from "@/lib/digest-illustration-overlay-layout";
+import { isDigestVisualTransientFailure } from "@/lib/db-timeout-message";
 import scimagoSjrLookupJson from "@/data/scimago-sjr-lookup.json";
 import type { ScimagoSjrLookup } from "@/lib/scimago-sjr-lookup";
 import {
@@ -48,6 +71,7 @@ import {
   type ReferencePublicationsSortMode,
   sortOutputPreviewReferenceRows,
 } from "@/lib/digest-reference-sort";
+import type { LinkPreviewMeta } from "@/lib/fetch-link-preview-meta";
 const SCIMAGO_SJR_LOOKUP = scimagoSjrLookupJson as ScimagoSjrLookup;
 
 function CollapseChevron({ open }: { open: boolean }) {
@@ -88,6 +112,147 @@ function ReferencesCopyIcon({ className = "" }: { className?: string }) {
     >
       <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function SendIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M22 2 11 13" />
+      <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
+    </svg>
+  );
+}
+
+function ScheduleIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M8 2v3" />
+      <path d="M16 2v3" />
+      <path d="M3 7h18" />
+      <path d="M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+      <path d="M12 11v5" />
+      <path d="M9 13h3" />
+    </svg>
+  );
+}
+
+function ChevronDownMiniIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 ${className}`}
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function ToggleCheckMiniIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 ${className}`}
+      aria-hidden
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function PublishBarMoreIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={`shrink-0 ${className}`}
+      aria-hidden
+    >
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
+  );
+}
+
+function DigestPublishBarXLogo({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={`block shrink-0 ${className}`}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+function DigestPublishBarBlueskyLogo({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`block shrink-0 ${className}`} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M5.202 2.857C7.954 4.922 10.913 9.11 12 11.358c1.087-2.247 4.046-6.436 6.798-8.501C20.783 1.366 24 .213 24 3.883c0 .732-.42 6.156-.667 7.037-.856 3.061-3.978 3.842-6.755 3.37 4.854.826 6.089 3.562 3.422 6.299-5.065 5.196-7.28-1.304-7.847-2.97-.104-.305-.152-.448-.153-.327 0-.121-.05.022-.153.327-.568 1.666-2.782 8.166-7.847 2.97-2.667-2.737-1.432-5.473 3.422-6.3-2.777.473-5.899-.308-6.755-3.369C.42 10.04 0 4.615 0 3.883c0-3.67 3.217-2.517 5.202-1.026" />
     </svg>
   );
 }
@@ -212,21 +377,181 @@ function digestCardOutputPreview(summary: Summary | null): { headline: string; b
   return { headline, body };
 }
 
-/** Full headline + body for clipboard (preview uses clamped strings). */
-function digestSummaryClipboardText(summary: Summary | null): string {
-  if (!summary) return "";
-  const raw = (summary.edited_text ?? summary.generated_text ?? "").trim();
-  if (!raw) return "";
-  const parsed = parseBlurbJson(raw);
-  if (!parsed) return raw;
-  const merged = mergeWhyIntoBlurb(parsed);
-  const headline = merged.headline?.trim() ?? "";
-  const blurb = merged.blurb?.trim() ?? "";
-  return `${headline}\n\n${blurb}`.trim();
+/** Collapsed digest card — empty summary column (matches visuals placeholder layout). */
+function DigestOutputPreviewEmptySummary() {
+  return (
+    <div className="flex min-h-[10rem] flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+      <svg
+        className="mb-3 h-11 w-11 shrink-0 text-[#7c6f64]"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" x2="8" y1="13" y2="13" />
+        <line x1="16" x2="8" y1="17" y2="17" />
+        <line x1="10" x2="8" y1="9" y2="9" />
+      </svg>
+      <p className="text-[15px] font-semibold text-[#3c3836]">No summary generated yet</p>
+      <p className="mt-1.5 max-w-[15rem] text-sm leading-relaxed text-[#7c6f64]">
+        Expand the card to draft copy.
+      </p>
+    </div>
+  );
+}
+
+function DigestOutputPreviewEmptyVisuals({ variant }: { variant: "none" | "pending_load" }) {
+  return (
+    <div className="flex min-h-[10rem] flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+      <svg
+        className="mb-3 h-11 w-11 shrink-0 text-[#7c6f64]"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="M21 15l-5-5L5 21" />
+      </svg>
+      <p className="text-[15px] font-semibold text-[#3c3836]">
+        {variant === "pending_load" ? "Visual selected" : "No visuals selected yet"}
+      </p>
+      <p className="mt-1.5 max-w-[15rem] text-sm leading-relaxed text-[#7c6f64]">
+        {variant === "pending_load"
+          ? "Expand the card to load the selected visual."
+          : "Generate or add visuals after expanding."}
+      </p>
+    </div>
+  );
+}
+
+function DigestOutputLinkPreviewCard({
+  meta,
+  status,
+  sourceUrl,
+}: {
+  meta: LinkPreviewMeta | null;
+  status: "idle" | "loading" | "ready" | "error";
+  sourceUrl: string;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+  }, [meta?.imageUrl]);
+
+  const domain = useMemo(() => {
+    try {
+      return new URL(sourceUrl).hostname.replace(/^www\./, "");
+    } catch {
+      return meta?.siteLabel?.trim() || "Link";
+    }
+  }, [sourceUrl, meta?.siteLabel]);
+
+  const proxied =
+    meta?.imageUrl && !imgFailed
+      ? `/api/digest-visuals/proxy?url=${encodeURIComponent(meta.imageUrl)}`
+      : null;
+
+  if (status === "loading" || status === "idle") {
+    return (
+      <div
+        className="min-h-[11rem] w-full rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]/90 px-4 py-5"
+        aria-busy={status === "loading"}
+        aria-label="Loading article link preview"
+      >
+        <div className="h-3 w-2/5 animate-pulse rounded bg-[color:var(--muted)]/45" />
+        <div className="mt-3 h-28 w-full animate-pulse rounded-lg bg-[color:var(--muted)]/35" />
+        <div className="mt-3 space-y-2">
+          <div className="h-3 w-[92%] animate-pulse rounded bg-[color:var(--muted)]/40" />
+          <div className="h-3 w-[70%] animate-pulse rounded bg-[color:var(--muted)]/35" />
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]/90 px-4 py-5 text-center">
+        <p className="text-xs font-semibold text-[color:var(--foreground)]">Link preview</p>
+        <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+          Couldn&apos;t load page metadata from this URL. Platforms may still show a card after you publish.
+        </p>
+        <a
+          href={sourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-block text-xs font-medium text-[color:var(--accent)] underline-offset-2 hover:underline"
+        >
+          Open source article
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={sourceUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)] shadow-sm ring-1 ring-[color:var(--border)]/20"
+      aria-label={`Open link preview: ${meta?.title ?? domain}`}
+    >
+      <div className="relative aspect-[16/9] w-full bg-[color:var(--muted)]/20">
+        {proxied ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={proxied}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover object-center"
+              onError={() => setImgFailed(true)}
+            />
+            {/* Gradient scrim like X cards */}
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 via-black/25 to-transparent" aria-hidden />
+          </>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-[color:var(--muted)]/25 via-[color:var(--border)]/35 to-[color:var(--muted)]/15" />
+        )}
+
+        {/* Domain badge (bottom-right) */}
+        <div className="absolute bottom-2 right-2 rounded-md bg-black/55 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/90 backdrop-blur-sm">
+          {domain}
+        </div>
+
+        {/* Title overlay (bottom-left) */}
+        <div className="absolute bottom-2 left-2 right-14">
+          <p className="line-clamp-2 text-sm font-semibold leading-snug text-white [text-shadow:0_1px_10px_rgba(0,0,0,0.55)]">
+            {meta?.title ?? "Untitled"}
+          </p>
+        </div>
+      </div>
+
+      {/* Secondary line (optional) */}
+      {meta?.description?.trim() ? (
+        <div className="border-t border-[color:var(--border)]/45 px-3 py-2.5">
+          <p className="line-clamp-2 text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+            {meta.description}
+          </p>
+        </div>
+      ) : null}
+    </a>
+  );
 }
 
 function digestItemHasVisual(item: DigestItemPayload): boolean {
-  return item.digestCoverHasAsset || hasActiveVisual(item.digest_cover);
+  if (!item.digestCoverHasAsset) return false;
+  // List queries often omit bundle JSON via `digest_cover_has_asset`; treat as visuals present until hydrated.
+  if (item.digest_cover == null) return true;
+  return digestCoverStoreHasHeroSelection(parseDigestCoverStoreFromDb(item.digest_cover));
 }
 
 function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): DigestWorkflowStatus {
@@ -238,48 +563,6 @@ function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): Di
   if (!hasVisual && hasDraft) return "missing_visual";
   if (hasVisual && !hasDraft) return "missing_brief";
   return "needs_review";
-}
-
-function digestQueueChecklist(item: DigestItemPayload, summaries: Summary[]): ReactNode {
-  const hasVisual = digestItemHasVisual(item);
-  const hasDraft = summaries.length > 0;
-  const briefSaved = summaries.some((s) => Boolean(s.edited_text?.trim()));
-  const summaryLabel = !hasDraft ? "Missing" : briefSaved ? "Ready" : "Draft";
-  const visualLabel = hasVisual ? "Selected" : "Missing";
-  const reviewLabel = !hasDraft ? "—" : briefSaved ? "Reviewed" : "Needs review";
-  const digestLabel = hasVisual && briefSaved && hasDraft ? "Ready" : "Not ready";
-
-  const pill = (label: string, value: string, tone: "neutral" | "ok" | "warn" | "action") => {
-    const toneClass =
-      tone === "ok"
-        ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
-        : tone === "warn"
-          ? "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
-          : tone === "action"
-            ? "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-200"
-            : "border-[color:var(--border)]/60 bg-[color:var(--background)]/80 text-[color:var(--muted-foreground)]";
-    return (
-      <span
-        key={label}
-        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${toneClass}`}
-      >
-        <span className="text-[color:var(--muted-foreground)]/90">{label}:</span>
-        {value}
-      </span>
-    );
-  };
-
-  return (
-    <div
-      className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[color:var(--border)]/35 pb-3"
-      aria-label="Digest workflow status"
-    >
-      {pill("Summary", summaryLabel, !hasDraft ? "warn" : briefSaved ? "ok" : "neutral")}
-      {pill("Visual", visualLabel, hasVisual ? "ok" : "warn")}
-      {pill("Review", reviewLabel, reviewLabel === "Needs review" ? "action" : "neutral")}
-      {pill("Digest", digestLabel, digestLabel === "Ready" ? "ok" : "neutral")}
-    </div>
-  );
 }
 
 function digestStatusPill(status: DigestWorkflowStatus): ReactNode {
@@ -503,10 +786,12 @@ export type DigestItemPayload = {
   /** PubMed paper: full author list from eSummary (digest page); link roster overlap in UI. */
   paper_author_names: string[] | null;
   pi_name: string | null;
-  /** Image snapshot bundle: source, schematic, and stock candidates; legacy rows are upgraded on read. */
-  digest_cover: DigestVisualBundle | null;
+  /** Raw `digest_cover` jsonb when hydrated (list rows omit); may be v2 bundle or v3 multi-channel store. */
+  digest_cover: Json | null;
   /** True when `digest_cover` JSON exists in DB (list page omits the JSON to avoid timeouts / huge RSC payloads). */
   digestCoverHasAsset: boolean;
+  /** When true, hero is article link preview (matches digest_cover.linkPreviewOnly; no blob on list queries). */
+  digest_link_preview_only: boolean;
   summaries: Summary[];
 };
 
@@ -581,8 +866,14 @@ function DigestItemRow({
 }) {
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
-  const [genStyle, setGenStyle] = useState<string>("newsletter");
-  const [summaryTone, setSummaryTone] = useState<DigestSummaryTone>(DEFAULT_DIGEST_SUMMARY_TONE);
+  const [selectedOutputId, setSelectedOutputId] = useState<string | null>(() =>
+    pickDefaultDigestOutputId(
+      item.summaries.filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style)),
+    ),
+  );
+  /** Output channel chosen in Content studio that has no summary row yet (draft it next). */
+  const [pendingChannelStyle, setPendingChannelStyle] = useState<SummaryStyle | null>(null);
+  const [firstDraftStyle, setFirstDraftStyle] = useState<SummaryStyle>("newsletter");
   const [generating, setGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [illustrating, setIllustrating] = useState(false);
@@ -591,31 +882,253 @@ function DigestItemRow({
   const actionsToolbarRef = useRef<HTMLDivElement | null>(null);
   const actionsMenuDropdownRef = useRef<HTMLDivElement | null>(null);
   /** Full `digest_cover` loaded on demand (month list omits JSON from the server). */
-  const [fetchedCover, setFetchedCover] = useState<DigestVisualBundle | null>(null);
+  const [fetchedDigestCoverStore, setFetchedDigestCoverStore] = useState<DigestCoverStore | null>(null);
   const [coverLoading, setCoverLoading] = useState(false);
   const [postToX, setPostToX] = useState(true);
   const [postToBluesky, setPostToBluesky] = useState(true);
   const [publishAttachmentMode, setPublishAttachmentMode] = useState<DigestPublishAttachmentMode>("digest_visual");
   const [digestStripPosting, setDigestStripPosting] = useState(false);
   const [digestStripSaving, setDigestStripSaving] = useState(false);
-  const activeSummary = summaries[0] ?? null;
+  const [publishStripPostMenuOpen, setPublishStripPostMenuOpen] = useState(false);
+  const [publishStripScheduleMenuOpen, setPublishStripScheduleMenuOpen] = useState(false);
+  const [publishStripMoreMenuOpen, setPublishStripMoreMenuOpen] = useState(false);
+  const publishStripPostDropdownRef = useRef<HTMLDivElement | null>(null);
+  const publishStripScheduleDropdownRef = useRef<HTMLDivElement | null>(null);
+  const publishStripMoreDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [resetDigestBusy, setResetDigestBusy] = useState(false);
+  /** Checklist “Save all changes” calls the active `SummaryEditor` save (single source of truth for form state). */
+  const digestBriefSaveOutletRef = useRef<(() => Promise<void>) | null>(null);
+  /** After auto-collapse on save, scroll this card back into view so the list position isn’t disorienting. */
+  const digestCardScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setSummaries(item.summaries);
+  }, [item.id, item.summaries]);
+
+  useEffect(() => {
+    if (pendingChannelStyle) return;
+    setSelectedOutputId((prev) => {
+      if (prev && summaries.some((s) => s.id === prev)) return prev;
+      return pickDefaultDigestOutputId(
+        summaries.filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style)),
+      );
+    });
+  }, [summaries, pendingChannelStyle]);
+
+  const digestContentStudioSummaries = useMemo(
+    () => summaries.filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style)),
+    [summaries],
+  );
+
+  const studioOutputTabs = useMemo((): DigestStudioOutputTab[] => {
+    return DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS.map((opt) => {
+      const row = digestContentStudioSummaries.find((s) => s.style === opt.style);
+      return {
+        style: opt.style,
+        label: opt.label,
+        selectable: row ? digestSummaryHasGeneratedText(row) : false,
+        leading: <DigestStudioTabLeadingIcon style={opt.style} />,
+      };
+    });
+  }, [digestContentStudioSummaries]);
+
+  /** Collapsed “Output preview” strip — short labels; same selectability rules as Content studio. */
+  const outputPreviewTabs = useMemo((): DigestStudioOutputTab[] => {
+    return DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS.map((opt) => {
+      const row = digestContentStudioSummaries.find((s) => s.style === opt.style);
+      const shortLabel =
+        opt.style === "bluesky_x" ? "Social" : opt.style === "newsletter" ? "Newsletter" : "LinkedIn";
+      return {
+        style: opt.style,
+        label: shortLabel,
+        selectable: row ? digestSummaryHasGeneratedText(row) : false,
+        leading: <DigestStudioTabLeadingIcon style={opt.style} />,
+      };
+    });
+  }, [digestContentStudioSummaries]);
+
+  const [outputPreviewStyle, setOutputPreviewStyle] = useState<SummaryStyle>(() => {
+    const studio = sortSummariesForDigestOutputs(
+      item.summaries.filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style)),
+    );
+    const first = studio.find((s) => digestSummaryHasGeneratedText(s)) ?? studio[0];
+    return first?.style ?? "bluesky_x";
+  });
+
+  /** Natural pixel size of the Output preview hero image — positions schematic label overlays. */
+  const [outputPreviewHeroNaturalDims, setOutputPreviewHeroNaturalDims] = useState<{ w: number; h: number } | null>(
+    null,
+  );
+
+  const activeSummary = useMemo(() => {
+    if (!selectedOutputId) return null;
+    return summaries.find((s) => s.id === selectedOutputId) ?? null;
+  }, [summaries, selectedOutputId]);
+
+  const contentStudioEditorSummary = useMemo((): Summary => {
+    const byId = selectedOutputId ? summaries.find((s) => s.id === selectedOutputId) : undefined;
+    if (byId) return byId;
+
+    if (pendingChannelStyle) {
+      return makeDigestStudioPlaceholderSummary(item.id, pendingChannelStyle);
+    }
+
+    if (digestContentStudioSummaries.length === 0) {
+      return makeDigestStudioPlaceholderSummary(item.id, firstDraftStyle);
+    }
+
+    const defaultId = pickDefaultDigestOutputId(digestContentStudioSummaries);
+    const fallback =
+      (defaultId ? digestContentStudioSummaries.find((s) => s.id === defaultId) : null) ??
+      digestContentStudioSummaries[0];
+    return fallback!;
+  }, [
+    selectedOutputId,
+    summaries,
+    pendingChannelStyle,
+    digestContentStudioSummaries,
+    firstDraftStyle,
+    item.id,
+  ]);
+
+  useEffect(() => {
+    if (!pendingChannelStyle) return;
+    const row = summaries.find((s) => s.style === pendingChannelStyle);
+    if (row) {
+      setSelectedOutputId(row.id);
+      setPendingChannelStyle(null);
+    }
+  }, [summaries, pendingChannelStyle]);
+
+  const handleSelectChannelStyle = useCallback(
+    (style: SummaryStyle) => {
+      const row = summaries.find((s) => s.style === style);
+      if (row) {
+        setSelectedOutputId(row.id);
+        setPendingChannelStyle(null);
+      } else if (digestContentStudioSummaries.length === 0) {
+        setSelectedOutputId(null);
+        setPendingChannelStyle(null);
+        setFirstDraftStyle(style);
+      } else {
+        setSelectedOutputId(null);
+        setPendingChannelStyle(style);
+      }
+    },
+    [summaries, digestContentStudioSummaries.length],
+  );
+
+  const handleSelectDigestOutputTab = useCallback(
+    (style: SummaryStyle) => {
+      const row = digestContentStudioSummaries.find((s) => s.style === style);
+      if (!row || !digestSummaryHasGeneratedText(row)) return;
+      setSelectedOutputId(row.id);
+      setPendingChannelStyle(null);
+    },
+    [digestContentStudioSummaries],
+  );
+
   const workflowStatus = digestWorkflowStatus(item, summaries);
 
-  const refreshSummaries = useCallback(async () => {
+  useEffect(() => {
+    const st = activeSummary?.style;
+    if (st && DIGEST_CONTENT_STUDIO_STYLES.includes(st)) {
+      setOutputPreviewStyle(st);
+    }
+  }, [selectedOutputId, activeSummary?.style]);
+
+  const previewSummary = useMemo(() => {
+    return digestContentStudioSummaries.find((s) => s.style === outputPreviewStyle) ?? null;
+  }, [digestContentStudioSummaries, outputPreviewStyle]);
+
+  /** Post / schedule / platform toggles only apply when Output preview is Social — not copy/download in “…”. */
+  const socialPublishInteractive = outputPreviewStyle === "bluesky_x";
+  const publishStripDisabledTitle = "Switch Output preview to Social to publish";
+  const publishStripBusy =
+    digestStripPosting || generating || archiving || illustrating;
+  const socialPublishControlsDisabled = publishStripBusy || !socialPublishInteractive;
+  /** More menu (copy text, download visual) is available for every output tab once the strip is shown. */
+  const publishMoreMenuDisabled = publishStripBusy;
+
+  useEffect(() => {
+    if (!socialPublishInteractive) {
+      setPublishStripPostMenuOpen(false);
+      setPublishStripScheduleMenuOpen(false);
+    }
+  }, [socialPublishInteractive]);
+
+  const refreshSummaries = useCallback(async (): Promise<Summary[] | null> => {
     const supabase = createClient();
     const { data, error } = await supabase
       .from("summaries")
       .select("*")
       .eq("source_item_id", item.id)
-      .order("created_at", { ascending: false });
-    if (!error && data) setSummaries(data as Summary[]);
+      .order("updated_at", { ascending: false });
+    if (!error && data) {
+      const rows = data as Summary[];
+      setSummaries(rows);
+      return rows;
+    }
+    return null;
   }, [item.id]);
+
+  /** Month list omits `digest_cover` JSON — load from Supabase for Output preview + Media column. */
+  const refetchDigestCover = useCallback(async () => {
+    setCoverLoading(true);
+    try {
+      const supabase = createClient();
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const { data, error } = await supabase
+          .from("source_items")
+          .select("digest_cover")
+          .eq("id", item.id)
+          .maybeSingle();
+        if (!error && data?.digest_cover != null) {
+          setFetchedDigestCoverStore(parseDigestCoverStoreFromDb(data.digest_cover));
+          return;
+        }
+        if (!error && (data == null || data.digest_cover == null)) {
+          setFetchedDigestCoverStore(null);
+          return;
+        }
+        const msg = error?.message ?? "";
+        if (attempt < maxAttempts && isDigestVisualTransientFailure(msg, 0)) {
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+          continue;
+        }
+        setFetchedDigestCoverStore(null);
+        return;
+      }
+    } finally {
+      setCoverLoading(false);
+    }
+  }, [item.id]);
+
+  /** Rapid hero/media clicks fire many completions — debounce full route refresh to reduce DB load. */
+  const digestVisualRouterRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleDigestVisualRouterRefresh = useCallback(() => {
+    if (digestVisualRouterRefreshTimerRef.current) {
+      clearTimeout(digestVisualRouterRefreshTimerRef.current);
+    }
+    digestVisualRouterRefreshTimerRef.current = setTimeout(() => {
+      digestVisualRouterRefreshTimerRef.current = null;
+      router.refresh();
+    }, 750);
+  }, [router]);
+
+  useEffect(() => {
+    return () => {
+      if (digestVisualRouterRefreshTimerRef.current) {
+        clearTimeout(digestVisualRouterRefreshTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     setPostToX(true);
     setPostToBluesky(true);
     setPublishAttachmentMode("digest_visual");
-  }, [activeSummary?.id]);
+  }, [activeSummary?.id, contentStudioEditorSummary.style]);
 
   useEffect(() => {
     if (!item.source_url?.trim()) setPublishAttachmentMode("digest_visual");
@@ -623,7 +1136,8 @@ function DigestItemRow({
 
   const digestStripPost = useCallback(async () => {
     const s = activeSummary;
-    if (!s || s.style !== "bluesky_x") return;
+    if (!s || !isDigestSocialOutputStyle(s.style)) return;
+    if (outputPreviewStyle !== "bluesky_x") return;
     const text = digestSummaryShareText(s);
     if (!text.trim()) {
       toast.error("Nothing to post yet");
@@ -685,63 +1199,95 @@ function DigestItemRow({
     } finally {
       setDigestStripPosting(false);
     }
-  }, [activeSummary, postToX, postToBluesky, publishAttachmentMode]);
+  }, [activeSummary, outputPreviewStyle, postToX, postToBluesky, publishAttachmentMode]);
 
-  const digestStripSave = useCallback(async () => {
-    const s = activeSummary;
-    if (!s) return;
-    setDigestStripSaving(true);
-    try {
-      const raw = s.edited_text ?? s.generated_text;
-      const parsed = parseBlurbJson(raw);
-      const body = mergeWhyIntoBlurb(
-        parsed ?? { headline: "", blurb: raw, why_it_matters: "", confidence_notes: "" },
-      );
-      const edited = stringifyBlurbContent(body);
-      const supabase = createClient();
-      const { error } = await supabase.from("summaries").update({ edited_text: edited }).eq("id", s.id);
-      if (error) throw new Error(error.message);
-      toast.success("Summary updated");
-      await refreshSummaries();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setDigestStripSaving(false);
+  const collapseExpandedCardIfNeeded = useCallback(() => {
+    if (!expanded) return;
+    onToggleExpanded();
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        digestCardScrollRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "nearest",
+        });
+      });
+    });
+  }, [expanded, onToggleExpanded]);
+
+  const resetDigestOutput = useCallback(async () => {
+    const row = contentStudioEditorSummary;
+    if (isDigestStudioPlaceholderSummary(row)) {
+      toast.message("Nothing to reset.");
+      return;
     }
-  }, [activeSummary, refreshSummaries]);
+    const label =
+      DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS.find((o) => o.style === row.style)?.label ?? row.style;
+    if (!confirm(`Remove the ${label} output for this signal? This cannot be undone.`)) {
+      return;
+    }
+    setResetDigestBusy(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("summaries").delete().eq("id", row.id);
+      if (error) throw new Error(error.message);
+      toast.success("Output removed");
+      await refreshSummaries();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not remove output");
+    } finally {
+      setResetDigestBusy(false);
+    }
+  }, [contentStudioEditorSummary, refreshSummaries, router]);
 
   const digestStripCopy = useCallback(async () => {
-    const s = activeSummary;
-    if (!s) return;
+    const s = previewSummary;
+    if (!s) {
+      toast.error("Nothing to copy yet.");
+      return;
+    }
+    const text = digestSummaryShareText(s);
+    if (!text.trim()) {
+      toast.error("Nothing to copy yet.");
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(digestSummaryShareText(s));
+      await navigator.clipboard.writeText(text);
       toast.success("Copied");
     } catch {
       toast.error("Copy failed");
     }
-  }, [activeSummary]);
+  }, [previewSummary]);
 
   async function generateSummary(opts?: {
-    targetBlurbWords?: number;
+    style?: SummaryStyle;
+    targetBlurbChars?: number;
     refinement?: string;
     tone?: DigestSummaryTone;
   }) {
     setGenerating(true);
     const hadExisting = summaries.length > 0;
-    const range = blurbWordRangeForStyle(genStyle);
-    const targetBlurbWords = opts?.targetBlurbWords ?? range.default;
+    const targetStyle = opts?.style ?? contentStudioEditorSummary.style;
+    const range = blurbCharRangeForStyle(targetStyle);
+    const targetBlurbChars = opts?.targetBlurbChars ?? range.default;
     const refinement = opts?.refinement?.trim() ?? "";
-    const tone = opts?.tone ?? summaryTone;
+    const tone =
+      opts?.tone ??
+      (contentStudioEditorSummary.digest_tone &&
+      DIGEST_SUMMARY_TONE_OPTIONS.some((o) => o.id === contentStudioEditorSummary.digest_tone)
+        ? (contentStudioEditorSummary.digest_tone as DigestSummaryTone)
+        : DEFAULT_DIGEST_SUMMARY_TONE);
     try {
       const res = await fetch("/api/generate-blurb", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source_item_id: item.id,
-          style: genStyle,
+          style: targetStyle,
           tone,
           model: model || undefined,
-          target_blurb_words: targetBlurbWords,
+          target_blurb_chars: targetBlurbChars,
           refinement_instruction: refinement || undefined,
         }),
       });
@@ -750,7 +1296,9 @@ function DigestItemRow({
         throw new Error(data.error ?? "Request failed");
       }
       toast.success(hadExisting ? "Summary generated" : "Summary drafted");
-      await refreshSummaries();
+      const list = await refreshSummaries();
+      const row = list?.find((s) => s.style === targetStyle);
+      if (row) setSelectedOutputId(row.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Generation failed");
     } finally {
@@ -790,25 +1338,11 @@ function DigestItemRow({
       (inv) => inv.name.trim().toLowerCase() === (item.pi_name ?? "").trim().toLowerCase(),
     );
 
-  async function copyBriefPreview() {
-    const text = digestSummaryClipboardText(activeSummary);
-    if (!text) {
-      toast.error("No summary to copy yet.");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Summary copied");
-    } catch {
-      toast.error("Copy failed");
-    }
-  }
-
   async function copySignalLink() {
     try {
       const link = item.source_url ?? `${window.location.origin}/items/${item.id}`;
       await navigator.clipboard.writeText(link);
-      toast.success("Link copied");
+      toast.success("Source link copied");
     } catch {
       toast.error("Copy failed");
     }
@@ -834,45 +1368,49 @@ function DigestItemRow({
   }, [actionsMenuOpen]);
 
   useEffect(() => {
-    setFetchedCover(null);
+    setFetchedDigestCoverStore(null);
   }, [item.id]);
 
   useEffect(() => {
     if (!item.digestCoverHasAsset) {
-      setFetchedCover(null);
+      setFetchedDigestCoverStore(null);
+      setCoverLoading(false);
       return;
     }
-    if (!expanded) return;
-    let cancelled = false;
-    setCoverLoading(true);
-    void (async () => {
-      try {
-        const supabase = createClient();
-        const { data, error } = await supabase
-          .from("source_items")
-          .select("digest_cover")
-          .eq("id", item.id)
-          .maybeSingle();
-        if (cancelled) return;
-        if (error || data?.digest_cover == null) {
-          setFetchedCover(null);
-          return;
-        }
-        setFetchedCover(parseDigestVisualBundleFromDb(data.digest_cover));
-      } finally {
-        if (!cancelled) setCoverLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded, item.digestCoverHasAsset, item.id]);
+    void refetchDigestCover();
+  }, [item.digestCoverHasAsset, item.id, refetchDigestCover]);
 
-  const visualBundle = fetchedCover ?? item.digest_cover;
-  const outputCard = useMemo(
-    () => digestCardOutputPreview(activeSummary),
-    [activeSummary],
+  const digestCoverStore = useMemo((): DigestCoverStore => {
+    if (fetchedDigestCoverStore != null) return fetchedDigestCoverStore;
+    return parseDigestCoverStoreFromDb(item.digest_cover);
+  }, [fetchedDigestCoverStore, item.digest_cover]);
+
+  const visualBundle = useMemo((): DigestVisualBundle | null => {
+    return getBundleForChannel(digestCoverStore, outputPreviewStyle as DigestVisualChannelStyle);
+  }, [digestCoverStore, outputPreviewStyle]);
+
+  const outputPreviewActiveCandidate = useMemo(() => getActiveCandidate(visualBundle), [visualBundle]);
+
+  const outputPreviewOverlayLayout = useMemo(
+    () =>
+      digestHeroIllustrationOverlayLayout(
+        outputPreviewHeroNaturalDims?.w ?? 0,
+        outputPreviewHeroNaturalDims?.h ?? 0,
+        outputPreviewActiveCandidate,
+        outputPreviewActiveCandidate?.illustrationTextLayers ?? [],
+      ),
+    [outputPreviewActiveCandidate, outputPreviewHeroNaturalDims],
   );
+
+  const outputCard = useMemo(() => digestCardOutputPreview(previewSummary), [previewSummary]);
+  const showOutputPreviewSummaryEmpty = useMemo(() => {
+    if (outputCard.body.trim()) return false;
+    return (
+      !previewSummary ||
+      !(String(previewSummary.edited_text ?? previewSummary.generated_text ?? "").trim())
+    );
+  }, [outputCard, previewSummary]);
+
   /** Collapsed card: single hero image — the selected digest visual only (not the whole library grid). */
   const selectedPreviewImageUrl = useMemo(() => {
     const b = visualBundle;
@@ -881,9 +1419,154 @@ function DigestItemRow({
     return activeVisualImageDataUrl(active);
   }, [visualBundle]);
 
+  useEffect(() => {
+    setOutputPreviewHeroNaturalDims(null);
+  }, [selectedPreviewImageUrl]);
+
+  const linkPreviewHero =
+    Boolean(item.digest_link_preview_only) || Boolean(visualBundle?.linkPreviewOnly);
+
+  const [linkPreviewMeta, setLinkPreviewMeta] = useState<LinkPreviewMeta | null>(null);
+  const [linkPreviewStatus, setLinkPreviewStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+
+  /** Load OG data when the bundle is link-only, or when previewing Social with “article link” attachment. */
+  const needsArticleLinkPreview = Boolean(
+    item.source_url?.trim().startsWith("http") &&
+      (linkPreviewHero ||
+        (outputPreviewStyle === "bluesky_x" && publishAttachmentMode === "source_link")),
+  );
+
+  useEffect(() => {
+    const url = item.source_url?.trim();
+    if (!needsArticleLinkPreview || !url?.startsWith("http")) {
+      setLinkPreviewMeta(null);
+      setLinkPreviewStatus("idle");
+      return;
+    }
+    let cancelled = false;
+    setLinkPreviewStatus("loading");
+    setLinkPreviewMeta(null);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+        const data = (await res.json()) as LinkPreviewMeta & { error?: string };
+        if (cancelled) return;
+        if (!res.ok) {
+          setLinkPreviewStatus("error");
+          return;
+        }
+        setLinkPreviewMeta({
+          title: data.title ?? "Link",
+          description: data.description ?? "",
+          imageUrl: data.imageUrl ?? null,
+          siteLabel: data.siteLabel ?? "",
+        });
+        setLinkPreviewStatus("ready");
+      } catch {
+        if (!cancelled) setLinkPreviewStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsArticleLinkPreview, item.source_url, outputPreviewStyle, publishAttachmentMode]);
+
+  /** Social tab + “Article link” attachment shows OG/link-preview card instead of the digest thumbnail. */
+  const socialPreviewUsesArticleLink =
+    outputPreviewStyle === "bluesky_x" && publishAttachmentMode === "source_link";
+  const hasHttpSourceUrl = Boolean(item.source_url?.trim().startsWith("http"));
+  const showDigestHeroImage =
+    !socialPreviewUsesArticleLink && Boolean(selectedPreviewImageUrl);
+  const showArticleLinkPreviewCard =
+    hasHttpSourceUrl &&
+    (socialPreviewUsesArticleLink || (!selectedPreviewImageUrl && linkPreviewHero));
+
+  const canDownloadDigestHero = Boolean(selectedPreviewImageUrl) && !socialPreviewUsesArticleLink && !linkPreviewHero;
+
+  const digestStripDownloadImage = useCallback(async () => {
+    if (!selectedPreviewImageUrl) return;
+    try {
+      // data: URLs can be downloaded directly.
+      if (selectedPreviewImageUrl.startsWith("data:")) {
+        const a = document.createElement("a");
+        a.href = selectedPreviewImageUrl;
+        a.download = "digest-visual.png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return;
+      }
+
+      const res = await fetch(selectedPreviewImageUrl, { mode: "cors" });
+      if (!res.ok) throw new Error("Could not download image");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = "digest-visual";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objUrl);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    }
+  }, [selectedPreviewImageUrl]);
+
+  const digestStripSchedule = useCallback(async () => {
+    const s = activeSummary;
+    if (!s || !isDigestSocialOutputStyle(s.style)) return;
+    if (outputPreviewStyle !== "bluesky_x") return;
+    const text = digestSummaryShareText(s);
+    if (!text.trim()) {
+      toast.error("Nothing to schedule yet");
+      return;
+    }
+    if (!postToX && !postToBluesky) {
+      toast.error("Select X and/or Bluesky");
+      return;
+    }
+
+    setDigestStripPosting(true);
+    try {
+      const res = await fetch("/api/social-signals/review-queue/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_item_id: s.source_item_id,
+          text,
+          platforms: [
+            ...(postToX ? ["x"] : []),
+            ...(postToBluesky ? ["bluesky"] : []),
+          ],
+          attachment: publishAttachmentMode,
+          image_url: canDownloadDigestHero ? selectedPreviewImageUrl : null,
+          source_url: item.source_url ?? null,
+        }),
+      });
+      const data = (await res.json()) as { error?: string; created?: number };
+      if (!res.ok) throw new Error(data.error ?? "Schedule request failed");
+      toast.success(`Draft${data.created === 1 ? "" : "s"} sent to review queue`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Schedule failed");
+    } finally {
+      setDigestStripPosting(false);
+    }
+  }, [
+    activeSummary,
+    outputPreviewStyle,
+    postToX,
+    postToBluesky,
+    publishAttachmentMode,
+    canDownloadDigestHero,
+    selectedPreviewImageUrl,
+    item.source_url,
+  ]);
+
   const digestPublishPlatforms = useMemo(
     () =>
-      activeSummary?.style === "bluesky_x"
+      isDigestSocialOutputStyle(contentStudioEditorSummary.style) &&
+      !isDigestStudioPlaceholderSummary(contentStudioEditorSummary)
         ? {
             postToX,
             postToBluesky,
@@ -893,17 +1576,33 @@ function DigestItemRow({
             onAttachmentModeChange: setPublishAttachmentMode,
           }
         : undefined,
-    [activeSummary?.style, postToX, postToBluesky, publishAttachmentMode],
+    [contentStudioEditorSummary, postToX, postToBluesky, publishAttachmentMode],
   );
 
+  useEffect(() => {
+    if (!publishStripPostMenuOpen && !publishStripScheduleMenuOpen && !publishStripMoreMenuOpen) return;
+    const onDown = (event: MouseEvent) => {
+      const t = event.target as Node;
+      if (publishStripPostDropdownRef.current?.contains(t)) return;
+      if (publishStripScheduleDropdownRef.current?.contains(t)) return;
+      if (publishStripMoreDropdownRef.current?.contains(t)) return;
+      setPublishStripPostMenuOpen(false);
+      setPublishStripScheduleMenuOpen(false);
+      setPublishStripMoreMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [publishStripPostMenuOpen, publishStripScheduleMenuOpen, publishStripMoreMenuOpen]);
+
   return (
-    <Card
-      className={`min-w-0 overflow-hidden border transition-all ${
-        expanded
-          ? "border-[color:var(--accent)]/55 bg-[color:var(--background)]/98 shadow-[0_18px_48px_-32px_rgba(67,42,33,0.45)]"
-          : "border-[color:var(--border)]/85 bg-[color:var(--card)]/95 shadow-[0_12px_34px_-30px_rgba(44,28,22,0.72)]"
-      }`}
-    >
+    <div ref={digestCardScrollRef} className="min-w-0 scroll-mt-4">
+      <Card
+        className={`min-w-0 overflow-visible border transition-all ${
+          expanded
+            ? "border-[color:var(--accent)]/55 bg-[color:var(--background)]/98 shadow-[0_18px_48px_-32px_rgba(67,42,33,0.45)]"
+            : "border-[#e8e2dc]/90 bg-gradient-to-b from-[#fdfcfa] via-[#fcfbf9] to-[#faf8f5] shadow-[0_16px_42px_-32px_rgba(52,38,30,0.28)] ring-1 ring-[#ebe6df]/45"
+        }`}
+      >
       <div className="space-y-3.5 p-4 sm:p-[1.125rem]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
@@ -1099,20 +1798,6 @@ function DigestItemRow({
                   role="menuitem"
                   onClick={() => {
                     setActionsMenuOpen(false);
-                    void copyBriefPreview();
-                  }}
-                  disabled={!activeSummary}
-                  title="Copy summary"
-                  aria-label="Copy summary"
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <ReferencesCopyIcon className="h-4 w-4 shrink-0 text-current" />
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsMenuOpen(false);
                     void copySignalLink();
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
@@ -1132,7 +1817,7 @@ function DigestItemRow({
                     <path d="M10 13a5 5 0 0 0 7.54.54l2.12-2.12a5 5 0 0 0-7.07-7.07L11.3 5.64" />
                     <path d="M14 11a5 5 0 0 0-7.54-.54L4.34 12.6a5 5 0 1 0 7.07 7.07l1.27-1.27" />
                   </svg>
-                  Copy link
+                  Copy source link
                 </button>
                 <button
                   type="button"
@@ -1169,98 +1854,372 @@ function DigestItemRow({
       </div>
 
       {!expanded ? (
-        <div className="px-4 pb-4 sm:px-5 sm:pb-5">
-          <div className="rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/80 p-4 sm:p-5">
-            <div className="flex flex-col gap-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(12rem,42%)] md:items-start md:gap-6">
-              <div className="min-w-0 space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-                  Output preview
-                </p>
-                <p className="text-base font-semibold leading-snug tracking-tight text-[color:var(--foreground)] sm:text-lg">
-                  {outputCard.headline}
-                </p>
-                <div className="max-h-[min(28rem,52vh)] overflow-y-auto text-sm leading-relaxed text-[color:var(--foreground)]/92 [overflow-wrap:anywhere] whitespace-pre-wrap">
-                  {outputCard.body.trim()
-                    ? outputCard.body
-                    : "No summary generated yet. Expand the card to draft copy."}
-                </div>
+        <div className="px-4 pb-6 sm:px-5 sm:pb-6">
+          <div className="rounded-2xl border border-[#e8e2dc] bg-[#fcfaf8] p-4 shadow-[0_18px_52px_-36px_rgba(58,44,34,0.28)] ring-1 ring-[#ebe6df]/55 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7c6f64]">
+              Output preview
+            </p>
+            <div className="-mx-1 mt-2 block sm:mx-0">
+              <DigestStudioOutputTabs
+                variant="warm"
+                tabs={outputPreviewTabs}
+                activeStyle={outputPreviewStyle}
+                onSelectStyle={setOutputPreviewStyle}
+                disabled={generating || archiving || illustrating}
+              />
+            </div>
+            <hr className="-mx-4 my-0 h-px shrink-0 border-0 bg-[#e8e2dc] sm:-mx-5" />
+            <div className="-mx-4 flex flex-col gap-5 px-4 pt-4 sm:-mx-5 sm:px-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(12rem,42%)] md:items-stretch md:gap-6">
+              <div
+                className={`min-w-0 space-y-2 ${showOutputPreviewSummaryEmpty ? "md:flex md:min-h-0 md:flex-col md:h-full" : ""}`}
+              >
+                {showOutputPreviewSummaryEmpty ? (
+                  <DigestOutputPreviewEmptySummary />
+                ) : (
+                  <>
+                    <p className="text-base font-semibold leading-snug tracking-tight text-[#3c3836] sm:text-lg">
+                      {outputCard.headline}
+                    </p>
+                    <div className="max-h-[min(28rem,52vh)] overflow-y-auto text-sm leading-relaxed text-[#3c3836]/95 [overflow-wrap:anywhere] whitespace-pre-wrap">
+                      {outputCard.body}
+                    </div>
+                  </>
+                )}
               </div>
               <div className="min-w-0 space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)] md:sr-only">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7c6f64] md:sr-only">
                   Visuals
                 </p>
-                {!selectedPreviewImageUrl ? (
-                  <div className="relative flex min-h-[9rem] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]/90 px-3 text-center">
-                    {digestItemHasVisual(item) ? (
-                      <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                        Expand card to load the selected visual
-                      </p>
-                    ) : (
-                      <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                        No visuals yet — generate options after expanding
-                      </p>
-                    )}
+                {showDigestHeroImage ? (
+                  <div className="relative w-full min-w-0 overflow-hidden rounded-2xl border border-[#e8e2dc]/90 bg-[#faf6ef] p-3 shadow-[0_14px_44px_-30px_rgba(58,44,34,0.22)] ring-1 ring-[#ebe6df]/45 sm:p-4">
+                    <div className="flex w-full min-h-0 max-h-[min(42rem,52vh)] justify-center overflow-auto">
+                      <div className="relative mx-auto max-w-full inline-block align-top">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={selectedPreviewImageUrl ?? ""}
+                          alt={
+                            outputPreviewActiveCandidate?.caption?.trim()
+                              ? outputPreviewActiveCandidate.caption.trim().slice(0, 220)
+                              : ""
+                          }
+                          className="box-border h-auto max-h-[min(42rem,52vh)] w-auto max-w-full rounded-xl object-contain object-center shadow-[0_8px_32px_-16px_rgba(48,36,28,0.35)] ring-1 ring-black/[0.07]"
+                          decoding="async"
+                          onLoad={(e) => {
+                            const i = e.currentTarget;
+                            if (i.naturalWidth > 0 && i.naturalHeight > 0) {
+                              setOutputPreviewHeroNaturalDims({ w: i.naturalWidth, h: i.naturalHeight });
+                            }
+                          }}
+                        />
+                        {outputPreviewActiveCandidate?.type === "schematic" ? (
+                          <DigestIllustrationOverlays
+                            layers={outputPreviewActiveCandidate.illustrationTextLayers ?? []}
+                            naturalSize={outputPreviewOverlayLayout.naturalSize}
+                            cropNatural={outputPreviewOverlayLayout.cropNatural}
+                            layoutBoxPx={outputPreviewOverlayLayout.layoutBoxPx}
+                            layoutCoordinateSpace={outputPreviewOverlayLayout.layoutCoordinateSpace}
+                          />
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
+                ) : showArticleLinkPreviewCard ? (
+                  <DigestOutputLinkPreviewCard
+                    meta={linkPreviewMeta}
+                    status={linkPreviewStatus === "idle" ? "loading" : linkPreviewStatus}
+                    sourceUrl={item.source_url!.trim()}
+                  />
+                ) : (socialPreviewUsesArticleLink || linkPreviewHero) && !hasHttpSourceUrl ? (
+                  <div className="relative flex min-h-[9rem] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-[#e5e1de] bg-[#faf8f5] px-3 text-center">
+                    <p className="text-xs font-semibold text-[#3c3836]">Link preview</p>
+                    <p className="mt-2 text-xs font-medium leading-snug text-[#7c6f64]">
+                      Add a valid article URL on this signal to preview how platforms may render the card.
+                    </p>
+                  </div>
+                ) : digestItemHasVisual(item) ? (
+                  <DigestOutputPreviewEmptyVisuals variant="pending_load" />
                 ) : (
-                  <div className="relative aspect-video w-full min-w-0 overflow-hidden rounded-xl border border-[color:var(--border)]/70 bg-[#faf6ef]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={selectedPreviewImageUrl}
-                      alt=""
-                      className="box-border h-full w-full object-contain object-center"
-                      decoding="async"
-                    />
-                  </div>
+                  <DigestOutputPreviewEmptyVisuals variant="none" />
                 )}
               </div>
             </div>
           </div>
-          {activeSummary?.style === "bluesky_x" ? (
-            <div className="mt-3 rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/80 p-3 shadow-sm sm:p-4">
-              <DigestPublishSettingsInline
-                postToX={postToX}
-                postToBluesky={postToBluesky}
-                onPostToXChange={setPostToX}
-                onPostToBlueskyChange={setPostToBluesky}
-                attachmentMode={publishAttachmentMode}
-                onAttachmentModeChange={setPublishAttachmentMode}
-                sourceUrl={item.source_url}
-                className="border-0 bg-transparent p-0 shadow-none"
-              />
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[color:var(--border)]/40 pt-3">
-                <Button
-                  type="button"
-                  className="h-10 px-5 text-sm font-semibold shadow-sm"
-                  disabled={
-                    digestStripPosting ||
-                    (!postToX && !postToBluesky) ||
-                    generating ||
-                    archiving ||
-                    illustrating
-                  }
-                  onClick={() => void digestStripPost()}
-                >
-                  {digestStripPosting ? "Posting…" : "Post"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-10 px-5 text-sm font-medium"
-                  disabled={digestStripSaving || generating || archiving || illustrating}
-                  onClick={() => void digestStripSave()}
-                >
-                  {digestStripSaving ? "Saving…" : "Save changes"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  title="Copy summary"
-                  aria-label="Copy summary"
-                  className="h-10 w-10 shrink-0 p-0 text-[color:var(--muted-foreground)]"
-                  onClick={() => void digestStripCopy()}
-                >
-                  <ReferencesCopyIcon className="mx-auto h-4 w-4" />
-                </Button>
+          {digestContentStudioSummaries.some((s) => digestSummaryHasGeneratedText(s)) ? (
+            <div className="relative z-10 mt-3 overflow-visible rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/85 p-4 pb-5 shadow-sm">
+              <div className="flex flex-col gap-3 overflow-visible">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+                    Publish
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                    {socialPublishInteractive
+                      ? "Select where to post this signal."
+                      : "Copy this channel’s text or download the hero visual. Switch Output preview to Social to post."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 overflow-visible">
+                  <button
+                    type="button"
+                    aria-pressed={postToX}
+                    disabled={socialPublishControlsDisabled}
+                    title={
+                      socialPublishInteractive
+                        ? postToX
+                          ? "Posting to X"
+                          : "Skip X"
+                        : publishStripDisabledTitle
+                    }
+                    onClick={() => setPostToX((v) => !v)}
+                    className={`inline-flex h-11 min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[color:var(--foreground)] transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                      postToX
+                        ? "border-[color:var(--accent)]/45 bg-[color:var(--card)] shadow-sm"
+                        : "border-[color:var(--border)]/70 bg-[color:var(--card)]/95 hover:bg-[color:var(--muted)]/25"
+                    }`}
+                  >
+                    <DigestPublishBarXLogo className="h-5 w-5 text-[#0f1419] dark:text-neutral-100" />
+                    {postToX ? (
+                      <ToggleCheckMiniIcon className="shrink-0 text-[color:var(--accent)]" />
+                    ) : (
+                      <span className="w-3.5 shrink-0" aria-hidden />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={postToBluesky}
+                    disabled={socialPublishControlsDisabled}
+                    title={
+                      socialPublishInteractive
+                        ? postToBluesky
+                          ? "Posting to Bluesky"
+                          : "Skip Bluesky"
+                        : publishStripDisabledTitle
+                    }
+                    onClick={() => setPostToBluesky((v) => !v)}
+                    className={`inline-flex h-11 min-h-11 items-center gap-1.5 rounded-lg border px-3 text-[color:var(--foreground)] transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                      postToBluesky
+                        ? "border-[color:var(--accent)]/45 bg-[color:var(--card)] shadow-sm"
+                        : "border-[color:var(--border)]/70 bg-[color:var(--card)]/95 hover:bg-[color:var(--muted)]/25"
+                    }`}
+                  >
+                    <DigestPublishBarBlueskyLogo className="h-5 w-5 text-[#0085ff]" />
+                    {postToBluesky ? (
+                      <ToggleCheckMiniIcon className="shrink-0 text-[color:var(--accent)]" />
+                    ) : (
+                      <span className="w-3.5 shrink-0" aria-hidden />
+                    )}
+                  </button>
+
+                  <div ref={publishStripPostDropdownRef} className="relative">
+                    <div className="flex min-h-10 overflow-hidden rounded-xl shadow-[0_14px_30px_-18px_rgba(141,86,64,0.45)]">
+                      <button
+                        type="button"
+                        className="inline-flex min-h-10 items-center gap-2 bg-[color:var(--accent)] px-4 text-sm font-semibold text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.03] disabled:pointer-events-none disabled:opacity-50"
+                        disabled={
+                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
+                        }
+                        title={
+                          socialPublishInteractive ? undefined : publishStripDisabledTitle
+                        }
+                        onClick={() => void digestStripPost()}
+                      >
+                        <SendIcon className="h-4 w-4 shrink-0 opacity-95" />
+                        {digestStripPosting ? "Posting…" : "Post now"}
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex min-h-10 min-w-10 items-center justify-center border-l border-[color:var(--accent-foreground)]/25 bg-[color:var(--accent)] text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.06] disabled:pointer-events-none disabled:opacity-50"
+                        disabled={
+                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
+                        }
+                        title={
+                          socialPublishInteractive ? undefined : publishStripDisabledTitle
+                        }
+                        aria-expanded={publishStripPostMenuOpen}
+                        aria-haspopup="menu"
+                        aria-label="Attachment options for post"
+                        onClick={() => {
+                          setPublishStripScheduleMenuOpen(false);
+                          setPublishStripMoreMenuOpen(false);
+                          setPublishStripPostMenuOpen((o) => !o);
+                        }}
+                      >
+                        <ChevronDownMiniIcon />
+                      </button>
+                    </div>
+                    {publishStripPostMenuOpen ? (
+                      <div
+                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
+                        role="menu"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
+                          onClick={() => {
+                            setPublishAttachmentMode("digest_visual");
+                            setPublishStripPostMenuOpen(false);
+                          }}
+                        >
+                          <span>Digest hero image</span>
+                          {publishAttachmentMode === "digest_visual" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!hasHttpSourceUrl}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => {
+                            if (!hasHttpSourceUrl) return;
+                            setPublishAttachmentMode("source_link");
+                            setPublishStripPostMenuOpen(false);
+                          }}
+                        >
+                          <span>Article link preview</span>
+                          {publishAttachmentMode === "source_link" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div ref={publishStripScheduleDropdownRef} className="relative">
+                    <div className="flex min-h-10 overflow-hidden rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 shadow-[0_12px_24px_-20px_rgba(89,67,52,0.45)]">
+                      <button
+                        type="button"
+                        className="inline-flex min-h-10 flex-1 items-center gap-2 px-4 text-sm font-semibold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--muted)]/45 disabled:pointer-events-none disabled:opacity-50"
+                        disabled={
+                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
+                        }
+                        title={
+                          socialPublishInteractive ? undefined : publishStripDisabledTitle
+                        }
+                        onClick={() => void digestStripSchedule()}
+                      >
+                        <ScheduleIcon className="h-4 w-4 shrink-0 opacity-90" />
+                        {digestStripPosting ? "Scheduling…" : "Schedule"}
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center border-l border-[color:var(--border)]/70 bg-[color:var(--card)] text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/35 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-50"
+                        disabled={
+                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
+                        }
+                        title={
+                          socialPublishInteractive ? undefined : publishStripDisabledTitle
+                        }
+                        aria-expanded={publishStripScheduleMenuOpen}
+                        aria-haspopup="menu"
+                        aria-label="Attachment options for schedule"
+                        onClick={() => {
+                          setPublishStripPostMenuOpen(false);
+                          setPublishStripMoreMenuOpen(false);
+                          setPublishStripScheduleMenuOpen((o) => !o);
+                        }}
+                      >
+                        <ChevronDownMiniIcon />
+                      </button>
+                    </div>
+                    {publishStripScheduleMenuOpen ? (
+                      <div
+                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
+                        role="menu"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
+                          onClick={() => {
+                            setPublishAttachmentMode("digest_visual");
+                            setPublishStripScheduleMenuOpen(false);
+                          }}
+                        >
+                          <span>Digest hero image</span>
+                          {publishAttachmentMode === "digest_visual" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!hasHttpSourceUrl}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => {
+                            if (!hasHttpSourceUrl) return;
+                            setPublishAttachmentMode("source_link");
+                            setPublishStripScheduleMenuOpen(false);
+                          }}
+                        >
+                          <span>Article link preview</span>
+                          {publishAttachmentMode === "source_link" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div ref={publishStripMoreDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex h-10 min-h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border)]/70 bg-[color:var(--card)]/95 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/30 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-50"
+                      disabled={publishMoreMenuDisabled}
+                      title={publishMoreMenuDisabled ? undefined : "Copy text or download visual"}
+                      aria-expanded={publishStripMoreMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="More publish actions"
+                      onClick={() => {
+                        setPublishStripPostMenuOpen(false);
+                        setPublishStripScheduleMenuOpen(false);
+                        setPublishStripMoreMenuOpen((o) => !o);
+                      }}
+                    >
+                      <PublishBarMoreIcon className="text-[color:var(--muted-foreground)]" />
+                    </button>
+                    {publishStripMoreMenuOpen ? (
+                      <div
+                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[12rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
+                        role="menu"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
+                          onClick={() => {
+                            setPublishStripMoreMenuOpen(false);
+                            void digestStripCopy();
+                          }}
+                        >
+                          <ReferencesCopyIcon className="h-4 w-4 shrink-0 opacity-80" />
+                          Copy text
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!canDownloadDigestHero}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => {
+                            setPublishStripMoreMenuOpen(false);
+                            void digestStripDownloadImage();
+                          }}
+                        >
+                          <DownloadIcon className="h-4 w-4 shrink-0 opacity-80" />
+                          Download visual
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1268,86 +2227,88 @@ function DigestItemRow({
       ) : null}
 
       {expanded ? (
-        <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--muted)]/6 px-4 py-4 sm:px-5">
-          <div className="grid isolate items-stretch gap-6 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] xl:gap-8">
-            <div className="relative z-10 flex min-h-0 min-w-0 flex-col gap-5">
-              <header className="space-y-1">
+        <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--muted)]/6">
+          <div className="border-b border-[color:var(--border)]/40 px-4 pb-4 pt-4 sm:px-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+              Channel
+            </p>
+            <div className="-mx-1 mt-2 sm:mx-0">
+              <DigestStudioOutputTabs
+                tabs={studioOutputTabs}
+                activeStyle={contentStudioEditorSummary.style}
+                onSelectStyle={handleSelectDigestOutputTab}
+                disabled={generating || archiving || illustrating || resetDigestBusy}
+              />
+            </div>
+          </div>
+          <div className="grid isolate items-stretch gap-6 px-4 py-4 sm:px-5 lg:grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.12fr)] xl:gap-8">
+            <div className="relative z-10 flex h-full min-h-0 min-w-0 flex-col gap-5">
+              <header className="shrink-0 space-y-1">
                 <p className="text-sm font-semibold text-[color:var(--foreground)]">Content studio</p>
                 <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-                  Create, refine, and adapt written summaries, headlines, and posts for different channels.
+                  Create and manage text for the selected channel.
                 </p>
               </header>
-              <div className="flex min-h-0 flex-1 flex-col gap-3">
-                {summaries.length === 0 ? (
-                  <div className="rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--background)]/60 px-4 py-6 text-center">
-                    <p className="text-sm text-[color:var(--muted-foreground)]">
-                      No draft yet. Choose a default channel and tap{" "}
-                      <span className="font-medium text-[color:var(--foreground)]">Draft summary</span>{" "}
-                      (toolbar below opens generation).
-                    </p>
-                    <div className="mx-auto mt-4 flex max-w-xs flex-col gap-2 text-left">
-                      <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
-                        Channel for first draft
-                      </span>
-                      <Select
-                        value={genStyle}
-                        onChange={(e) => setGenStyle(e.target.value)}
-                        className="w-full py-2.5 leading-normal"
-                        aria-label="Summary format"
-                      >
-                        <option value="newsletter">Newsletter</option>
-                        <option value="linkedin">LinkedIn</option>
-                        <option value="bluesky_x">Social media</option>
-                      </Select>
-                      <Button
-                        type="button"
-                        onClick={() => void generateSummary()}
-                        disabled={generating || archiving || illustrating}
-                        variant="primary"
-                        className="h-10 w-full text-sm font-semibold"
-                      >
-                        {generating ? "Drafting…" : "Draft summary"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <SummaryEditor
-                    key={summaries[0]!.id}
-                    summary={summaries[0]!}
-                    onSaved={refreshSummaries}
-                    variant="embedded"
-                    omitPublishChrome={summaries[0]!.style === "bluesky_x"}
-                    publishPlatforms={digestPublishPlatforms}
-                    tone={summaryTone}
-                    onToneChange={setSummaryTone}
-                    sourceUrl={item.source_url}
-                    digestWorkflow={{
-                      genStyle,
-                      onGenStyleChange: setGenStyle,
-                      onRegenerate: generateSummary,
-                      regenerateBusy: generating,
-                      disableActions: archiving || illustrating,
-                    }}
-                  />
-                )}
+              <div className="flex min-h-0 flex-1 flex-col gap-4">
+                <SummaryEditor
+                  key={
+                    isDigestStudioPlaceholderSummary(contentStudioEditorSummary)
+                      ? `digest-ph-${contentStudioEditorSummary.style}`
+                      : contentStudioEditorSummary.id
+                  }
+                  summary={contentStudioEditorSummary}
+                  onSaved={async () => {
+                    await refreshSummaries();
+                  }}
+                  variant="embedded"
+                  omitPublishChrome={isDigestSocialOutputStyle(contentStudioEditorSummary.style)}
+                  publishPlatforms={digestPublishPlatforms}
+                  sourceUrl={item.source_url}
+                  digestBriefSaveOutletRef={digestBriefSaveOutletRef}
+                  onBriefSaveBusyChange={setDigestStripSaving}
+                  onAfterSuccessfulBriefSave={collapseExpandedCardIfNeeded}
+                  omitDigestOutputTabs
+                  digestWorkflow={{
+                    channelOptions: DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS,
+                    selectedChannelStyle: contentStudioEditorSummary.style,
+                    onSelectChannelStyle: handleSelectChannelStyle,
+                    outputTabs: studioOutputTabs,
+                    activeTabStyle: contentStudioEditorSummary.style,
+                    onSelectOutputTab: handleSelectDigestOutputTab,
+                    onRegenerate: generateSummary,
+                    regenerateBusy: generating,
+                    onResetDigestOutput: resetDigestOutput,
+                    resetDigestBusy,
+                    disableActions: archiving || illustrating || resetDigestBusy,
+                  }}
+                />
               </div>
             </div>
-            <div className="relative z-0 flex min-h-0 min-w-0 flex-col xl:border-l xl:border-[color:var(--border)]/40 xl:pl-6">
-              {item.digestCoverHasAsset && coverLoading && !visualBundle ? (
-                <p className="rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
-                  Loading visuals…
+            <div className="relative z-0 flex h-full min-h-0 min-w-0 flex-col gap-5 xl:border-l xl:border-[color:var(--border)]/40 xl:pl-6">
+              <header className="shrink-0 space-y-1 xl:pl-0">
+                <p className="text-sm font-semibold text-[color:var(--foreground)]">Media library</p>
+                <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                  {DIGEST_MEDIA_LIBRARY_SUBTITLE}
                 </p>
+              </header>
+              {item.digestCoverHasAsset && coverLoading && fetchedDigestCoverStore === null ? (
+                <div className="flex min-h-[8rem] flex-1 flex-col items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
+                  Loading visuals…
+                </div>
               ) : (
                 <DigestVisualPanel
+                  key={`${item.id}-${outputPreviewStyle}`}
                   digestQueueLayout
                   sourceItemId={item.id}
+                  outputStyle={outputPreviewStyle}
                   bundle={visualBundle}
+                  articleUrl={item.source_url}
                   busy={illustrating}
                   onStarted={() => setIllustrating(true)}
+                  onDigestCoverStorePersisted={(store) => setFetchedDigestCoverStore(store)}
                   onComplete={() => {
                     setIllustrating(false);
-                    setFetchedCover(null);
-                    router.refresh();
+                    scheduleDigestVisualRouterRefresh();
                   }}
                   disabled={generating || archiving}
                 />
@@ -1355,11 +2316,22 @@ function DigestItemRow({
             </div>
           </div>
           <div className="mt-6 border-t border-[color:var(--border)]/35 pt-4">
-            {digestQueueChecklist(item, summaries)}
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-9 min-h-9 px-4 text-sm font-semibold"
+              disabled={
+                generating || archiving || illustrating || resetDigestBusy || digestStripSaving
+              }
+              onClick={() => void digestBriefSaveOutletRef.current?.()}
+            >
+              {digestStripSaving ? "Saving…" : "Save all changes"}
+            </Button>
           </div>
         </div>
       ) : null}
     </Card>
+    </div>
   );
 }
 
@@ -1409,7 +2381,9 @@ export function MonthlyDigestView({
     "copy_illustrator",
   );
   const [queueFilter, setQueueFilter] = useState<DigestQueueFilter>("all");
-  const [expandedDigestItemId, setExpandedDigestItemId] = useState<string | null>(items[0]?.id ?? null);
+  const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() =>
+    items[0]?.id ? new Set([items[0].id]) : new Set(),
+  );
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [numberedLines, setNumberedLines] = useState(true);
   /** When true, paper references show first 3 authors + et al.; when false, full PubMed author list. */
@@ -1491,19 +2465,22 @@ export function MonthlyDigestView({
     [items, queueFilter],
   );
   useEffect(() => {
-    if (filteredDigestItems.length === 0) {
-      setExpandedDigestItemId(null);
-      return;
-    }
-    // Keep all cards collapsed when expandedDigestItemId is null ("Collapse all").
-    // Only recover when the expanded id is non-null but no longer in the filtered list (e.g. queue filter changed).
-    if (
-      expandedDigestItemId !== null &&
-      !filteredDigestItems.some((i) => i.id === expandedDigestItemId)
-    ) {
-      setExpandedDigestItemId(filteredDigestItems[0]!.id);
-    }
-  }, [filteredDigestItems, expandedDigestItemId]);
+    const visibleIds = new Set(filteredDigestItems.map((i) => i.id));
+    setExpandedDigestItemIds((prev) => {
+      if (filteredDigestItems.length === 0) {
+        return prev.size === 0 ? prev : new Set<string>();
+      }
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      if (next.size === prev.size && [...prev].every((id) => visibleIds.has(id))) {
+        return prev;
+      }
+      // If every expanded card dropped out of the filter, reopen the first visible row (match prior single-card behavior).
+      if (next.size === 0 && prev.size > 0) {
+        return new Set([filteredDigestItems[0]!.id]);
+      }
+      return next;
+    });
+  }, [filteredDigestItems]);
 
   useEffect(() => {
     if (activeTab !== "copy_illustrator") return;
@@ -1875,7 +2852,9 @@ export function MonthlyDigestView({
                         const first = filteredDigestItems.find(
                           (it) => digestWorkflowStatus(it, it.summaries) !== "ready",
                         );
-                        if (first) setExpandedDigestItemId(first.id);
+                        if (first) {
+                          setExpandedDigestItemIds((prev) => new Set(prev).add(first.id));
+                        }
                       }}
                       className="h-7 px-2.5 text-[11px]"
                     >
@@ -1884,7 +2863,7 @@ export function MonthlyDigestView({
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => setExpandedDigestItemId(null)}
+                      onClick={() => setExpandedDigestItemIds(new Set())}
                       className="h-7 px-2.5 text-[11px]"
                     >
                       Collapse all
@@ -1921,9 +2900,14 @@ export function MonthlyDigestView({
                       <DigestItemRow
                         item={item}
                         model={aiModel}
-                        expanded={expandedDigestItemId === item.id}
+                        expanded={expandedDigestItemIds.has(item.id)}
                         onToggleExpanded={() =>
-                          setExpandedDigestItemId((prev) => (prev === item.id ? null : item.id))
+                          setExpandedDigestItemIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(item.id)) next.delete(item.id);
+                            else next.add(item.id);
+                            return next;
+                          })
                         }
                       />
                     </li>

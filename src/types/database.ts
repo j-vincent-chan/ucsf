@@ -29,7 +29,14 @@ export type SummaryStyle =
   | "concise"
   | "linkedin"
   | "bluesky_x"
-  | "instagram";
+  | "instagram"
+  | "x"
+  | "bluesky"
+  | "web_blurb"
+  | "internal_digest";
+
+/** Editorial status for a per-channel summary row (digest outputs). */
+export type SummaryOutputStatus = "draft" | "ready" | "reviewed";
 export type ProfileRole = "admin" | "editor";
 
 export type Json =
@@ -252,6 +259,43 @@ export interface Database {
         };
         Relationships: [];
       };
+      social_review_queue_posts: {
+        Row: {
+          id: string;
+          community_id: string;
+          source_item_id: string | null;
+          platform: string;
+          status: string;
+          text: string;
+          image_url: string | null;
+          source_url: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          community_id?: string;
+          source_item_id?: string | null;
+          platform: string;
+          status?: string;
+          text: string;
+          image_url?: string | null;
+          source_url?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          community_id?: string;
+          source_item_id?: string | null;
+          platform?: string;
+          status?: string;
+          text?: string;
+          image_url?: string | null;
+          source_url?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       summaries: {
         Row: {
           id: string;
@@ -265,6 +309,11 @@ export interface Database {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          digest_tone: string | null;
+          target_blurb_chars: number | null;
+          output_status: SummaryOutputStatus;
+          character_count: number | null;
+          generated_at: string | null;
         };
         Insert: {
           id?: string;
@@ -278,6 +327,11 @@ export interface Database {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          digest_tone?: string | null;
+          target_blurb_chars?: number | null;
+          output_status?: SummaryOutputStatus;
+          character_count?: number | null;
+          generated_at?: string | null;
         };
         Update: {
           style?: SummaryStyle;
@@ -287,6 +341,11 @@ export interface Database {
           final_text?: string | null;
           model_name?: string | null;
           updated_at?: string;
+          digest_tone?: string | null;
+          target_blurb_chars?: number | null;
+          output_status?: SummaryOutputStatus;
+          character_count?: number | null;
+          generated_at?: string | null;
         };
         Relationships: [];
       };

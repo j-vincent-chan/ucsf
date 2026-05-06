@@ -25,13 +25,13 @@ export type SocialPost = {
   likeCount?: number;
   /** Impressions (X) — may be omitted depending on API tier. */
   viewCount?: number;
+  /** Bluesky record CID for in-app like/repost/reply (from feed when available). */
+  bskyRecordCid?: string;
 };
 
 export type SourceMeta = {
   x: { configured: boolean; detail?: string };
   bluesky: { configured: boolean; detail?: string };
-  /** Optional future org integration; not a live feed source today. */
-  linkedin: { configured: boolean; detail?: string; comingSoon?: boolean };
 };
 
 export type AggregatedFeed = {

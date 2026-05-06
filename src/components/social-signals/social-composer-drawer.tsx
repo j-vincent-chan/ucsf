@@ -119,9 +119,6 @@ export function SocialComposerDrawer({
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-[color:var(--muted-foreground)]">
-              LinkedIn: coming soon — publishing disabled.
-            </p>
           </div>
 
           <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">

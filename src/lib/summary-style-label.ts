@@ -7,8 +7,12 @@ const SUMMARY_STYLE_LABEL: Record<SummaryStyle, string> = {
   social: "Social",
   concise: "Concise",
   linkedin: "LinkedIn",
-  bluesky_x: "social_media",
+  bluesky_x: "Social",
   instagram: "Instagram",
+  x: "X",
+  bluesky: "Bluesky",
+  web_blurb: "Web blurb",
+  internal_digest: "Internal digest",
 };
 
 export function summaryStyleLabel(style: SummaryStyle): string {

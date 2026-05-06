@@ -18,6 +18,10 @@ import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Root-level `linkPreviewOnly` only. PostgREST rejects multi-clause boolean expressions in the
+ * select list; v3 per-channel flags are resolved client-side after `digest_cover` fetch.
+ */
 const ITEM_SELECT = `
   id,
   title,
@@ -28,7 +32,8 @@ const ITEM_SELECT = `
   source_type,
   source_url,
   raw_summary,
-  digest_cover_has_asset
+  digest_cover_has_asset,
+  digest_lp_only:digest_cover->>linkPreviewOnly
 `;
 
 /** Smaller chunks = shorter per-query work (helps under Postgres statement_timeout). */
@@ -212,6 +217,7 @@ function mapRow(
     source_url: string | null;
     raw_summary: string | null;
     digest_cover_has_asset: boolean | null;
+    digest_lp_only: boolean | string | null;
   },
   junctionRows: unknown[],
   primaryTrackedEntity: unknown,
@@ -245,6 +251,7 @@ function mapRow(
     paper_author_names: null,
     digest_cover: null,
     digestCoverHasAsset: Boolean(r.digest_cover_has_asset),
+    digest_link_preview_only: r.digest_lp_only === true || r.digest_lp_only === "true",
     summaries,
   };
 }

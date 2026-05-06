@@ -87,7 +87,6 @@ export async function fetchSocialSignalsDashboardSnapshot(
           .map((r) => r.sourceMeta.bluesky.detail)
           .find((d) => typeof d === "string" && d.length > 0) ?? undefined,
     },
-    linkedin: results[0]!.sourceMeta.linkedin,
   };
 
   const tabs = {

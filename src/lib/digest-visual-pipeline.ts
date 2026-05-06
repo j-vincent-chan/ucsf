@@ -3,7 +3,10 @@ import { resolvePmcidFromPmid, tryPmcArticleImageUrl } from "@/lib/digest-cover"
 import { buildDigestStockPhotoImagePrompt } from "@/lib/digest-stock-photo-prompt";
 import { buildDigestThumbnailImagePrompt } from "@/lib/digest-thumbnail-prompt";
 import { refineDigestThumbnailPrompt } from "@/lib/digest-thumbnail-prompt-refine";
+import { extractDigestIllustrationOverlayLabels } from "@/lib/digest-overlay-label-extract";
+import { resolveDigestImageAltForAiCandidate } from "@/lib/digest-visual-alt-text";
 import {
+  type DigestIllustrationTextLayer,
   type DigestVisualBundle,
   type DigestVisualCandidate,
   type DigestVisualEditMetadata,
@@ -306,35 +309,53 @@ export async function generateIllustrationOptions(opts: {
 
   const img = await generateDigestThumbnailImage(imagePrompt);
   const imageModel = thumbnailImageModel();
+  const illustrationTextLayers = await extractDigestIllustrationOverlayLabels({
+    title: opts.title,
+    summaryAndExcerpts: clipForPrompt(summaryAndExcerpts),
+    refinedImagePrompt: imagePrompt,
+    imageBase64: img.base64,
+    imageMime: img.mime,
+  });
+
+  const promptPayload = {
+    mode: "thumbnail" as const,
+    image_model: imageModel,
+    image_size: thumbnailImageSize(imageModel),
+    image_quality: imageModel === "dall-e-3" || imageModel === "dall-e-2" ? null : gptImageQuality(),
+    prompt_refiner_used: refine.usedRefinement,
+    prompt_refiner_note: refine.usedRefinement ? undefined : refine.skipReason,
+    source_url: opts.sourceUrl ?? null,
+    title: truncate(opts.title, 300),
+    summary_and_excerpts_preview: truncate(summaryAndExcerpts, 1200),
+    base_thumbnail_prompt: basePrompt,
+    final_image_prompt: imagePrompt,
+    illustration_text_layers: illustrationTextLayers,
+  };
+
+  const altCaption = await resolveDigestImageAltForAiCandidate({
+    visualKind: "schematic",
+    title: opts.title,
+    summaryAndExcerpts: clipForPrompt(summaryAndExcerpts),
+    imagePrompt,
+    overlayLabels: illustrationTextLayers.map((l) => l.text),
+  });
+
   return [
     candidateFrom({
       type: "schematic",
       kind: "inline",
       mime: img.mime,
       base64: img.base64,
+      caption: altCaption,
       provenance: `AI — BioRender-style editorial thumbnail (${imageModel}${refine.usedRefinement ? ", refined prompt" : ""})`,
       rights: "unknown",
-      rightsNote: "AI-generated. Not a real figure or dataset from the source article.",
+      rightsNote:
+        "AI schematic raster without baked captions when the image model complies; captions are editable overlay metadata in the digest editor.",
       aiGenerated: true,
-      promptUsed: JSON.stringify(
-        {
-          mode: "thumbnail",
-          image_model: imageModel,
-          image_size: thumbnailImageSize(imageModel),
-          image_quality: imageModel === "dall-e-3" || imageModel === "dall-e-2" ? null : gptImageQuality(),
-          prompt_refiner_used: refine.usedRefinement,
-          prompt_refiner_note: refine.usedRefinement ? undefined : refine.skipReason,
-          source_url: opts.sourceUrl ?? null,
-          title: truncate(opts.title, 300),
-          summary_and_excerpts_preview: truncate(summaryAndExcerpts, 1200),
-          base_thumbnail_prompt: basePrompt,
-          final_image_prompt: imagePrompt,
-        },
-        null,
-        2,
-      ),
+      illustrationTextLayers,
+      promptUsed: JSON.stringify(promptPayload, null, 2),
       rationale:
-        "News / digest / social thumbnail via OpenAI Images. A text model may rewrite the template prompt into a tighter art-director brief before generation (similar to ChatGPT). See promptUsed.base_thumbnail_prompt vs final_image_prompt.",
+        "News / digest / social schematic via OpenAI Images (text-free raster when possible); overlay label strings live in illustrationTextLayers. See promptUsed.final_image_prompt and illustration_text_layers.",
       scores: { relevance: 4, fidelity: 4, editorial: 4, risk: 2, rightsConfidence: 4 },
     }),
   ];
@@ -355,12 +376,21 @@ export async function generateStockOptions(opts: {
 
   const img = await generateDigestThumbnailImage(imagePrompt);
   const imageModel = thumbnailImageModel();
+
+  const altCaption = await resolveDigestImageAltForAiCandidate({
+    visualKind: "stock",
+    title: opts.title,
+    summaryAndExcerpts: clipForPrompt(summaryAndExcerpts),
+    imagePrompt,
+  });
+
   return [
     candidateFrom({
       type: "stock",
       kind: "inline",
       mime: img.mime,
       base64: img.base64,
+      caption: altCaption,
       provenance: `AI — hyperrealistic biomedical stock photo (${imageModel})`,
       rights: "unknown",
       rightsNote: "AI-generated stock-style image. Not from the source site; verify suitability for your channel.",
@@ -457,15 +487,10 @@ export async function runFullVisualPipeline(opts: {
   candidates.push(...schematics);
 
   const unique = dedupeByUrl(candidates);
-  const selectedId =
-    unique.find((c) => c.type === "source" && c.kind === "url")?.id ??
-    unique.find((c) => c.type === "schematic")?.id ??
-    unique[0]?.id ??
-    null;
 
   return {
     v: 2,
-    selectedId,
+    selectedId: null,
     strategies,
     candidates: unique,
     updatedAt: new Date().toISOString(),
@@ -527,27 +552,31 @@ export function removeCandidateById(bundle: DigestVisualBundle, id: string): Dig
     throw new Error("Cannot remove the last visual candidate.");
   }
   const selectedId =
-    bundle.selectedId && next.some((c) => c.id === bundle.selectedId)
-      ? bundle.selectedId
-      : (next[0]?.id ?? null);
+    bundle.selectedId && next.some((c) => c.id === bundle.selectedId) ? bundle.selectedId : null;
   return { ...bundle, candidates: next, selectedId, updatedAt: new Date().toISOString() };
 }
 
 export function removeAiCandidates(bundle: DigestVisualBundle): DigestVisualBundle {
   const next = bundle.candidates.filter((c) => !c.aiGenerated);
   const selectedId =
-    bundle.selectedId && next.some((c) => c.id === bundle.selectedId)
-      ? bundle.selectedId
-      : (next.find((c) => c.type === "source")?.id ?? next[0]?.id ?? null);
+    bundle.selectedId && next.some((c) => c.id === bundle.selectedId) ? bundle.selectedId : null;
   return { ...bundle, candidates: next, selectedId, updatedAt: new Date().toISOString() };
 }
 
 export function mergeCandidates(existing: DigestVisualBundle, incoming: DigestVisualCandidate[]): DigestVisualBundle {
   const merged = dedupeByUrl([...existing.candidates, ...incoming]);
+  if (existing.linkPreviewOnly === true) {
+    return {
+      v: 2,
+      selectedId: null,
+      linkPreviewOnly: true,
+      strategies: existing.strategies,
+      candidates: merged,
+      updatedAt: new Date().toISOString(),
+    };
+  }
   const selectedId =
-    existing.selectedId && merged.some((c) => c.id === existing.selectedId)
-      ? existing.selectedId
-      : (merged.find((c) => c.type === "source")?.id ?? merged[0]?.id ?? null);
+    existing.selectedId && merged.some((c) => c.id === existing.selectedId) ? existing.selectedId : null;
   return {
     v: 2,
     selectedId,
@@ -557,12 +586,125 @@ export function mergeCandidates(existing: DigestVisualBundle, incoming: DigestVi
   };
 }
 
+/** Normalize client/browser MIME values (e.g. image/jpg) for stored candidates. */
+export function normalizeDigestUploadMime(raw: string): "image/jpeg" | "image/png" | "image/gif" | "image/webp" {
+  const x = raw.trim().toLowerCase();
+  if (x === "image/jpg" || x === "image/pjpeg" || x === "image/x-png") return "image/jpeg";
+  if (x === "image/jpeg" || x === "image/png" || x === "image/gif" || x === "image/webp") {
+    return x as "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  }
+  throw new Error("Only JPEG, PNG, GIF, or WebP uploads are supported.");
+}
+
+export function mergeUploadedDigestVisual(
+  bundle: DigestVisualBundle | null,
+  opts: { base64: string; mime: string; fileName?: string },
+): DigestVisualBundle {
+  const mime = normalizeDigestUploadMime(opts.mime);
+  const name = opts.fileName?.replace(/[/\\?%*:|"<>]/g, "").trim().slice(0, 180) || undefined;
+  const id = newId();
+  const candidate = candidateFrom({
+    id,
+    type: "upload",
+    kind: "inline",
+    mime,
+    base64: opts.base64,
+    provenance: name ? `Uploaded · ${name}` : "Uploaded image",
+    sourceDetail: name,
+    rights: "verify",
+    rightsNote: "Uploaded by you — confirm publication rights before reuse.",
+    aiGenerated: false,
+    rationale: "User-uploaded image for this signal’s digest visuals.",
+    createdAt: new Date().toISOString(),
+    scores: { relevance: 4, fidelity: 4, editorial: 4, risk: 2, rightsConfidence: 2 },
+  });
+
+  const base: DigestVisualBundle = bundle ?? {
+    v: 2,
+    selectedId: null,
+    candidates: [],
+    strategies: [],
+    updatedAt: new Date().toISOString(),
+  };
+
+  return {
+    ...base,
+    selectedId: id,
+    linkPreviewOnly: false,
+    candidates: [...base.candidates, candidate],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** No custom digest image — platforms use the article link (preview card / OG). */
+export function setDigestHeroLinkPreviewOnly(bundle: DigestVisualBundle): DigestVisualBundle {
+  return {
+    ...bundle,
+    selectedId: null,
+    linkPreviewOnly: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Clear persisted hero for this channel (image selection and link-preview-only). */
+export function clearDigestHeroSelection(bundle: DigestVisualBundle): DigestVisualBundle {
+  return {
+    ...bundle,
+    selectedId: null,
+    linkPreviewOnly: false,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function setSelected(bundle: DigestVisualBundle, candidateId: string | null): DigestVisualBundle {
   if (candidateId && !bundle.candidates.some((c) => c.id === candidateId)) return bundle;
-  return { ...bundle, selectedId: candidateId, updatedAt: new Date().toISOString() };
+  return {
+    ...bundle,
+    selectedId: candidateId,
+    ...(candidateId != null ? { linkPreviewOnly: false as const } : {}),
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /** Update the same candidate id with edited pixels; stash `editOriginal` on first edit for revert. */
+export function setCandidateIllustrationTextLayers(
+  bundle: DigestVisualBundle,
+  candidateId: string,
+  layers: DigestIllustrationTextLayer[] | undefined,
+): DigestVisualBundle {
+  return {
+    ...bundle,
+    candidates: bundle.candidates.map((c) =>
+      c.id === candidateId
+        ? { ...c, illustrationTextLayers: layers?.some((x) => x.text.trim()) ? layers : undefined }
+        : c,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Image alt / accessibility caption stored on the candidate (`caption` field). */
+export function setCandidateImageAlt(
+  bundle: DigestVisualBundle,
+  candidateId: string,
+  caption: string,
+): DigestVisualBundle {
+  const trimmed = caption.trim();
+  return {
+    ...bundle,
+    candidates: bundle.candidates.map((c) =>
+      c.id === candidateId
+        ? {
+            ...c,
+            caption: trimmed || undefined,
+            imageAltUserEdited: trimmed ? true : undefined,
+          }
+        : c,
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function applyCandidateImageEditInPlace(
   bundle: DigestVisualBundle,
   opts: {
@@ -570,6 +712,7 @@ export function applyCandidateImageEditInPlace(
     base64: string;
     mime: string;
     editMetadata: DigestVisualEditMetadata;
+    illustrationTextLayers?: DigestIllustrationTextLayer[] | null;
   },
 ): DigestVisualBundle {
   const idx = bundle.candidates.findIndex((c) => c.id === opts.candidateId);
@@ -594,9 +737,17 @@ export function applyCandidateImageEditInPlace(
     url: undefined,
     editMetadata: opts.editMetadata,
     editedFromId: undefined,
+    illustrationTextLayers:
+      opts.illustrationTextLayers !== undefined ? opts.illustrationTextLayers ?? undefined : c.illustrationTextLayers,
   };
   const next = bundle.candidates.map((x) => (x.id === opts.candidateId ? updated : x));
-  return { ...bundle, candidates: next, selectedId: bundle.selectedId, updatedAt: new Date().toISOString() };
+  return {
+    ...bundle,
+    candidates: next,
+    selectedId: bundle.selectedId,
+    linkPreviewOnly: false,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 /** Restore candidate visual from `editOriginal` and clear edit metadata. */
@@ -654,7 +805,13 @@ export function applyCroppedSnapshot(
           }
         : c,
     );
-    return { ...bundle, candidates: nextCandidates, selectedId: selId, updatedAt };
+    return {
+      ...bundle,
+      candidates: nextCandidates,
+      selectedId: selId,
+      linkPreviewOnly: false,
+      updatedAt,
+    };
   }
 
   const newCandId = newId();
@@ -674,11 +831,13 @@ export function applyCroppedSnapshot(
     rationale: "User-cropped digest snapshot.",
     createdAt: updatedAt,
     scores: sel.scores,
+    illustrationTextLayers: sel.illustrationTextLayers,
   };
   return {
     ...bundle,
     candidates: [...bundle.candidates, newCand],
     selectedId: newCandId,
+    linkPreviewOnly: false,
     updatedAt,
   };
 }

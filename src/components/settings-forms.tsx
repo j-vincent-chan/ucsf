@@ -155,7 +155,7 @@ export function SettingsForms({
               id="xHandle"
               name="xHandle"
               defaultValue={social.xHandle ?? ""}
-              placeholder="@ImmunoX or https://x.com/yourprogram"
+              placeholder="@yourprogram or https://x.com/yourprogram"
               className="mt-1.5"
               autoComplete="off"
             />

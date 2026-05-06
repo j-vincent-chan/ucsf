@@ -72,7 +72,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: [
-            "You are an expert science communications editor. Rewrite the user's text while preserving every factual claim, name, number, and causal relationship. Output ONLY the rewritten text, no quotes, no markdown, no title line unless the input was only a title.",
+            "You are an expert science communications editor. Rewrite the user's text while preserving every factual claim, name, number, and causal relationship. If the prose lists many linked investigators unnecessarily, tightening to correspondent-or-lead + colleagues-style wording is acceptable when it keeps the same substantive attributions implied by the source. Output ONLY the rewritten text, no quotes, no markdown, no title line unless the input was only a title.",
             digestSummaryToneAdjustExtraRules(),
             "Apply BOTH: (1) the writing tone below—voice, register, what gets emphasized, and how ideas connect—so the full piece reads as if originally drafted in that voice; (2) the target word count (within ~10% if needed for clarity).",
             toneInstruction,

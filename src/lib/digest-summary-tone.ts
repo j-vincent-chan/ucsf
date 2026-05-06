@@ -6,7 +6,7 @@ export const DIGEST_SUMMARY_TONE_OPTIONS = [
   { id: "warm", label: "Warm" },
   { id: "strategic", label: "Strategic" },
   { id: "witty", label: "Witty" },
-  { id: "thought_leadership", label: "Thought Leadership" },
+  { id: "thought_leadership", label: "Perspective" },
   { id: "technical", label: "Technical" },
 ] as const;
 
@@ -33,7 +33,7 @@ High-level and outcome-oriented. Lead with the problem, gap, or stake in the fie
       return `WRITING TONE — Witty:
 Smart, memorable, and lightly playful while staying accurate. Prefer a surprising angle or crisp rhythm over jokes that distract from the science. Avoid snark, memes, or hype. Rewrite substantively—wit should run through word choice and pacing, not just a quirky first clause.`;
     case "thought_leadership":
-      return `WRITING TONE — Thought leadership:
+      return `WRITING TONE — Perspective:
 Position the work in a bigger picture: trends in the field, unmet needs, or how the method changes what others can ask next. Sound reflective and authoritative, not promotional. Connect to implications beyond this one paper. Rework most of the wording; do not only prepend a sentence about "the landscape."`;
     case "technical":
       return `WRITING TONE — Technical:

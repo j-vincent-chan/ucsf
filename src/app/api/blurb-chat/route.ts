@@ -75,7 +75,7 @@ export async function POST(req: Request) {
         {
           role: "system",
           content: [
-            "You edit structured summary fields. Preserve factual claims; do not invent facts. Keep JSON valid and match schema exactly. Do not use possessive framing like his team/her team for co-authors; prefer colleagues, co-authors, or neutral parallel naming.",
+            "You edit structured summary fields. Preserve factual claims; do not invent facts. Keep JSON valid and match schema exactly. Do not use possessive framing like his team/her team for co-authors; prefer colleagues, co-authors, or neutral parallel naming. When rewriting author attribution, prefer corresponding author plus colleagues-style wording—not expanding into a comma-separated roster unless the user's instruction asks for naming many researchers.",
             "Unless the instruction explicitly overrides tone, match this writing style:",
             toneInstruction,
           ].join("\n\n"),

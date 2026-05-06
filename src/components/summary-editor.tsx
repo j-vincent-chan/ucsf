@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MutableRefObject,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Summary } from "@/types/database";
+import type { Summary, SummaryOutputStatus, SummaryStyle } from "@/types/database";
+import { isDigestSocialOutputStyle, type DigestContentStudioOutputOption } from "@/lib/digest-output-styles";
+import { isDigestStudioPlaceholderSummary } from "@/lib/digest-studio-placeholder-summary";
+import { DigestStudioOutputTabs, type DigestStudioOutputTab } from "@/components/digest-studio-output-tabs";
 import { summaryStyleLabel } from "@/lib/summary-style-label";
 import {
   mergeWhyIntoBlurb,
@@ -10,6 +22,7 @@ import {
   stringifyBlurbContent,
   type BlurbContent,
 } from "@/lib/blurb-content";
+import { SparklesIcon } from "@/components/icons/sparkles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,12 +33,18 @@ import {
   DIGEST_SUMMARY_TONE_OPTIONS,
   type DigestSummaryTone,
 } from "@/lib/digest-summary-tone";
-import { blurbWordRangeForStyle } from "@/lib/blurb-length-range";
+import {
+  BLURB_CHAR_SLIDER_STEP,
+  blurbCharRangeForStyle,
+  snapBlurbCharsToSliderStep,
+} from "@/lib/blurb-length-range";
+import { BLUESKY_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
+import { toast } from "sonner";
 
 /** Payload for full regeneration (channel + tone + length + optional AI direction). */
 export type SummaryRegeneratePayload = {
-  /** Target word count for the generated blurb body (headline separate). */
-  targetBlurbWords: number;
+  /** Target character count for the generated blurb body (headline separate). */
+  targetBlurbChars: number;
   refinement: string;
   tone: DigestSummaryTone;
 };
@@ -37,31 +56,19 @@ const GENERATE_BLURB_STYLES = new Set<string>([
   "concise",
   "linkedin",
   "bluesky_x",
+  "x",
+  "bluesky",
+  "web_blurb",
+  "internal_digest",
 ]);
-import { toast } from "sonner";
-import { BLUESKY_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
-import { wordCountText } from "@/lib/signal-preview-metrics";
 
-function CopyIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
+function normalizeOutputStatus(v: string | null | undefined): SummaryOutputStatus {
+  if (v === "ready" || v === "reviewed" || v === "draft") return v;
+  return "draft";
 }
+
+/** Matches summary `Textarea` `min-h`; used when syncing height to `scrollHeight`. */
+const SUMMARY_BODY_TEXTAREA_MIN_PX = 168;
 
 export type DigestPublishAttachmentMode = "digest_visual" | "source_link";
 
@@ -80,15 +87,16 @@ export function DigestPublishSettingsInline({
   postToBluesky,
   onPostToXChange,
   onPostToBlueskyChange,
-  attachmentMode,
-  onAttachmentModeChange,
+  // attachmentMode / onAttachmentModeChange are still part of the controlled publish state,
+  // but the collapsed digest strip now renders attachment actions (copy/download) instead of a toggle.
+  attachmentMode: _attachmentMode,
+  onAttachmentModeChange: _onAttachmentModeChange,
   sourceUrl,
   className = "",
 }: SummaryEditorPublishPlatformsControlled & {
   sourceUrl?: string | null;
   className?: string;
 }) {
-  const hasLink = Boolean(sourceUrl?.trim());
   return (
     <div
       className={`rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--card)]/85 px-3 py-2 ${className}`}
@@ -117,51 +125,25 @@ export function DigestPublishSettingsInline({
           />
           Bluesky
         </label>
-        {hasLink ? (
-          <>
-            <span className="text-[color:var(--muted-foreground)]/70" aria-hidden>
-              ·
-            </span>
-            <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">With</span>
-            <span className="inline-flex rounded-lg border border-[color:var(--border)]/70 p-0.5">
-              <button
-                type="button"
-                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                  attachmentMode === "digest_visual"
-                    ? "bg-[color:var(--accent)]/18 text-[color:var(--foreground)]"
-                    : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-                }`}
-                onClick={() => onAttachmentModeChange("digest_visual")}
-              >
-                Image
-              </button>
-              <button
-                type="button"
-                className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                  attachmentMode === "source_link"
-                    ? "bg-[color:var(--accent)]/18 text-[color:var(--foreground)]"
-                    : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-                }`}
-                onClick={() => onAttachmentModeChange("source_link")}
-              >
-                Link
-              </button>
-            </span>
-          </>
-        ) : null}
-        <span className="text-[10px] leading-snug text-[color:var(--muted-foreground)] max-sm:basis-full max-sm:pt-0.5 sm:ml-auto sm:text-right">
-          Newsletter &amp; LinkedIn planned.
-        </span>
       </div>
     </div>
   );
 }
 
 export type SummaryEditorDigestWorkflow = {
-  genStyle: string;
-  onGenStyleChange: (style: string) => void;
+  /** All channels in the single Output dropdown (Content studio shows exactly these rows). */
+  channelOptions: DigestContentStudioOutputOption[];
+  selectedChannelStyle: SummaryStyle;
+  onSelectChannelStyle: (style: SummaryStyle) => void;
+  /** Always three outputs; `selectable` when generated text exists for that channel. */
+  outputTabs: DigestStudioOutputTab[];
+  activeTabStyle: SummaryStyle;
+  onSelectOutputTab: (style: SummaryStyle) => void;
   onRegenerate: (payload: SummaryRegeneratePayload) => void | Promise<void>;
   regenerateBusy: boolean;
+  /** Remove this channel’s summary row (reset the output). */
+  onResetDigestOutput: () => void | Promise<void>;
+  resetDigestBusy: boolean;
   disableActions: boolean;
 };
 
@@ -181,6 +163,10 @@ export function SummaryEditor({
   standaloneRegenerate,
   publishPlatforms,
   omitPublishChrome,
+  digestBriefSaveOutletRef,
+  onBriefSaveBusyChange,
+  onAfterSuccessfulBriefSave,
+  omitDigestOutputTabs = false,
 }: {
   summary: Summary;
   onSaved: () => Promise<void>;
@@ -195,6 +181,14 @@ export function SummaryEditor({
   publishPlatforms?: SummaryEditorPublishPlatformsControlled;
   /** Digest card: publish bar + Post/Save/Copy live in the collapsed preview only — hide them here. */
   omitPublishChrome?: boolean;
+  /** Digest: parent holds Save on checklist row — assign latest save handler here; hides inline footer Save when set. */
+  digestBriefSaveOutletRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** Digest: mirror saving state so external Save disables (e.g. checklist + collapsed strip share one flag). */
+  onBriefSaveBusyChange?: (busy: boolean) => void;
+  /** Digest queue card: collapse the expanded row after a successful save so the Output preview is visible again. */
+  onAfterSuccessfulBriefSave?: () => void;
+  /** Digest expanded card: parent renders channel tabs above Content studio — hide duplicate tab strip here. */
+  omitDigestOutputTabs?: boolean;
 }) {
   const rawText = summary.edited_text ?? summary.generated_text;
   const initial = mergeWhyIntoBlurb(
@@ -207,16 +201,31 @@ export function SummaryEditor({
   );
   const [content, setContent] = useState<BlurbContent>(initial);
   const [saving, setSaving] = useState(false);
-  const channelStyleForLength = digestWorkflow?.genStyle ?? summary.style;
-  const wordRange = useMemo(() => blurbWordRangeForStyle(channelStyleForLength), [channelStyleForLength]);
-  const [targetBlurbWords, setTargetBlurbWords] = useState(() =>
-    blurbWordRangeForStyle(digestWorkflow?.genStyle ?? summary.style).default,
+  const channelStyleForLength = summary.style;
+  const charRange = useMemo(() => blurbCharRangeForStyle(channelStyleForLength), [channelStyleForLength]);
+  const [targetBlurbChars, setTargetBlurbChars] = useState(() => {
+    const fromDb = summary.target_blurb_chars;
+    if (typeof fromDb === "number" && Number.isFinite(fromDb) && fromDb > 0) {
+      return snapBlurbCharsToSliderStep(fromDb);
+    }
+    return blurbCharRangeForStyle(summary.style).default;
+  });
+  const lengthSliderFillPct = useMemo(() => {
+    const span = charRange.max - charRange.min;
+    if (span <= 0) return 0;
+    return ((targetBlurbChars - charRange.min) / span) * 100;
+  }, [charRange.min, charRange.max, targetBlurbChars]);
+  const [outputStatus, setOutputStatus] = useState<SummaryOutputStatus>(() =>
+    normalizeOutputStatus(summary.output_status),
   );
+  /** Only reset length when switching summaries — not when the same row refreshes after Generate. */
+  const lastSummaryIdForLengthRef = useRef(summary.id);
   const [chatPrompt, setChatPrompt] = useState("");
   const [intPostToX, setIntPostToX] = useState(true);
   const [intPostToBluesky, setIntPostToBluesky] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [intAttachmentMode, setIntAttachmentMode] = useState<DigestPublishAttachmentMode>("digest_visual");
+  const summaryBodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const postToX = publishPlatforms ? publishPlatforms.postToX : intPostToX;
   const setPostToX = publishPlatforms ? publishPlatforms.onPostToXChange : setIntPostToX;
@@ -226,6 +235,8 @@ export function SummaryEditor({
   const setAttachmentMode = publishPlatforms ? publishPlatforms.onAttachmentModeChange : setIntAttachmentMode;
 
   const [toneInternal, setToneInternal] = useState<DigestSummaryTone>(DEFAULT_DIGEST_SUMMARY_TONE);
+  /** Tracks which summary row last drove tone sync — avoids snapping to Professional when `digest_tone` is briefly null during refresh/generate. */
+  const toneSyncSummaryIdRef = useRef(summary.id);
   const toneControlledDefined = toneControlled !== undefined;
   const tone = toneControlledDefined ? toneControlled : toneInternal;
   function setTone(next: DigestSummaryTone) {
@@ -242,7 +253,7 @@ export function SummaryEditor({
       ),
     );
     setChatPrompt("");
-    setTargetBlurbWords(blurbWordRangeForStyle(digestWorkflow?.genStyle ?? summary.style).default);
+    setOutputStatus(normalizeOutputStatus(summary.output_status));
     if (!publishPlatforms) {
       setIntAttachmentMode("digest_visual");
       setIntPostToX(true);
@@ -251,9 +262,39 @@ export function SummaryEditor({
   }, [summary, publishPlatforms]);
 
   useEffect(() => {
-    const r = blurbWordRangeForStyle(digestWorkflow?.genStyle ?? summary.style);
-    setTargetBlurbWords((prev) => Math.min(r.max, Math.max(r.min, prev)));
-  }, [digestWorkflow?.genStyle, summary.style]);
+    if (!digestWorkflow || toneControlledDefined) return;
+    const prevId = toneSyncSummaryIdRef.current;
+    const idChanged = prevId !== summary.id;
+    const t = summary.digest_tone;
+    if (t && DIGEST_SUMMARY_TONE_OPTIONS.some((o) => o.id === t)) {
+      setToneInternal(t as DigestSummaryTone);
+      toneSyncSummaryIdRef.current = summary.id;
+      return;
+    }
+    if (idChanged) {
+      setToneInternal(DEFAULT_DIGEST_SUMMARY_TONE);
+    }
+    toneSyncSummaryIdRef.current = summary.id;
+  }, [digestWorkflow, toneControlledDefined, summary.id, summary.digest_tone]);
+
+  useEffect(() => {
+    if (lastSummaryIdForLengthRef.current !== summary.id) {
+      lastSummaryIdForLengthRef.current = summary.id;
+      const fromDb = summary.target_blurb_chars;
+      setTargetBlurbChars(
+        typeof fromDb === "number" && Number.isFinite(fromDb) && fromDb > 0
+          ? snapBlurbCharsToSliderStep(fromDb)
+          : blurbCharRangeForStyle(summary.style).default,
+      );
+    }
+  }, [summary.id, summary.style]);
+
+  useEffect(() => {
+    const r = blurbCharRangeForStyle(summary.style);
+    setTargetBlurbChars((prev) =>
+      snapBlurbCharsToSliderStep(Math.min(r.max, Math.max(r.min, prev))),
+    );
+  }, [summary.style]);
 
   useEffect(() => {
     if (!sourceUrl?.trim()) {
@@ -279,39 +320,88 @@ export function SummaryEditor({
     setContent((c) => ({ ...c, blurb: t.trim(), why_it_matters: "" }));
   }
 
-  async function saveEdits() {
-    setSaving(true);
-    const supabase = createClient();
-    const edited = stringifyBlurbContent(content);
-    const { error } = await supabase.from("summaries").update({ edited_text: edited }).eq("id", summary.id);
-    setSaving(false);
-    if (error) {
-      toast.error(error.message);
+  const syncSummaryBodyTextareaHeight = useCallback(() => {
+    const el = summaryBodyTextareaRef.current;
+    if (!el) return;
+    el.style.minHeight = "0";
+    el.style.height = "0";
+    const measured = el.scrollHeight;
+    const next = Math.max(SUMMARY_BODY_TEXTAREA_MIN_PX, measured);
+    el.style.height = "";
+    if (variant === "embedded") {
+      el.style.minHeight = `${next}px`;
+    } else {
+      el.style.minHeight = "";
+      el.style.height = `${next}px`;
+    }
+  }, [variant]);
+
+  useLayoutEffect(() => {
+    syncSummaryBodyTextareaHeight();
+  }, [syncSummaryBodyTextareaHeight, content.blurb]);
+
+  const saveEdits = useCallback(async () => {
+    if (isDigestStudioPlaceholderSummary(summary)) {
+      toast.message("Generate text before saving.");
       return;
     }
-    toast.success("Summary updated");
-    await onSaved();
-  }
+    setSaving(true);
+    onBriefSaveBusyChange?.(true);
+    try {
+      const supabase = createClient();
+      const edited = stringifyBlurbContent(content);
+      const cc = charCount(`${content.headline} ${summaryBody()}`.trim());
+      const { error } = await supabase
+        .from("summaries")
+        .update({
+          edited_text: edited,
+          digest_tone: tone,
+          target_blurb_chars: targetBlurbChars,
+          character_count: cc,
+          output_status: outputStatus,
+        })
+        .eq("id", summary.id);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      toast.success("Summary updated");
+      await onSaved();
+      onAfterSuccessfulBriefSave?.();
+    } finally {
+      setSaving(false);
+      onBriefSaveBusyChange?.(false);
+    }
+  }, [
+    content,
+    summary.id,
+    tone,
+    targetBlurbChars,
+    outputStatus,
+    onSaved,
+    onBriefSaveBusyChange,
+    onAfterSuccessfulBriefSave,
+    summary,
+  ]);
 
-  function wordCount(s: string): number {
-    return wordCountText(s);
+  useLayoutEffect(() => {
+    if (!digestBriefSaveOutletRef) return undefined;
+    digestBriefSaveOutletRef.current = saveEdits;
+    return () => {
+      digestBriefSaveOutletRef.current = null;
+    };
+  }, [digestBriefSaveOutletRef, saveEdits]);
+
+  function charCount(s: string): number {
+    return [...s].length;
   }
 
   function baseCopyText(): string {
     return `${content.headline}\n\n${summaryBody()}`.trim();
   }
 
-  async function copyText() {
-    const text = baseCopyText();
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Copied");
-    } catch {
-      toast.error("Copy failed");
-    }
-  }
-
   const dw = digestWorkflow;
+  const persistDigestPlaceholder = isDigestStudioPlaceholderSummary(summary);
   const showRegenerate =
     Boolean(dw) ||
     Boolean(standaloneRegenerate && GENERATE_BLURB_STYLES.has(summary.style));
@@ -332,7 +422,7 @@ export function SummaryEditor({
         : null;
     if (!regen || regen.busy || regen.disabled) return;
     const payload: SummaryRegeneratePayload = {
-      targetBlurbWords,
+      targetBlurbChars,
       refinement: chatPrompt.trim(),
       tone,
     };
@@ -344,7 +434,15 @@ export function SummaryEditor({
     }
   }
 
-  const isSocialChannel = summary.style === "bluesky_x";
+  const isSocialChannel = isDigestSocialOutputStyle(summary.style);
+  const saveInBriefOutlet = Boolean(digestBriefSaveOutletRef);
+  const showPublishSettingsInline = isSocialChannel && !omitPublishChrome;
+  const showPostInActionsFooter = showPublishSettingsInline;
+  /** Inline Save stays in Output Settings unless parent owns the handler (wired Save elsewhere). */
+  const showInlineSaveButton = !saveInBriefOutlet;
+  /** Bottom bar: divider + Generate / Post / Save (Generate stays visible even when social chrome collapses elsewhere). */
+  const showEditingActionsFooter =
+    showRegenerate || showPostInActionsFooter || showInlineSaveButton;
 
   async function publishToPlatforms() {
     const text = baseCopyText();
@@ -420,7 +518,7 @@ export function SummaryEditor({
   /** Twin panels (Selected text / Editing channels); outer shell stays minimal like Media library + digest column. */
   const shellClass =
     variant === "embedded"
-      ? "flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 text-sm"
+      ? "flex h-full min-h-0 w-full min-w-0 flex-1 flex-col gap-4 text-sm"
       : "w-full min-w-0 space-y-4 text-sm";
 
   return (
@@ -430,31 +528,41 @@ export function SummaryEditor({
           variant === "embedded" ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"
         }`}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-              Selected text
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+            Selected output
+          </p>
+          {digestWorkflow ? (
+            <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+              Review the saved text for this channel.
             </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void copyText()}
-            title="Copy summary"
-            aria-label="Copy summary"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border)]/65 text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)]"
-          >
-            <CopyIcon className="h-4 w-4 shrink-0" aria-hidden />
-          </button>
+          ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)]/45 pb-3 text-xs text-[color:var(--muted-foreground)]">
-          <span className="rounded-full border border-[color:var(--border)]/75 bg-[color:var(--muted)]/30 px-2.5 py-0.5 font-semibold text-[color:var(--foreground)]">
-            {summaryStyleLabel(summary.style)}
-          </span>
-          <span className="text-right">
-            {summary.model_name ?? "model"} · {new Date(summary.created_at).toLocaleString()}
-          </span>
-        </div>
+        {digestWorkflow && !omitDigestOutputTabs ? (
+          <DigestStudioOutputTabs
+            tabs={digestWorkflow.outputTabs}
+            activeStyle={digestWorkflow.activeTabStyle}
+            onSelectStyle={digestWorkflow.onSelectOutputTab}
+            disabled={digestWorkflow.disableActions}
+          />
+        ) : null}
+
+        {!digestWorkflow ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--border)]/45 pb-3 text-xs text-[color:var(--muted-foreground)]">
+            <span className="rounded-full border border-[color:var(--border)]/75 bg-[color:var(--muted)]/30 px-2.5 py-0.5 font-semibold text-[color:var(--foreground)]">
+              {summaryStyleLabel(summary.style)}
+            </span>
+            <span className="text-right">
+              {summary.model_name ?? "model"} ·{" "}
+              <span suppressHydrationWarning>
+                {new Date(
+                  summary.generated_at ?? summary.updated_at ?? summary.created_at,
+                ).toLocaleString()}
+              </span>
+            </span>
+          </div>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Headline</Label>
@@ -468,95 +576,149 @@ export function SummaryEditor({
           className={
             variant === "embedded"
               ? "flex min-h-0 flex-1 flex-col gap-1.5"
-              : "space-y-1.5"
+              : "flex flex-col gap-1.5"
           }
         >
           <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Summary</Label>
           <Textarea
-            className={`w-full min-w-0 box-border border-[color:var(--border)]/85 bg-[color:var(--background)]/95 ${
+            ref={summaryBodyTextareaRef}
+            className={`w-full min-w-0 box-border resize-y border-[color:var(--border)]/85 bg-[color:var(--background)]/95 ${
               variant === "embedded"
-                ? "min-h-[168px] flex-1 resize-y"
-                : "min-h-[168px]"
+                ? "min-h-0 flex-1 overflow-auto"
+                : "min-h-[168px] overflow-hidden"
             }`}
             value={summaryBody()}
             onChange={(e) => applySummaryBody(e.target.value)}
           />
         </div>
+        {digestWorkflow ? (
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[color:var(--border)]/45 pt-3 text-[11px] font-medium tabular-nums text-[color:var(--muted-foreground)]">
+            <span className="min-w-0 shrink-0">
+              {charCount(`${content.headline} ${summaryBody()}`.trim()).toLocaleString("en-US")}{" "}
+              characters
+            </span>
+            <span className="min-w-0 max-w-[min(100%,22rem)] text-right leading-snug">
+              {summary.model_name ?? "model"} ·{" "}
+              <span suppressHydrationWarning>
+                {new Date(
+                  summary.generated_at ?? summary.updated_at ?? summary.created_at,
+                ).toLocaleString()}
+              </span>
+            </span>
+          </div>
+        ) : null}
       </section>
 
-      <section className={editingChannelsShell}>
+      <section
+        className={`${editingChannelsShell}${variant === "embedded" ? " shrink-0" : ""}`}
+      >
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-            Editing channels
+            Output Settings
           </p>
           <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-            Channel, tone, length, and optional AI direction are applied when you generate the selected text
-            above.
+            Set the channel, tone, length, and edit direction.             Use{" "}
+            <span className="font-medium text-[color:var(--foreground)]">Save all changes</span> to keep edits.{" "}
+            <span className="font-medium text-[#8b7e74] dark:text-[#b8a99e]">Reset text</span> removes this output entirely so
+            you can start over on this channel.
           </p>
         </div>
 
-        {dw ? (
-          <div className="flex min-w-0 flex-col gap-2 border-b border-[color:var(--border)]/40 pb-4">
-            <div className="flex min-w-0 max-w-md flex-col gap-2">
-              <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Channel</Label>
+        <div
+          className={
+            dw
+              ? "flex min-w-0 flex-col gap-3 border-b border-[color:var(--border)]/40 pb-4 sm:flex-row sm:items-start sm:gap-3 lg:gap-4"
+              : "flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-8"
+          }
+        >
+          {dw ? (
+            <>
+              <div className="flex min-w-0 flex-[1.2] basis-0 flex-col gap-2 sm:max-w-[min(100%,18rem)]">
+                <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Output</Label>
+                <Select
+                  value={dw.selectedChannelStyle}
+                  onChange={(e) => dw.onSelectChannelStyle(e.target.value as SummaryStyle)}
+                  className="w-full py-2.5 leading-normal"
+                  aria-label="Channel for this signal"
+                  disabled={dw.disableActions}
+                >
+                  {dw.channelOptions.map((opt) => (
+                    <option key={opt.style} value={opt.style}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="flex min-w-0 flex-[1.2] basis-0 flex-col gap-2 sm:max-w-[min(100%,18rem)]">
+                <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Tone</Label>
+                <Select
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value as DigestSummaryTone)}
+                  className="w-full py-2.5 text-sm leading-normal"
+                  aria-label="Writing tone"
+                  disabled={dw.disableActions}
+                >
+                  {DIGEST_SUMMARY_TONE_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-w-0 shrink-0 flex-col gap-2 sm:w-[min(100%,14rem)]">
+              <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Tone</Label>
               <Select
-                value={dw.genStyle}
-                onChange={(e) => dw.onGenStyleChange(e.target.value)}
-                className="w-full py-2.5 leading-normal"
-                aria-label="Summary format for generation"
-                disabled={dw.disableActions}
+                value={tone}
+                onChange={(e) => setTone(e.target.value as DigestSummaryTone)}
+                className="py-2.5 text-sm leading-normal"
+                aria-label="Writing tone"
               >
-                <option value="newsletter">Newsletter</option>
-                <option value="linkedin">LinkedIn</option>
-                <option value="bluesky_x">Social media</option>
+                {DIGEST_SUMMARY_TONE_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
               </Select>
             </div>
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-8">
-          <div className="flex min-w-0 shrink-0 flex-col gap-2 sm:w-[min(100%,14rem)]">
-            <Label className="text-[11px] font-semibold text-[color:var(--foreground)]/90">Tone</Label>
-            <Select
-              value={tone}
-              onChange={(e) => setTone(e.target.value as DigestSummaryTone)}
-              className="py-2.5 text-sm leading-normal"
-              aria-label="Writing tone"
-            >
-              {DIGEST_SUMMARY_TONE_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="min-w-0 flex-1 space-y-2 pt-0.5 sm:pt-0">
-            <Label className="text-[11px] font-semibold text-[color:var(--foreground)]/90">Length</Label>
-            <div className="px-0.5 pt-1">
+          )}
+          <div
+            className={
+              dw
+                ? "flex min-w-0 flex-[1.15] basis-0 flex-col gap-2 sm:max-w-[min(100%,22rem)]"
+                : "flex min-w-0 flex-1 flex-col gap-2 sm:pt-0"
+            }
+          >
+            <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Length</Label>
+            <div className={dw ? "px-0.5 pt-0.5" : "px-0.5 pt-1"}>
               <input
                 type="range"
-                min={wordRange.min}
-                max={wordRange.max}
-                step={1}
-                value={targetBlurbWords}
-                onChange={(e) => setTargetBlurbWords(Number(e.target.value))}
-                className="editorial-length-slider h-2.5 w-full cursor-pointer appearance-none rounded-full bg-[color:var(--border)]/60 accent-[color:var(--accent)]"
-                aria-valuetext={`Target ${targetBlurbWords} words for blurb`}
-                aria-label="Target length in words for the summary body"
+                min={charRange.min}
+                max={charRange.max}
+                step={BLURB_CHAR_SLIDER_STEP}
+                value={targetBlurbChars}
+                onChange={(e) => setTargetBlurbChars(Number(e.target.value))}
+                className="editorial-length-slider h-2.5 w-full cursor-pointer appearance-none"
+                style={{ "--range-pct": `${lengthSliderFillPct}%` } as CSSProperties}
+                aria-valuetext={`Target ${targetBlurbChars} characters for blurb`}
+                aria-label="Target length in characters for the summary body"
               />
               <div className="mt-2 flex justify-between gap-2 text-[11px] font-medium">
-                <span className="text-[color:var(--muted-foreground)]/85">{wordRange.min}</span>
-                <span className="tabular-nums text-[color:var(--foreground)]">~{targetBlurbWords} words</span>
-                <span className="text-[color:var(--muted-foreground)]/85">{wordRange.max}</span>
+                <span className="text-[color:var(--muted-foreground)]/85">{charRange.min}</span>
+                <span className="tabular-nums text-[color:var(--foreground)]">~{targetBlurbChars} characters</span>
+                <span className="text-[color:var(--muted-foreground)]/85">{charRange.max}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <p className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
-          Draft {wordCount(`${content.headline} ${summaryBody()}`.trim())} words · target ~{targetBlurbWords}{" "}
-          words when generating
-        </p>
+        {!digestWorkflow ? (
+          <p className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
+            Draft {charCount(`${content.headline} ${summaryBody()}`.trim())} characters · target ~{targetBlurbChars}{" "}
+            characters when generating
+          </p>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Adjust with AI</Label>
@@ -575,25 +737,7 @@ export function SummaryEditor({
           />
         </div>
 
-        {showRegenerate ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              className="h-10 px-4 text-sm font-semibold"
-              disabled={
-                dw
-                  ? dw.disableActions || dw.regenerateBusy
-                  : Boolean(standaloneRegenerate?.busy)
-              }
-              onClick={() => void runRegenerate()}
-            >
-              {(dw ? dw.regenerateBusy : standaloneRegenerate?.busy) ? "Generating…" : "Generate"}
-            </Button>
-          </div>
-        ) : null}
-
-        {isSocialChannel && !omitPublishChrome ? (
+        {showPublishSettingsInline ? (
           <div className="border-t border-[color:var(--border)]/40 pt-4">
             <DigestPublishSettingsInline
               postToX={postToX}
@@ -608,27 +752,64 @@ export function SummaryEditor({
           </div>
         ) : null}
 
-        {!(omitPublishChrome && isSocialChannel) ? (
+        {showEditingActionsFooter ? (
           <div className="flex flex-wrap items-center gap-2 border-t border-[color:var(--border)]/40 pt-4">
-            {isSocialChannel && !omitPublishChrome ? (
+            {showRegenerate ? (
               <Button
                 type="button"
-                className="h-10 px-5 text-sm font-semibold shadow-sm"
+                variant="primary"
+                className="h-10 min-h-10 gap-2 px-5 text-sm font-semibold"
+                disabled={
+                  dw
+                    ? dw.disableActions || dw.regenerateBusy
+                    : Boolean(standaloneRegenerate?.busy)
+                }
+                onClick={() => void runRegenerate()}
+              >
+                <SparklesIcon className="h-4 w-4 shrink-0 opacity-95" />
+                {(dw ? dw.regenerateBusy : standaloneRegenerate?.busy)
+                  ? "Generating text…"
+                  : "Generate text"}
+              </Button>
+            ) : null}
+            {dw ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-10 min-h-10 border border-solid border-[#d1c6bd] bg-[#f9f7f2] px-5 text-sm font-semibold !text-[#8b7e74] shadow-none hover:!text-[#6f645c] hover:bg-[#f3efe8] dark:border-[color:var(--border)]/65 dark:bg-[color:var(--muted)]/20 dark:!text-[#b8a99e] dark:hover:bg-[color:var(--muted)]/30 dark:hover:!text-[#cbbfaf]"
+                disabled={
+                  dw.disableActions ||
+                  dw.regenerateBusy ||
+                  dw.resetDigestBusy ||
+                  saving ||
+                  persistDigestPlaceholder
+                }
+                onClick={() => void Promise.resolve(dw.onResetDigestOutput())}
+              >
+                {dw.resetDigestBusy ? "Removing…" : "Reset text"}
+              </Button>
+            ) : null}
+            {showPostInActionsFooter ? (
+              <Button
+                type="button"
+                className="h-10 min-h-10 px-5 text-sm font-semibold shadow-sm"
                 disabled={publishing || (!postToX && !postToBluesky)}
                 onClick={() => void publishToPlatforms()}
               >
                 {publishing ? "Posting…" : "Post"}
               </Button>
             ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void saveEdits()}
-              disabled={saving}
-              className="h-10 px-5 text-sm font-medium"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
+            {showInlineSaveButton ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void saveEdits()}
+                disabled={saving}
+                className="h-10 min-h-10 px-5 text-sm font-semibold"
+              >
+                {saving ? "Saving…" : "Save all changes"}
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </section>

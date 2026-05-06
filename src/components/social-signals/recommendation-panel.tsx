@@ -23,9 +23,9 @@ export function RecommendationPanel({
           >
             <p className="text-sm font-semibold text-[color:var(--foreground)]">{r.action}</p>
             <p className="mt-1 text-xs leading-relaxed text-[color:var(--muted-foreground)]">{r.reason}</p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               {r.platforms.map((p) => (
-                <PlatformBadge key={p} platform={p} size="xs" />
+                <PlatformBadge key={p} platform={p} size="md" />
               ))}
             </div>
             <p className="mt-2 text-[11px] text-[color:var(--foreground)]">

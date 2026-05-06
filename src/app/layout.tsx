@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: `Signal ${SIGNAL_SUBTITLE}`,
-  description: "Internal newsletter pipeline for OCR / ImmunoX",
+  description: "Internal research signal and newsletter pipeline",
 };
 
 export default function RootLayout({
