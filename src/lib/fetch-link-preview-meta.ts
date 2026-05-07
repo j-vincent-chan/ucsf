@@ -1,6 +1,12 @@
 import * as cheerio from "cheerio";
 
-const USER_AGENT = "CommunitySignalDigest/1.0 (link-preview)";
+/**
+ * Many sites (including NCBI) return 403 to non-browser or bot user agents from cloud/datacenter IPs.
+ * Use a standard browser string for Open Graph fetches (see `fetchLinkPreviewMeta` + PubMed E-utilities fallback).
+ */
+const BROWSER_LIKE_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const EUTILS_UA = "CommunitySignal/1.0 (link-preview; +https://github.com/j-vincent-chan/ucsf) eutils";
 const MAX_HTML_BYTES = 400_000;
 
 function clip(s: string, max: number): string {
@@ -46,6 +52,62 @@ export function isLikelyPublicHttpArticleUrl(urlString: string): boolean {
   return true;
 }
 
+/** /pubmed/12345/ or /12345/ on pubmed.ncbi.nlm.nih.gov */
+function extractPubMedPmid(urlString: string): string | null {
+  try {
+    const u = new URL(urlString);
+    if (!u.hostname.toLowerCase().endsWith("pubmed.ncbi.nlm.nih.gov")) return null;
+    const parts = u.pathname.split("/").filter(Boolean);
+    return parts.find((p) => /^\d{5,12}$/.test(p)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * NCBI E-utilities: works from Vercel while direct HTML to pubmed.ncbi.nlm.nih.gov often returns 403 for cloud IPs.
+ * @see https://www.ncbi.nlm.nih.gov/books/NBK25501/
+ */
+async function tryPubMedEsummaryMeta(pageUrl: string): Promise<LinkPreviewMeta | null> {
+  const pmid = extractPubMedPmid(pageUrl);
+  if (!pmid) return null;
+  const tool = "CommunitySignal";
+  const email = process.env.NCBI_EUTILS_EMAIL?.trim();
+  const q = new URLSearchParams({
+    db: "pubmed",
+    id: pmid,
+    retmode: "json",
+    tool,
+  });
+  if (email) q.set("email", email);
+  try {
+    const apiUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?${q.toString()}`;
+    const res = await fetch(apiUrl, {
+      headers: { Accept: "application/json", "User-Agent": EUTILS_UA },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      result?: {
+        uids?: string[];
+        [pmid: string]: { title?: string; fulljournalname?: string; source?: string } | string[] | undefined;
+      };
+    };
+    const block = data.result?.[pmid] as { title?: string; fulljournalname?: string; source?: string } | undefined;
+    const title = block?.title?.trim();
+    if (!title) return null;
+    const siteLabel = clip((block?.fulljournalname || block?.source || "PubMed").trim(), 120);
+    return {
+      title: clip(title, 300),
+      description: "",
+      imageUrl: null,
+      siteLabel,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function resolveImageUrl(pageUrl: string, raw: string | undefined): string | null {
   const t = raw?.trim();
   if (!t) return null;
@@ -63,9 +125,43 @@ function resolveImageUrl(pageUrl: string, raw: string | undefined): string | nul
   }
 }
 
+function parseOgFromHtml(pageUrl: string, html: string): LinkPreviewMeta {
+  const $ = cheerio.load(html);
+  const ogTitle =
+    $('meta[property="og:title"]').attr("content")?.trim() ??
+    $('meta[name="twitter:title"]').attr("content")?.trim();
+  const ogDesc =
+    $('meta[property="og:description"]').attr("content")?.trim() ??
+    $('meta[name="twitter:description"]').attr("content")?.trim() ??
+    $('meta[name="description"]').attr("content")?.trim();
+  const titleTag = $("title").first().text().trim();
+  const ogImageRaw =
+    $('meta[property="og:image"]').attr("content")?.trim() ??
+    $('meta[property="og:image:url"]').attr("content")?.trim() ??
+    $('meta[name="twitter:image"]').attr("content")?.trim() ??
+    $('meta[name="twitter:image:src"]').attr("content")?.trim();
+  const imageUrl = resolveImageUrl(pageUrl, ogImageRaw);
+  const ogSite = $('meta[property="og:site_name"]').attr("content")?.trim();
+  let hostname = "";
+  try {
+    hostname = new URL(pageUrl).hostname;
+  } catch {
+    /* ignore */
+  }
+  const siteFallback = hostname.replace(/^www\./i, "") || "Link";
+  const title = clip(ogTitle || titleTag || hostname, 300);
+  const description = clip(ogDesc || "", 1000);
+  const siteLabel = clip(ogSite || siteFallback, 120);
+  return { title, description, imageUrl, siteLabel };
+}
+
 /**
  * Best-effort Open Graph / title scrape for link-card publishing (Bluesky external embed) and UI previews.
  * Never throws; returns fallbacks on failure.
+ *
+ * **Production note:** Requests originate from your deployment region (e.g. Vercel). Some publishers (notably
+ * NCBI PubMed HTML) respond **403** to datacenter IPs while localhost succeeds. We use a browser-like `User-Agent`
+ * and, for PubMed URLs, **NCBI E-utilities** (`esummary`) so title/metadata still resolve when HTML is blocked.
  */
 export async function fetchLinkPreviewMeta(pageUrl: string): Promise<LinkPreviewMeta> {
   let hostname = "";
@@ -77,46 +173,50 @@ export async function fetchLinkPreviewMeta(pageUrl: string): Promise<LinkPreview
 
   const siteFallback = hostname.replace(/^www\./i, "") || "Link";
 
+  const pubMedFallbackPromise = tryPubMedEsummaryMeta(pageUrl);
+
   try {
     const res = await fetch(pageUrl, {
       redirect: "follow",
       headers: {
         Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-        "User-Agent": USER_AGENT,
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": BROWSER_LIKE_UA,
       },
       signal: AbortSignal.timeout(12_000),
     });
 
     const buf = Buffer.from(await res.arrayBuffer());
-    const slice = buf.subarray(0, Math.min(buf.length, MAX_HTML_BYTES));
-    const html = slice.toString("utf8");
-    const $ = cheerio.load(html);
+    const pubMedMeta = await pubMedFallbackPromise;
 
-    const ogTitle =
-      $('meta[property="og:title"]').attr("content")?.trim() ??
-      $('meta[name="twitter:title"]').attr("content")?.trim();
-    const ogDesc =
-      $('meta[property="og:description"]').attr("content")?.trim() ??
-      $('meta[name="twitter:description"]').attr("content")?.trim() ??
-      $('meta[name="description"]').attr("content")?.trim();
+    if (res.ok) {
+      const slice = buf.subarray(0, Math.min(buf.length, MAX_HTML_BYTES));
+      const html = slice.toString("utf8");
+      const parsed = parseOgFromHtml(pageUrl, html);
+      const looksLikeHttpError = /^(403|404|401|502|503)\b/i.test(parsed.title.trim());
+      if (looksLikeHttpError && pubMedMeta) {
+        return {
+          ...pubMedMeta,
+          imageUrl: parsed.imageUrl ?? pubMedMeta.imageUrl,
+          description: parsed.description || pubMedMeta.description,
+        };
+      }
+      if (!parsed.title.trim() && pubMedMeta) {
+        return {
+          ...parsed,
+          title: pubMedMeta.title,
+          siteLabel: pubMedMeta.siteLabel || parsed.siteLabel,
+        };
+      }
+      return parsed;
+    }
 
-    const titleTag = $("title").first().text().trim();
+    if (pubMedMeta) return pubMedMeta;
 
-    const ogImageRaw =
-      $('meta[property="og:image"]').attr("content")?.trim() ??
-      $('meta[property="og:image:url"]').attr("content")?.trim() ??
-      $('meta[name="twitter:image"]').attr("content")?.trim() ??
-      $('meta[name="twitter:image:src"]').attr("content")?.trim();
-
-    const imageUrl = resolveImageUrl(pageUrl, ogImageRaw);
-    const ogSite = $('meta[property="og:site_name"]').attr("content")?.trim();
-
-    const title = clip(ogTitle || titleTag || hostname, 300);
-    const description = clip(ogDesc || "", 1000);
-    const siteLabel = clip(ogSite || siteFallback, 120);
-
-    return { title, description, imageUrl, siteLabel };
+    return { title: hostname || "Link", description: "", imageUrl: null, siteLabel: siteFallback };
   } catch {
+    const pubMedMeta = await pubMedFallbackPromise.catch(() => null);
+    if (pubMedMeta) return pubMedMeta;
     return { title: hostname || "Link", description: "", imageUrl: null, siteLabel: siteFallback };
   }
 }
