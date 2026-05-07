@@ -13,6 +13,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, ItemStatus } from "@/types/database";
+import { ITEM_QUEUE_FILTER_CATEGORIES, itemCategoryOptionLabel } from "@/lib/item-category-ui";
 import {
   ARCHIVE_REASON_OPTIONS,
   isArchiveReasonConstraintError,
@@ -640,13 +641,11 @@ export function ItemsQueue({
                     className={FILTER_SELECT_CLASS}
                   >
                     <option value="">Any</option>
-                    <option value="paper">Paper</option>
-                    <option value="award">Award</option>
-                    <option value="event">Event</option>
-                    <option value="media">Media</option>
-                    <option value="funding">Funding</option>
-                    <option value="community_update">Community update</option>
-                    <option value="other">Other</option>
+                    {ITEM_QUEUE_FILTER_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {itemCategoryOptionLabel(c)}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -826,13 +825,11 @@ export function ItemsQueue({
                   }}
                 >
                   <option value="">Set category…</option>
-                  <option value="paper">Paper</option>
-                  <option value="award">Award</option>
-                  <option value="event">Event</option>
-                  <option value="media">Media</option>
-                  <option value="funding">Funding</option>
-                  <option value="community_update">Community update</option>
-                  <option value="other">Other</option>
+                  {ITEM_QUEUE_FILTER_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {itemCategoryOptionLabel(c)}
+                    </option>
+                  ))}
                 </select>
               </div>
               {bulkArchivePanelOpen ? (

@@ -41,6 +41,7 @@ const CollaborationLandscapeDialog = dynamic(
   { ssr: false },
 );
 import { createClient } from "@/lib/supabase/client";
+import { categoryDisplayLabel } from "@/lib/item-category-ui";
 import type { ItemCategory } from "@/types/database";
 import { toast } from "sonner";
 import type {
@@ -71,35 +72,35 @@ const RANGES: { id: ChartRange; label: string }[] = [
 const CAT_COLORS: Record<string, string> = {
   paper: "#7c8fa8",
   award: "#c9955b",
-  event: "#b47f93",
   media: "#a66b72",
   funding: "#7b977f",
-  community_update: "#73979a",
   other: "#9a8d84",
 };
 
 const CAT_LABEL: Record<string, string> = {
   paper: "Publications",
   award: "Awards",
-  event: "Events",
-  media: "Media",
+  media: "News",
   funding: "Funding",
-  community_update: "Community",
   other: "Other",
 };
 
-const CATEGORY_DRILL_ORDER: ItemCategory[] = [
+const CATEGORY_DRILL_ORDER: readonly ItemCategory[] = [
   "paper",
   "award",
-  "event",
   "media",
   "funding",
-  "community_update",
   "other",
 ];
 
 function categoryDrillRank(category: ItemCategory | null): number {
-  const key = category ?? "other";
+  const key: ItemCategory =
+    category === "paper" ||
+    category === "award" ||
+    category === "media" ||
+    category === "funding"
+      ? category
+      : "other";
   const i = CATEGORY_DRILL_ORDER.indexOf(key);
   return i >= 0 ? i : 99;
 }
@@ -251,7 +252,7 @@ function SourceDrillPanel({
                     {it.title?.trim() || "(untitled signal)"}
                   </p>
                   <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                    {CAT_LABEL[it.category ?? "other"] ?? "Other"} · {it.status}
+                    {categoryDisplayLabel(it.category)} · {it.status}
                     {(() => {
                       const ids =
                         it.tracked_entity_ids?.length && it.tracked_entity_ids.length > 0
@@ -641,8 +642,8 @@ export function ResearchDashboard({
         />
         <KpiCard label="Awards" value={kpis.award} sub="In range" href="/items?category=award" />
         <KpiCard label="Funding" value={kpis.funding} sub="In range" href="/items?category=funding" />
-        <KpiCard label="Media" value={kpis.media} sub="In range" href="/items?category=media" />
-        <KpiCard label="Events" value={kpis.event} sub="In range" href="/items?category=event" />
+        <KpiCard label="News" value={kpis.media} sub="In range" href="/items?category=media" />
+        <KpiCard label="Other" value={kpis.other} sub="In range" href="/items?category=other" />
         <KpiCard
           label="Signals ingested"
           value={kpis.total}

@@ -1,4 +1,5 @@
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
+import { categoryDisplayLabel, isCategoryOtherBucket } from "@/lib/item-category-ui";
 import { archiveReasonLabel } from "@/lib/archive-reasons";
 
 const pill =
@@ -43,9 +44,12 @@ const CATEGORY_STYLES: Record<ItemCategory, string> = {
     "bg-[#ede4db] text-[#75665d] ring-1 ring-inset ring-[#9a8d84]/30",
 };
 
-function categoryLabel(c: ItemCategory | null): string {
-  if (!c) return "—";
-  return c.replace(/_/g, " ");
+function categoryPillClass(category: ItemCategory | null): string {
+  if (isCategoryOtherBucket(category)) return CATEGORY_STYLES.other;
+  if (category === "paper" || category === "award" || category === "media" || category === "funding") {
+    return CATEGORY_STYLES[category];
+  }
+  return CATEGORY_STYLES.other;
 }
 
 const SOURCE_LABEL: Record<SourceType, string> = {
@@ -90,18 +94,7 @@ export function StatusTag({
 }
 
 export function CategoryTag({ category }: { category: ItemCategory | null }) {
-  if (!category) {
-    return (
-      <span
-        className={`${pill} bg-[#f3ece4] text-[#8d7c71] ring-1 ring-inset ring-[#d5c6b8]/65`}
-      >
-        —
-      </span>
-    );
-  }
   return (
-    <span className={`${pill} ${CATEGORY_STYLES[category]}`}>
-      {categoryLabel(category)}
-    </span>
+    <span className={`${pill} ${categoryPillClass(category)}`}>{categoryDisplayLabel(category)}</span>
   );
 }

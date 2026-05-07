@@ -22,7 +22,8 @@ export const dynamic = "force-dynamic";
  * Root-level `linkPreviewOnly` only. PostgREST rejects multi-clause boolean expressions in the
  * select list; v3 per-channel flags are resolved client-side after `digest_cover` fetch.
  */
-const ITEM_SELECT = `
+/** Base columns — always safe before `digest_marked_complete_at` migration runs. */
+const ITEM_SELECT_BASE = `
   id,
   title,
   published_at,
@@ -35,6 +36,15 @@ const ITEM_SELECT = `
   digest_cover_has_asset,
   digest_lp_only:digest_cover->>linkPreviewOnly
 `;
+
+const ITEM_SELECT_FULL = `${ITEM_SELECT_BASE.trim()},
+  digest_marked_complete_at
+`;
+
+function isMissingDigestMarkedCompleteColumn(message: string | undefined): boolean {
+  if (!message) return false;
+  return message.includes("digest_marked_complete_at");
+}
 
 /** Smaller chunks = shorter per-query work (helps under Postgres statement_timeout). */
 const JUNCTION_IN_CHUNK = 120;
@@ -218,6 +228,7 @@ function mapRow(
     raw_summary: string | null;
     digest_cover_has_asset: boolean | null;
     digest_lp_only: boolean | string | null;
+    digest_marked_complete_at?: string | null;
   },
   junctionRows: unknown[],
   primaryTrackedEntity: unknown,
@@ -252,9 +263,12 @@ function mapRow(
     digest_cover: null,
     digestCoverHasAsset: Boolean(r.digest_cover_has_asset),
     digest_link_preview_only: r.digest_lp_only === true || r.digest_lp_only === "true",
+    digestMarkedCompleteAt: r.digest_marked_complete_at ?? null,
     summaries,
   };
 }
+
+type DigestSourceItemSelectRow = Parameters<typeof mapRow>[0];
 
 function monthKeyFromIso(iso: string): string {
   const d = new Date(iso);
@@ -298,27 +312,49 @@ export default async function DigestMonthPage({
       .limit(1),
   ]);
 
-  const [pubRes, foundRes] = await Promise.all([
-    supabase
+  const pubResTry = await supabase
+    .from("source_items")
+    .select(ITEM_SELECT_FULL)
+    .eq("community_id", communityId)
+    .eq("status", "approved")
+    .gte("published_at", startISO)
+    .lte("published_at", endISO);
+  const foundResTry = await supabase
+    .from("source_items")
+    .select(ITEM_SELECT_FULL)
+    .eq("community_id", communityId)
+    .eq("status", "approved")
+    .is("published_at", null)
+    .gte("found_at", startISO)
+    .lte("found_at", endISO);
+
+  const tryErr = pubResTry.error ?? foundResTry.error;
+  let byPub: DigestSourceItemSelectRow[] =
+    (pubResTry.data as DigestSourceItemSelectRow[] | null) ?? [];
+  let byFound: DigestSourceItemSelectRow[] =
+    (foundResTry.data as DigestSourceItemSelectRow[] | null) ?? [];
+  let loadErr = pubResTry.error ?? foundResTry.error;
+
+  if (tryErr && isMissingDigestMarkedCompleteColumn(tryErr.message)) {
+    const pubLegacy = await supabase
       .from("source_items")
-      .select(ITEM_SELECT)
+      .select(ITEM_SELECT_BASE)
       .eq("community_id", communityId)
       .eq("status", "approved")
       .gte("published_at", startISO)
-      .lte("published_at", endISO),
-    supabase
+      .lte("published_at", endISO);
+    const foundLegacy = await supabase
       .from("source_items")
-      .select(ITEM_SELECT)
+      .select(ITEM_SELECT_BASE)
       .eq("community_id", communityId)
       .eq("status", "approved")
       .is("published_at", null)
       .gte("found_at", startISO)
-      .lte("found_at", endISO),
-  ]);
-
-  const byPub = pubRes.data ?? [];
-  const byFound = foundRes.data ?? [];
-  const loadErr = pubRes.error ?? foundRes.error;
+      .lte("found_at", endISO);
+    byPub = (pubLegacy.data as DigestSourceItemSelectRow[] | null) ?? [];
+    byFound = (foundLegacy.data as DigestSourceItemSelectRow[] | null) ?? [];
+    loadErr = pubLegacy.error ?? foundLegacy.error;
+  }
 
   const junctionByItem = new Map<string, unknown[]>();
   const summariesByItem = new Map<string, Summary[]>();

@@ -8,10 +8,9 @@ export type MonthlyPoint = {
   shortLabel: string;
   paper: number;
   award: number;
-  event: number;
   media: number;
   funding: number;
-  community_update: number;
+  /** Includes uncategorized, `other`, and deprecated `event` / `community_update`. */
   other: number;
   total: number;
   new: number;
@@ -174,10 +173,8 @@ function emptyMonth(ym: string): MonthlyPoint {
     shortLabel: shortMonthLabel(ym),
     paper: 0,
     award: 0,
-    event: 0,
     media: 0,
     funding: 0,
-    community_update: 0,
     other: 0,
     total: 0,
     new: 0,
@@ -259,13 +256,11 @@ export function buildDashboardPayload(
     const row = monthMap.get(ym);
     if (!row) continue;
 
-    const cat = item.category ?? "other";
+    const cat = item.category;
     if (cat === "paper") row.paper += 1;
     else if (cat === "award") row.award += 1;
-    else if (cat === "event") row.event += 1;
     else if (cat === "media") row.media += 1;
     else if (cat === "funding") row.funding += 1;
-    else if (cat === "community_update") row.community_update += 1;
     else row.other += 1;
 
     row.total += 1;
@@ -387,10 +382,8 @@ export function sumMonthlyKpis(rows: MonthlyPoint[]) {
       total: acc.total + r.total,
       paper: acc.paper + r.paper,
       award: acc.award + r.award,
-      event: acc.event + r.event,
       media: acc.media + r.media,
       funding: acc.funding + r.funding,
-      community_update: acc.community_update + r.community_update,
       other: acc.other + r.other,
       approved: acc.approved + r.approved,
       pubmed: acc.pubmed + r.pubmed,
@@ -403,10 +396,8 @@ export function sumMonthlyKpis(rows: MonthlyPoint[]) {
       total: 0,
       paper: 0,
       award: 0,
-      event: 0,
       media: 0,
       funding: 0,
-      community_update: 0,
       other: 0,
       approved: 0,
       pubmed: 0,

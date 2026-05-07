@@ -5,6 +5,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, SourceType } from "@/types/database";
+import {
+  SELECTABLE_ITEM_CATEGORIES,
+  itemCategoryOptionLabel,
+  type SelectableItemCategory,
+} from "@/lib/item-category-ui";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +25,7 @@ export default function SubmitPage() {
   const [title, setTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceType, setSourceType] = useState<SourceType>("manual");
-  const [category, setCategory] = useState<string>("");
+  const [category, setCategory] = useState<SelectableItemCategory>("other");
   const [summary, setSummary] = useState("");
   const [rawText, setRawText] = useState("");
   const [loading, setLoading] = useState(false);
@@ -79,7 +84,7 @@ export default function SubmitPage() {
         raw_summary: summary.trim() || null,
         submitted_by: user?.id ?? null,
         status: "new",
-        category: (category || null) as ItemCategory | null,
+        category: category as ItemCategory,
       })
       .select("id")
       .single();
@@ -152,15 +157,17 @@ export default function SubmitPage() {
           </div>
           <div>
             <Label htmlFor="cat">Category</Label>
-            <Select id="cat" value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1">
-              <option value="">—</option>
-              <option value="paper">Paper</option>
-              <option value="award">Award</option>
-              <option value="event">Event</option>
-              <option value="media">Media</option>
-              <option value="funding">Funding</option>
-              <option value="community_update">Community update</option>
-              <option value="other">Other</option>
+            <Select
+              id="cat"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as SelectableItemCategory)}
+              className="mt-1"
+            >
+              {SELECTABLE_ITEM_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {itemCategoryOptionLabel(c)}
+                </option>
+              ))}
             </Select>
           </div>
           <div>

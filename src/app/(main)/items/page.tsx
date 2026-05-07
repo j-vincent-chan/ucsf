@@ -39,15 +39,7 @@ export type ItemRow = {
 };
 
 const statuses: ItemStatus[] = ["new", "reviewed", "approved", "archived"];
-const categories: ItemCategory[] = [
-  "paper",
-  "award",
-  "event",
-  "media",
-  "funding",
-  "community_update",
-  "other",
-];
+const categories: ItemCategory[] = ["paper", "award", "media", "funding", "other"];
 const sourceTypes: SourceType[] = [
   "pubmed",
   "web",

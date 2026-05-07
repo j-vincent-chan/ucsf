@@ -324,7 +324,7 @@ async function main() {
       raw_summary: "Five-minute talks on computational IO and patient-derived models.",
       raw_text: null,
       status: "new" as const,
-      category: "event" as const,
+      category: "other" as const,
     },
     {
       id: IDS.iDup,
@@ -337,7 +337,7 @@ async function main() {
       raw_summary: "Duplicate submission for duplicate detection demo.",
       raw_text: null,
       status: "new" as const,
-      category: "event" as const,
+      category: "other" as const,
       duplicate_of: IDS.i3,
     },
     {
@@ -351,7 +351,7 @@ async function main() {
       raw_summary: "Field guide for batch correction and metadata standards.",
       raw_text: null,
       status: "approved" as const,
-      category: "community_update" as const,
+      category: "other" as const,
     },
     {
       id: IDS.i5,
@@ -416,7 +416,7 @@ async function main() {
       raw_summary: "OCR-hosted session on trial communications.",
       raw_text: null,
       status: "reviewed" as const,
-      category: "community_update" as const,
+      category: "other" as const,
     },
     {
       id: IDS.i10,
@@ -429,7 +429,7 @@ async function main() {
       raw_summary: "Panel with community oncologists and trialists.",
       raw_text: null,
       status: "new" as const,
-      category: "event" as const,
+      category: "other" as const,
     },
     {
       id: IDS.i11,
@@ -494,7 +494,7 @@ async function main() {
       raw_summary: "Hands-on cytometry and single-cell basics.",
       raw_text: null,
       status: "approved" as const,
-      category: "event" as const,
+      category: "other" as const,
     },
   ].map((row) => ({
     ...row,

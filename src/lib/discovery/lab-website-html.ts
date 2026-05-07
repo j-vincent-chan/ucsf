@@ -87,8 +87,8 @@ function classifyCategory(title: string, urlPath: string, body: string): ItemCat
   if (/(award|honou?r|prize|recognized|named fellow|elected|appointed)/i.test(t)) return "award";
   if (/(grant|funded|funding|nih|r01|u01|p01|award number)/i.test(t)) return "funding";
   if (/(press|media|featured in|interview|podcast)/i.test(t)) return "media";
-  if (/(event|seminar|symposium|workshop|webinar)/i.test(t)) return "event";
-  return "community_update";
+  if (/(event|seminar|symposium|workshop|webinar)/i.test(t)) return "other";
+  return "other";
 }
 
 function looksLikeSignal(title: string, urlPath: string, body: string): boolean {

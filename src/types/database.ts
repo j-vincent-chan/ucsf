@@ -211,6 +211,8 @@ export interface Database {
           digest_cover: Json | null;
           /** Generated: true when digest_cover is non-null (for digest list queries without the JSON payload). */
           digest_cover_has_asset: boolean;
+          /** Monthly digest: editor marked workflow complete (Completed Library). */
+          digest_marked_complete_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -235,6 +237,7 @@ export interface Database {
           category?: ItemCategory | null;
           archive_reason?: string | null;
           digest_cover?: Json | null;
+          digest_marked_complete_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -255,6 +258,7 @@ export interface Database {
           category?: ItemCategory | null;
           archive_reason?: string | null;
           digest_cover?: Json | null;
+          digest_marked_complete_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];

@@ -15,6 +15,12 @@ import {
   isValidArchiveReason,
 } from "@/lib/archive-reasons";
 import { sourceTypeDisplayLabel } from "../queue-cell-tags";
+import {
+  SELECTABLE_ITEM_CATEGORIES,
+  itemCategoryOptionLabel,
+  normalizeCategoryForSelect,
+  type SelectableItemCategory,
+} from "@/lib/item-category-ui";
 import { SummaryEditor, type SummaryRegeneratePayload } from "@/components/summary-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +51,9 @@ export function ItemDetail({
   );
   const [quickArchiveReason, setQuickArchiveReason] = useState("");
   const [archivePanelOpen, setArchivePanelOpen] = useState(false);
-  const [category, setCategory] = useState(item.category ?? "");
+  const [category, setCategory] = useState<SelectableItemCategory>(() =>
+    normalizeCategoryForSelect(item.category),
+  );
   const [title, setTitle] = useState(item.title);
   const [sourceUrl, setSourceUrl] = useState(item.source_url ?? "");
   const [publishedDate, setPublishedDate] = useState(() =>
@@ -138,6 +146,10 @@ export function ItemDetail({
   }, [item.id, item.published_at]);
 
   useEffect(() => {
+    setCategory(normalizeCategoryForSelect(item.category));
+  }, [item.id, item.category]);
+
+  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
@@ -170,7 +182,7 @@ export function ItemDetail({
         source_url: sourceUrl.trim() || null,
         published_at: publishedAtIso,
         status,
-        category: (category || null) as ItemCategory | null,
+        category: category as ItemCategory,
         archive_reason:
           status === "archived" && isPersistableArchiveReason(archiveReason) ? archiveReason : null,
       })
@@ -455,17 +467,14 @@ export function ItemDetail({
                 <Select
                   id="cat"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  onChange={(e) => setCategory(e.target.value as SelectableItemCategory)}
                   className="mt-1"
                 >
-                  <option value="">—</option>
-                  <option value="paper">Paper</option>
-                  <option value="award">Award</option>
-                  <option value="event">Event</option>
-                  <option value="media">Media</option>
-                  <option value="funding">Funding</option>
-                  <option value="community_update">Community update</option>
-                  <option value="other">Other</option>
+                  {SELECTABLE_ITEM_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {itemCategoryOptionLabel(c)}
+                    </option>
+                  ))}
                 </Select>
               </div>
             </div>

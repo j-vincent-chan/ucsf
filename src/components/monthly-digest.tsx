@@ -24,6 +24,12 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { CategoryTag, SourceTypeTag } from "@/app/(main)/items/queue-cell-tags";
 import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
+import {
+  DIGEST_CATEGORY_FILTER_CHIPS,
+  digestCategoryChipLabel,
+  matchesDigestCategoryChip,
+  type DigestCategoryFilterChip,
+} from "@/lib/item-category-ui";
 import { formatYearMonthLabel } from "@/lib/digest-month";
 import {
   DEFAULT_DIGEST_SUMMARY_TONE,
@@ -59,7 +65,7 @@ import {
   parseDigestCoverStoreFromDb,
   type DigestVisualChannelStyle,
 } from "@/lib/digest-visual-types";
-import { mergeWhyIntoBlurb, parseBlurbJson, stringifyBlurbContent } from "@/lib/blurb-content";
+import { mergeWhyIntoBlurb, parseBlurbJson } from "@/lib/blurb-content";
 import { BLUESKY_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
 import { DigestVisualPanel, DIGEST_MEDIA_LIBRARY_SUBTITLE } from "@/components/digest-visual-panel";
 import { digestHeroIllustrationOverlayLayout } from "@/lib/digest-illustration-overlay-layout";
@@ -74,7 +80,11 @@ import {
 import type { LinkPreviewMeta } from "@/lib/fetch-link-preview-meta";
 const SCIMAGO_SJR_LOOKUP = scimagoSjrLookupJson as ScimagoSjrLookup;
 
-function CollapseChevron({ open }: { open: boolean }) {
+function CollapseChevron({ open, variant = "default" }: { open: boolean; variant?: "default" | "onAccent" }) {
+  const tone =
+    variant === "onAccent"
+      ? "text-[color:var(--accent-foreground)]"
+      : "text-[color:var(--muted-foreground)]";
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -86,12 +96,191 @@ function CollapseChevron({ open }: { open: boolean }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`shrink-0 text-[color:var(--muted-foreground)] transition-transform ${open ? "rotate-180" : ""}`}
+      className={`shrink-0 ${tone} transition-transform ${open ? "rotate-180" : ""}`}
       aria-hidden
     >
       <path d="m6 9 6 6 6-6" />
     </svg>
   );
+}
+
+function BrowseTypeSectionFilterIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 text-[color:var(--muted-foreground)] ${className}`}
+      aria-hidden
+    >
+      <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z" />
+    </svg>
+  );
+}
+
+function WorkspaceViewSummariesIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-[1.125rem] w-[1.125rem] shrink-0 sm:h-5 sm:w-5 ${className}`}
+      aria-hidden
+    >
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+      <path d="M14 2v6h6" />
+      <path d="M10 12h4" />
+      <path d="M10 16h7" />
+    </svg>
+  );
+}
+
+function WorkspaceViewReferencesIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-[1.125rem] w-[1.125rem] shrink-0 sm:h-5 sm:w-5 ${className}`}
+      aria-hidden
+    >
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+    </svg>
+  );
+}
+
+function DigestQueueCategoryFilterIcon({
+  chip,
+  className = "",
+}: {
+  chip: DigestCategoryFilterChip;
+  className?: string;
+}) {
+  const common = `h-3.5 w-3.5 shrink-0 stroke-[1.25] ${className}`.trim();
+  switch (chip) {
+    case "all":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+          <path d="m2 12 8.58 3.91a2 2 0 0 0 1.66 0L20 12" />
+          <path d="m2 17 8.58 3.91a2 2 0 0 0 1.66 0L20 17" />
+        </svg>
+      );
+    case "paper":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+          <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+          <path d="M10 9H8" />
+          <path d="M16 13H8" />
+          <path d="M16 17H8" />
+        </svg>
+      );
+    case "funding":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <rect x="2" y="6" width="20" height="12" rx="2" />
+          <circle cx="12" cy="12" r="2" />
+          <path d="M6 12h.01M18 12h.01" />
+        </svg>
+      );
+    case "award":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+          <path d="M4 22h16" />
+          <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+          <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+        </svg>
+      );
+    case "news":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" />
+          <path d="M18 14h-8" />
+          <path d="M18 18h-8" />
+          <path d="M10 6h8v8h-8z" />
+        </svg>
+      );
+    case "other":
+    default:
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.586 8.586a2 2 0 0 0 2.828 0l6.172-6.172a2 2 0 0 0 0-2.828Z" />
+          <circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none" />
+        </svg>
+      );
+  }
 }
 
 /** Clipboard copy icon — explicit pixel size and shrink-0 so it stays visible in compact buttons. */
@@ -355,6 +544,21 @@ function formatReferenceLines(
   return lines;
 }
 
+/** Relative time for the digest brief “Last saved” line in the expanded card footer. */
+function formatDigestBriefLastSavedLabel(iso: string | null | undefined): string {
+  if (!iso?.trim()) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const sec = Math.round((Date.now() - d.getTime()) / 1000);
+  if (sec < 45) return "just now";
+  if (sec < 120) return "1 min ago";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hr ago`;
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 type RefCategoryKey = "papers" | "funding";
 
 type DigestWorkflowStatus =
@@ -443,10 +647,8 @@ function DigestOutputLinkPreviewCard({
   status: "idle" | "loading" | "ready" | "error";
   sourceUrl: string;
 }) {
-  const [imgFailed, setImgFailed] = useState(false);
-  useEffect(() => {
-    setImgFailed(false);
-  }, [meta?.imageUrl]);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const imgFailed = Boolean(failedUrl) && Boolean(meta?.imageUrl) && failedUrl === meta?.imageUrl;
 
   const domain = useMemo(() => {
     try {
@@ -513,7 +715,7 @@ function DigestOutputLinkPreviewCard({
               src={proxied}
               alt=""
               className="absolute inset-0 h-full w-full object-cover object-center"
-              onError={() => setImgFailed(true)}
+              onError={() => setFailedUrl(meta?.imageUrl ?? null)}
             />
             {/* Gradient scrim like X cards */}
             <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 via-black/25 to-transparent" aria-hidden />
@@ -792,6 +994,8 @@ export type DigestItemPayload = {
   digestCoverHasAsset: boolean;
   /** When true, hero is article link preview (matches digest_cover.linkPreviewOnly; no blob on list queries). */
   digest_link_preview_only: boolean;
+  /** Set when editor marked this signal complete for the digest Completed Library. */
+  digestMarkedCompleteAt: string | null;
   summaries: Summary[];
 };
 
@@ -853,16 +1057,133 @@ function digestSummaryShareText(summary: Summary): string {
   return `${merged.headline}\n\n${merged.blurb?.trim() ?? ""}`.trim();
 }
 
+function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; model: string }) {
+  const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
+  const [reactivating, setReactivating] = useState(false);
+  const workflowStatus = digestWorkflowStatus(item, item.summaries);
+  const destLabels = useMemo(() => {
+    const styles = new Set(
+      item.summaries
+        .filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style) && digestSummaryHasGeneratedText(s))
+        .map((s) => s.style),
+    );
+    return DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS.filter((o) => styles.has(o.style)).map((o) => o.label);
+  }, [item.summaries]);
+  const completedAt = item.digestMarkedCompleteAt
+    ? new Date(item.digestMarkedCompleteAt).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
+
+  async function reactivate() {
+    setReactivating(true);
+    try {
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id, complete: false }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not reactivate");
+      toast.success("Returned to Active Drafts");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not reactivate");
+    } finally {
+      setReactivating(false);
+    }
+  }
+
+  if (expanded) {
+    return (
+      <li className="list-none">
+        <DigestItemRow
+          item={item}
+          model={model}
+          expanded={false}
+          onToggleExpanded={() => {}}
+          libraryPreviewMode={{
+            onCollapse: () => setExpanded(false),
+            onReactivate: () => void reactivate(),
+            reactivating,
+          }}
+        />
+      </li>
+    );
+  }
+
+  return (
+    <li className="list-none">
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className="group w-full rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-3.5 py-3 text-left shadow-[0_6px_20px_-14px_rgba(45,35,28,0.45)] transition hover:border-[color:var(--border)]/80 hover:bg-[color:var(--muted)]/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="line-clamp-2 text-sm font-semibold leading-snug text-[color:var(--foreground)]">
+              {item.title}
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <SourceTypeTag type={item.source_type} />
+              <CategoryTag category={item.category} />
+              {digestStatusPill(workflowStatus)}
+              <span className="rounded-md border border-[color:var(--border)]/55 bg-[color:var(--card)]/75 px-2 py-0.5 text-[10px] font-medium text-[color:var(--muted-foreground)]">
+                Done {completedAt}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {destLabels.length ? (
+                destLabels.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-md bg-[color:var(--accent)]/12 px-2 py-0.5 text-[10px] font-semibold text-[color:var(--foreground)]"
+                  >
+                    {label}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[10px] text-[color:var(--muted-foreground)]">No channel outputs yet</span>
+              )}
+            </div>
+            {item.investigators.length ? (
+              <p className="text-[11px] leading-snug text-[color:var(--muted-foreground)]">
+                {item.investigators
+                  .slice(0, 4)
+                  .map((i) => i.name)
+                  .join(", ")}
+                {item.investigators.length > 4 ? ` +${item.investigators.length - 4}` : ""}
+              </p>
+            ) : null}
+          </div>
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] opacity-70 transition group-hover:opacity-100">
+            Open
+          </span>
+        </div>
+      </button>
+    </li>
+  );
+}
+
 function DigestItemRow({
   item,
   model,
   expanded,
   onToggleExpanded,
+  libraryPreviewMode,
 }: {
   item: DigestItemPayload;
   model: string;
   expanded: boolean;
   onToggleExpanded: () => void;
+  libraryPreviewMode?: {
+    onCollapse: () => void;
+    onReactivate: () => void;
+    reactivating: boolean;
+  };
 }) {
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
@@ -876,6 +1197,7 @@ function DigestItemRow({
   const [firstDraftStyle, setFirstDraftStyle] = useState<SummaryStyle>("newsletter");
   const [generating, setGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [markingComplete, setMarkingComplete] = useState(false);
   const [illustrating, setIllustrating] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   /** Button strip (Open / Collapse / More) — excluded from “click outside” menu dismissal. */
@@ -889,15 +1211,13 @@ function DigestItemRow({
   const [publishAttachmentMode, setPublishAttachmentMode] = useState<DigestPublishAttachmentMode>("digest_visual");
   const [digestStripPosting, setDigestStripPosting] = useState(false);
   const [digestStripSaving, setDigestStripSaving] = useState(false);
-  const [publishStripPostMenuOpen, setPublishStripPostMenuOpen] = useState(false);
-  const [publishStripScheduleMenuOpen, setPublishStripScheduleMenuOpen] = useState(false);
   const [publishStripMoreMenuOpen, setPublishStripMoreMenuOpen] = useState(false);
-  const publishStripPostDropdownRef = useRef<HTMLDivElement | null>(null);
-  const publishStripScheduleDropdownRef = useRef<HTMLDivElement | null>(null);
   const publishStripMoreDropdownRef = useRef<HTMLDivElement | null>(null);
   const [resetDigestBusy, setResetDigestBusy] = useState(false);
   /** Checklist “Save all changes” calls the active `SummaryEditor` save (single source of truth for form state). */
   const digestBriefSaveOutletRef = useRef<(() => Promise<void>) | null>(null);
+  /** Content studio draft vs persisted `summaries` row (drives footer status + enablement). */
+  const [digestBriefDirty, setDigestBriefDirty] = useState(false);
   /** After auto-collapse on save, scroll this card back into view so the list position isn’t disorienting. */
   const digestCardScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -917,6 +1237,11 @@ function DigestItemRow({
   const digestContentStudioSummaries = useMemo(
     () => summaries.filter((s) => DIGEST_CONTENT_STUDIO_STYLES.includes(s.style)),
     [summaries],
+  );
+
+  const showDigestPublishStrip = useMemo(
+    () => digestContentStudioSummaries.some((s) => digestSummaryHasGeneratedText(s)),
+    [digestContentStudioSummaries],
   );
 
   const studioOutputTabs = useMemo((): DigestStudioOutputTab[] => {
@@ -1048,13 +1373,6 @@ function DigestItemRow({
   const socialPublishControlsDisabled = publishStripBusy || !socialPublishInteractive;
   /** More menu (copy text, download visual) is available for every output tab once the strip is shown. */
   const publishMoreMenuDisabled = publishStripBusy;
-
-  useEffect(() => {
-    if (!socialPublishInteractive) {
-      setPublishStripPostMenuOpen(false);
-      setPublishStripScheduleMenuOpen(false);
-    }
-  }, [socialPublishInteractive]);
 
   const refreshSummaries = useCallback(async (): Promise<Summary[] | null> => {
     const supabase = createClient();
@@ -1327,6 +1645,25 @@ function DigestItemRow({
     }
   }
 
+  async function markDigestWorkflowComplete() {
+    setMarkingComplete(true);
+    try {
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id, complete: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not update");
+      toast.success("Moved to Completed Library");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not mark complete");
+    } finally {
+      setMarkingComplete(false);
+    }
+  }
+
   const dateLabel = item.published_at
     ? new Date(item.published_at).toLocaleDateString()
     : `Found ${new Date(item.found_at).toLocaleDateString()} (no publish date)`;
@@ -1580,19 +1917,15 @@ function DigestItemRow({
   );
 
   useEffect(() => {
-    if (!publishStripPostMenuOpen && !publishStripScheduleMenuOpen && !publishStripMoreMenuOpen) return;
+    if (!publishStripMoreMenuOpen) return;
     const onDown = (event: MouseEvent) => {
       const t = event.target as Node;
-      if (publishStripPostDropdownRef.current?.contains(t)) return;
-      if (publishStripScheduleDropdownRef.current?.contains(t)) return;
       if (publishStripMoreDropdownRef.current?.contains(t)) return;
-      setPublishStripPostMenuOpen(false);
-      setPublishStripScheduleMenuOpen(false);
       setPublishStripMoreMenuOpen(false);
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
-  }, [publishStripPostMenuOpen, publishStripScheduleMenuOpen, publishStripMoreMenuOpen]);
+  }, [publishStripMoreMenuOpen]);
 
   return (
     <div ref={digestCardScrollRef} className="min-w-0 scroll-mt-4">
@@ -1687,103 +2020,59 @@ function DigestItemRow({
             <CategoryTag category={item.category} />
           </div>
           </div>
-          <div className="relative z-20 shrink-0">
+          <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2">
+            {libraryPreviewMode ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-10 min-h-10 px-4 text-sm font-semibold"
+                disabled={libraryPreviewMode.reactivating}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void libraryPreviewMode.onReactivate();
+                }}
+              >
+                {libraryPreviewMode.reactivating ? "Restoring…" : "Reactivate"}
+              </Button>
+            ) : null}
             <div
               ref={actionsToolbarRef}
-              className="inline-flex h-9 items-stretch overflow-hidden rounded-xl border border-[color:var(--border)]/65 bg-[color:var(--background)]/85 text-[color:var(--foreground)]/85 shadow-none"
+              className="flex min-h-10 overflow-hidden rounded-xl shadow-[0_14px_30px_-18px_rgba(141,86,64,0.45)]"
             >
-              {item.source_url ? (
-                <a
-                  href={item.source_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  title="Open source"
-                  aria-label="Open source"
-                  className="inline-flex h-full items-center gap-1 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M15 3h6v6" />
-                    <path d="M10 14 21 3" />
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                  </svg>
-                  <span className="hidden sm:inline">Open</span>
-                  <span className="sr-only sm:hidden">Open source</span>
-                </a>
-              ) : (
-                <Link
-                  href={`/items/${item.id}`}
-                  title="Open record"
-                  aria-label="Open record"
-                  className="inline-flex h-full items-center gap-1 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M14 3h7v7" />
-                    <path d="M10 14 21 3" />
-                    <path d="M5 5v14h14" />
-                  </svg>
-                  <span className="hidden sm:inline">Open</span>
-                  <span className="sr-only sm:hidden">Open record</span>
-                </Link>
-              )}
               <button
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onToggleExpanded();
+                  setActionsMenuOpen(false);
+                  if (libraryPreviewMode) libraryPreviewMode.onCollapse();
+                  else onToggleExpanded();
                 }}
-                aria-expanded={expanded}
-                title={expanded ? "Collapse" : "Expand"}
-                aria-label={expanded ? "Collapse details" : "Expand details"}
-                className="inline-flex h-full items-center gap-1 border-l border-[color:var(--border)]/60 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                aria-expanded={libraryPreviewMode ? false : expanded}
+                title={
+                  libraryPreviewMode ? "Collapse preview" : expanded ? "Collapse" : "Expand"
+                }
+                aria-label={
+                  libraryPreviewMode ? "Collapse preview" : expanded ? "Collapse details" : "Expand details"
+                }
+                className="inline-flex min-h-10 items-center gap-2 bg-[color:var(--accent)] px-4 text-sm font-semibold text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
               >
-                <CollapseChevron open={expanded} />
-                <span className="hidden sm:inline">{expanded ? "Collapse" : "Expand"}</span>
+                <CollapseChevron open={libraryPreviewMode ? false : expanded} variant="onAccent" />
+                <span className="hidden sm:inline">
+                  {libraryPreviewMode ? "Collapse" : expanded ? "Collapse" : "Expand"}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setActionsMenuOpen((v) => !v)}
                 aria-expanded={actionsMenuOpen}
                 aria-haspopup="menu"
-                title="More actions"
-                aria-label="More actions"
-                className="inline-flex h-full items-center gap-1 border-l border-[color:var(--border)]/60 px-2 text-[13px] font-medium text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/25 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                title="Open link and more actions"
+                aria-label="Open link and more actions"
+                className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center border-l border-[color:var(--accent-foreground)]/25 bg-[color:var(--accent)] text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <circle cx="5" cy="12" r="1.9" />
-                  <circle cx="12" cy="12" r="1.9" />
-                  <circle cx="19" cy="12" r="1.9" />
-                </svg>
-                <span className="hidden sm:inline">More</span>
+                <ChevronDownMiniIcon />
               </button>
             </div>
             {actionsMenuOpen ? (
@@ -1791,8 +2080,61 @@ function DigestItemRow({
                 ref={actionsMenuDropdownRef}
                 role="menu"
                 aria-label="Signal actions"
-                className="absolute right-0 top-[calc(100%+0.45rem)] z-30 min-w-[12.5rem] overflow-hidden rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--background)]/98 p-1.5 shadow-[0_18px_30px_-20px_rgba(49,31,24,0.7)]"
+                className="absolute right-0 top-full z-30 mt-1.5 min-w-[14rem] overflow-hidden rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--background)]/98 p-1.5 shadow-[0_18px_30px_-20px_rgba(49,31,24,0.7)]"
               >
+                {item.source_url ? (
+                  <a
+                    href={item.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
+                    onClick={() => setActionsMenuOpen(false)}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M15 3h6v6" />
+                      <path d="M10 14 21 3" />
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                    </svg>
+                    Open source article
+                  </a>
+                ) : (
+                  <Link
+                    href={`/items/${item.id}`}
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
+                    onClick={() => setActionsMenuOpen(false)}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M14 3h7v7" />
+                      <path d="M10 14 21 3" />
+                      <path d="M5 5v14h14" />
+                    </svg>
+                    Open signal record
+                  </Link>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -1819,34 +2161,36 @@ function DigestItemRow({
                   </svg>
                   Copy source link
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsMenuOpen(false);
-                    void archiveSignal();
-                  }}
-                  disabled={archiving || generating || illustrating}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#8f4d45] transition-colors hover:bg-[#f2dfd9] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
+                {libraryPreviewMode ? null : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      void archiveSignal();
+                    }}
+                    disabled={archiving || generating || illustrating}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#8f4d45] transition-colors hover:bg-[#f2dfd9] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <path d="M3 6h18" />
-                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                  </svg>
-                  Archive signal
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M3 6h18" />
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                    </svg>
+                    Archive signal
+                  </button>
+                )}
               </div>
             ) : null}
           </div>
@@ -1944,7 +2288,8 @@ function DigestItemRow({
               </div>
             </div>
           </div>
-          {digestContentStudioSummaries.some((s) => digestSummaryHasGeneratedText(s)) ? (
+          {!libraryPreviewMode ? (
+            showDigestPublishStrip ? (
             <div className="relative z-10 mt-3 overflow-visible rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/85 p-4 pb-5 shadow-sm">
               <div className="flex flex-col gap-3 overflow-visible">
                 <div>
@@ -1957,6 +2302,7 @@ function DigestItemRow({
                       : "Copy this channel’s text or download the hero visual. Switch Output preview to Social to post."}
                   </p>
                 </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div className="flex flex-wrap items-center gap-2 overflow-visible">
                   <button
                     type="button"
@@ -2009,165 +2355,27 @@ function DigestItemRow({
                     )}
                   </button>
 
-                  <div ref={publishStripPostDropdownRef} className="relative">
-                    <div className="flex min-h-10 overflow-hidden rounded-xl shadow-[0_14px_30px_-18px_rgba(141,86,64,0.45)]">
-                      <button
-                        type="button"
-                        className="inline-flex min-h-10 items-center gap-2 bg-[color:var(--accent)] px-4 text-sm font-semibold text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.03] disabled:pointer-events-none disabled:opacity-50"
-                        disabled={
-                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
-                        }
-                        title={
-                          socialPublishInteractive ? undefined : publishStripDisabledTitle
-                        }
-                        onClick={() => void digestStripPost()}
-                      >
-                        <SendIcon className="h-4 w-4 shrink-0 opacity-95" />
-                        {digestStripPosting ? "Posting…" : "Post now"}
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex min-h-10 min-w-10 items-center justify-center border-l border-[color:var(--accent-foreground)]/25 bg-[color:var(--accent)] text-[color:var(--accent-foreground)] transition-[filter] hover:brightness-[1.06] disabled:pointer-events-none disabled:opacity-50"
-                        disabled={
-                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
-                        }
-                        title={
-                          socialPublishInteractive ? undefined : publishStripDisabledTitle
-                        }
-                        aria-expanded={publishStripPostMenuOpen}
-                        aria-haspopup="menu"
-                        aria-label="Attachment options for post"
-                        onClick={() => {
-                          setPublishStripScheduleMenuOpen(false);
-                          setPublishStripMoreMenuOpen(false);
-                          setPublishStripPostMenuOpen((o) => !o);
-                        }}
-                      >
-                        <ChevronDownMiniIcon />
-                      </button>
-                    </div>
-                    {publishStripPostMenuOpen ? (
-                      <div
-                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
-                        role="menu"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
-                          onClick={() => {
-                            setPublishAttachmentMode("digest_visual");
-                            setPublishStripPostMenuOpen(false);
-                          }}
-                        >
-                          <span>Digest hero image</span>
-                          {publishAttachmentMode === "digest_visual" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={!hasHttpSourceUrl}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => {
-                            if (!hasHttpSourceUrl) return;
-                            setPublishAttachmentMode("source_link");
-                            setPublishStripPostMenuOpen(false);
-                          }}
-                        >
-                          <span>Article link preview</span>
-                          {publishAttachmentMode === "source_link" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[color:var(--accent)] px-4 text-sm font-semibold text-[color:var(--accent-foreground)] shadow-[0_14px_30px_-18px_rgba(141,86,64,0.45)] transition-[filter] hover:brightness-[1.03] disabled:pointer-events-none disabled:opacity-50"
+                    disabled={socialPublishControlsDisabled || (!postToX && !postToBluesky)}
+                    title={socialPublishInteractive ? undefined : publishStripDisabledTitle}
+                    onClick={() => void digestStripPost()}
+                  >
+                    <SendIcon className="h-4 w-4 shrink-0 opacity-95" />
+                    {digestStripPosting ? "Posting…" : "Post now"}
+                  </button>
 
-                  <div ref={publishStripScheduleDropdownRef} className="relative">
-                    <div className="flex min-h-10 overflow-hidden rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 shadow-[0_12px_24px_-20px_rgba(89,67,52,0.45)]">
-                      <button
-                        type="button"
-                        className="inline-flex min-h-10 flex-1 items-center gap-2 px-4 text-sm font-semibold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--muted)]/45 disabled:pointer-events-none disabled:opacity-50"
-                        disabled={
-                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
-                        }
-                        title={
-                          socialPublishInteractive ? undefined : publishStripDisabledTitle
-                        }
-                        onClick={() => void digestStripSchedule()}
-                      >
-                        <ScheduleIcon className="h-4 w-4 shrink-0 opacity-90" />
-                        {digestStripPosting ? "Scheduling…" : "Schedule"}
-                      </button>
-                      <button
-                        type="button"
-                        className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center border-l border-[color:var(--border)]/70 bg-[color:var(--card)] text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/35 hover:text-[color:var(--foreground)] disabled:pointer-events-none disabled:opacity-50"
-                        disabled={
-                          socialPublishControlsDisabled || (!postToX && !postToBluesky)
-                        }
-                        title={
-                          socialPublishInteractive ? undefined : publishStripDisabledTitle
-                        }
-                        aria-expanded={publishStripScheduleMenuOpen}
-                        aria-haspopup="menu"
-                        aria-label="Attachment options for schedule"
-                        onClick={() => {
-                          setPublishStripPostMenuOpen(false);
-                          setPublishStripMoreMenuOpen(false);
-                          setPublishStripScheduleMenuOpen((o) => !o);
-                        }}
-                      >
-                        <ChevronDownMiniIcon />
-                      </button>
-                    </div>
-                    {publishStripScheduleMenuOpen ? (
-                      <div
-                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
-                        role="menu"
-                      >
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
-                          onClick={() => {
-                            setPublishAttachmentMode("digest_visual");
-                            setPublishStripScheduleMenuOpen(false);
-                          }}
-                        >
-                          <span>Digest hero image</span>
-                          {publishAttachmentMode === "digest_visual" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={!hasHttpSourceUrl}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => {
-                            if (!hasHttpSourceUrl) return;
-                            setPublishAttachmentMode("source_link");
-                            setPublishStripScheduleMenuOpen(false);
-                          }}
-                        >
-                          <span>Article link preview</span>
-                          {publishAttachmentMode === "source_link" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-4 text-sm font-semibold text-[color:var(--foreground)] shadow-[0_12px_24px_-20px_rgba(89,67,52,0.45)] transition-colors hover:bg-[color:var(--muted)]/45 disabled:pointer-events-none disabled:opacity-50"
+                    disabled={socialPublishControlsDisabled || (!postToX && !postToBluesky)}
+                    title={socialPublishInteractive ? undefined : publishStripDisabledTitle}
+                    onClick={() => void digestStripSchedule()}
+                  >
+                    <ScheduleIcon className="h-4 w-4 shrink-0 opacity-90" />
+                    {digestStripPosting ? "Scheduling…" : "Schedule"}
+                  </button>
 
                   <div ref={publishStripMoreDropdownRef} className="relative">
                     <button
@@ -2178,19 +2386,53 @@ function DigestItemRow({
                       aria-expanded={publishStripMoreMenuOpen}
                       aria-haspopup="menu"
                       aria-label="More publish actions"
-                      onClick={() => {
-                        setPublishStripPostMenuOpen(false);
-                        setPublishStripScheduleMenuOpen(false);
-                        setPublishStripMoreMenuOpen((o) => !o);
-                      }}
+                      onClick={() => setPublishStripMoreMenuOpen((o) => !o)}
                     >
                       <PublishBarMoreIcon className="text-[color:var(--muted-foreground)]" />
                     </button>
                     {publishStripMoreMenuOpen ? (
                       <div
-                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[12rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
+                        className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
                         role="menu"
                       >
+                        <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
+                          Social attachment
+                        </p>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
+                          onClick={() => {
+                            setPublishAttachmentMode("digest_visual");
+                            setPublishStripMoreMenuOpen(false);
+                          }}
+                        >
+                          <span>Digest hero image</span>
+                          {publishAttachmentMode === "digest_visual" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          disabled={!hasHttpSourceUrl}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => {
+                            if (!hasHttpSourceUrl) return;
+                            setPublishAttachmentMode("source_link");
+                            setPublishStripMoreMenuOpen(false);
+                          }}
+                        >
+                          <span>Article link preview</span>
+                          {publishAttachmentMode === "source_link" ? (
+                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
+                          ) : (
+                            <span className="w-3.5" />
+                          )}
+                        </button>
+                        <div className="my-1 border-t border-[color:var(--border)]/60" role="separator" />
                         <button
                           type="button"
                           role="menuitem"
@@ -2220,15 +2462,42 @@ function DigestItemRow({
                     ) : null}
                   </div>
                 </div>
+                <div className="flex w-full shrink-0 justify-end pt-0.5 sm:w-auto sm:pl-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-10 min-h-10 whitespace-nowrap px-4 text-sm font-semibold"
+                    disabled={markingComplete || archiving || generating || illustrating}
+                    onClick={() => void markDigestWorkflowComplete()}
+                  >
+                    {markingComplete ? "Saving…" : "Mark complete"}
+                  </Button>
+                </div>
+                </div>
               </div>
             </div>
+            ) : (
+            <div className="relative z-10 mt-3 rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--card)]/85 p-4 shadow-sm">
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 min-h-10 whitespace-nowrap px-4 text-sm font-semibold"
+                  disabled={markingComplete || archiving || generating || illustrating}
+                  onClick={() => void markDigestWorkflowComplete()}
+                >
+                  {markingComplete ? "Saving…" : "Mark complete"}
+                </Button>
+              </div>
+            </div>
+            )
           ) : null}
         </div>
       ) : null}
 
-      {expanded ? (
+      {expanded && !libraryPreviewMode ? (
         <div className="border-t border-[color:var(--border)]/45 bg-[color:var(--muted)]/6">
-          <div className="border-b border-[color:var(--border)]/40 px-4 pb-4 pt-4 sm:px-5">
+          <div className="border-b border-[color:var(--border)]/40 px-4 pb-0 pt-4 sm:px-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
               Channel
             </p>
@@ -2266,6 +2535,7 @@ function DigestItemRow({
                   sourceUrl={item.source_url}
                   digestBriefSaveOutletRef={digestBriefSaveOutletRef}
                   onBriefSaveBusyChange={setDigestStripSaving}
+                  onDigestBriefDraftChange={({ dirty }) => setDigestBriefDirty(dirty)}
                   onAfterSuccessfulBriefSave={collapseExpandedCardIfNeeded}
                   omitDigestOutputTabs
                   digestWorkflow={{
@@ -2316,49 +2586,73 @@ function DigestItemRow({
             </div>
           </div>
           <div className="mt-6 border-t border-[color:var(--border)]/35 pt-4">
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-9 min-h-9 px-4 text-sm font-semibold"
-              disabled={
-                generating || archiving || illustrating || resetDigestBusy || digestStripSaving
-              }
-              onClick={() => void digestBriefSaveOutletRef.current?.()}
-            >
-              {digestStripSaving ? "Saving…" : "Save all changes"}
-            </Button>
+            <div className="flex flex-col gap-3 rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--card)]/60 px-3 py-3 shadow-[0_12px_28px_-22px_rgba(55,42,36,0.18)] sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+              <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
+                <span
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)]/70 bg-[color:var(--muted)]/25 text-[color:var(--muted-foreground)]"
+                  aria-hidden
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                  </svg>
+                </span>
+                <div className="min-w-0 leading-tight">
+                  <p className="text-sm font-semibold text-[color:var(--foreground)]">
+                    {digestBriefDirty ? "Unsaved changes" : "All changes saved"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[color:var(--muted-foreground)]">
+                    Last saved{" "}
+                    {formatDigestBriefLastSavedLabel(
+                      contentStudioEditorSummary.updated_at ?? contentStudioEditorSummary.created_at,
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="h-10 min-h-10 px-5 text-sm font-semibold"
+                  disabled={
+                    generating ||
+                    archiving ||
+                    illustrating ||
+                    resetDigestBusy ||
+                    digestStripSaving ||
+                    (!digestBriefDirty && !isDigestStudioPlaceholderSummary(contentStudioEditorSummary))
+                  }
+                  onClick={() => void digestBriefSaveOutletRef.current?.()}
+                >
+                  {digestStripSaving ? "Saving…" : "Save all changes"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 min-h-10 px-4 text-sm font-semibold"
+                  disabled={digestStripSaving}
+                  onClick={() => onToggleExpanded()}
+                >
+                  Cancel and collapse
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 min-h-10 whitespace-nowrap px-4 text-sm font-semibold"
+                  disabled={markingComplete || archiving || generating || illustrating || digestStripSaving}
+                  onClick={() => void markDigestWorkflowComplete()}
+                >
+                  {markingComplete ? "Saving…" : "Mark complete"}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
     </Card>
     </div>
   );
-}
-
-type DigestQueueFilter = "all" | "needs_work" | "ready" | "missing_visual" | "missing_brief";
-
-function matchesDigestFilter(status: DigestWorkflowStatus, filter: DigestQueueFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "ready") return status === "ready";
-  if (filter === "missing_visual") return status === "missing_visual";
-  if (filter === "missing_brief") return status === "missing_brief";
-  return status !== "ready";
-}
-
-function digestFilterLabel(filter: DigestQueueFilter): string {
-  switch (filter) {
-    case "needs_work":
-      return "Needs work";
-    case "ready":
-      return "Ready";
-    case "missing_visual":
-      return "Missing visual";
-    case "missing_brief":
-      return "Missing summary";
-    case "all":
-    default:
-      return "All";
-  }
 }
 
 export function MonthlyDigestView({
@@ -2380,10 +2674,11 @@ export function MonthlyDigestView({
   const [activeTab, setActiveTab] = useState<"copy_illustrator" | "references">(
     "copy_illustrator",
   );
-  const [queueFilter, setQueueFilter] = useState<DigestQueueFilter>("all");
-  const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() =>
-    items[0]?.id ? new Set([items[0].id]) : new Set(),
-  );
+  const [queueFilter, setQueueFilter] = useState<DigestCategoryFilterChip>("all");
+  const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() => {
+    const first = items.find((i) => i.digestMarkedCompleteAt == null);
+    return first ? new Set([first.id]) : new Set();
+  });
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [numberedLines, setNumberedLines] = useState(true);
   /** When true, paper references show first 3 authors + et al.; when false, full PubMed author list. */
@@ -2399,6 +2694,19 @@ export function MonthlyDigestView({
   const [statusLine, setStatusLine] = useState("");
   const paperItems = useMemo(() => items.filter((item) => item.category === "paper"), [items]);
   const fundingItems = useMemo(() => items.filter((item) => item.category === "funding"), [items]);
+  const activeDigestItems = useMemo(
+    () => items.filter((item) => item.digestMarkedCompleteAt == null),
+    [items],
+  );
+  const completedDigestItems = useMemo(() => {
+    const done = items.filter((item) => item.digestMarkedCompleteAt != null);
+    done.sort(
+      (a, b) =>
+        new Date(b.digestMarkedCompleteAt!).getTime() -
+        new Date(a.digestMarkedCompleteAt!).getTime(),
+    );
+    return done;
+  }, [items]);
   const categories = useMemo<DigestRefCategory[]>(
     () => [
       {
@@ -2448,22 +2756,34 @@ export function MonthlyDigestView({
 
   const totalSelectedCount = selectedByCategory.papers.size + selectedByCategory.funding.size;
   const totalGeneratedCount = resultsByCategory.papers.length + resultsByCategory.funding.length;
-  const queueStats = useMemo(() => {
-    const statuses = items.map((item) => digestWorkflowStatus(item, item.summaries));
-    return {
-      total: items.length,
-      ready: statuses.filter((s) => s === "ready").length,
-      needsReview: statuses.filter((s) => s === "needs_review").length,
-      missingVisual: statuses.filter((s) => s === "missing_visual").length,
-      missingBrief: statuses.filter((s) => s === "missing_brief").length,
-      notStarted: statuses.filter((s) => s === "not_started").length,
-    };
-  }, [items]);
+  const digestActiveCategoryCounts = useMemo(() => {
+    const m = new Map<DigestCategoryFilterChip, number>();
+    for (const k of DIGEST_CATEGORY_FILTER_CHIPS) {
+      if (k !== "all") m.set(k, 0);
+    }
+    for (const item of activeDigestItems) {
+      const c = item.category;
+      if (c === "media") m.set("news", (m.get("news") ?? 0) + 1);
+      else if (c === "paper") m.set("paper", (m.get("paper") ?? 0) + 1);
+      else if (c === "award") m.set("award", (m.get("award") ?? 0) + 1);
+      else if (c === "funding") m.set("funding", (m.get("funding") ?? 0) + 1);
+      else m.set("other", (m.get("other") ?? 0) + 1);
+    }
+    return m;
+  }, [activeDigestItems]);
+
   const filteredDigestItems = useMemo(
     () =>
-      items.filter((item) => matchesDigestFilter(digestWorkflowStatus(item, item.summaries), queueFilter)),
-    [items, queueFilter],
+      activeDigestItems.filter((item) => matchesDigestCategoryChip(item.category, queueFilter)),
+    [activeDigestItems, queueFilter],
   );
+
+  useEffect(() => {
+    if (queueFilter === "all") return;
+    const n = digestActiveCategoryCounts.get(queueFilter) ?? 0;
+    if (n === 0) setQueueFilter("all");
+  }, [queueFilter, digestActiveCategoryCounts]);
+
   useEffect(() => {
     const visibleIds = new Set(filteredDigestItems.map((i) => i.id));
     setExpandedDigestItemIds((prev) => {
@@ -2487,6 +2807,7 @@ export function MonthlyDigestView({
     if (sourceDiscoveryRunningRef.current) return;
     const pending = items.filter(
       (item) =>
+        item.digestMarkedCompleteAt == null &&
         !sourceDiscoveryAttemptedIdsRef.current.has(item.id) &&
         !item.digestCoverHasAsset,
     );
@@ -2777,37 +3098,61 @@ export function MonthlyDigestView({
           </Button>
         </form>
       </div>
-      <div
-        className="surface-subtle inline-flex w-full items-center gap-1 rounded-xl p-1 sm:w-fit"
-        role="tablist"
-        aria-label="Digest workspaces"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "copy_illustrator"}
-          onClick={() => setActiveTab("copy_illustrator")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            activeTab === "copy_illustrator"
-              ? "bg-[color:var(--card)] text-[color:var(--foreground)] shadow-sm"
-              : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-          }`}
+      <div className="w-full space-y-2 sm:w-fit">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+          View
+        </p>
+        <div
+          className="flex w-full flex-col gap-2 sm:w-fit"
+          role="tablist"
+          aria-label="Digest workspaces"
         >
-          Summaries
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "references"}
-          onClick={() => setActiveTab("references")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-            activeTab === "references"
-              ? "bg-[color:var(--card)] text-[color:var(--foreground)] shadow-sm"
-              : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-          }`}
-        >
-          References
-        </button>
+          <div className="flex w-full min-w-0 gap-1 rounded-xl border border-[color:var(--border)]/90 bg-[color:var(--card)]/95 p-1.5 shadow-[inset_0_1px_3px_rgba(67,54,45,0.07)] sm:inline-flex sm:w-max sm:max-w-none dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.22)]">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "copy_illustrator"}
+              onClick={() => setActiveTab("copy_illustrator")}
+              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
+                activeTab === "copy_illustrator"
+                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
+                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
+              }`}
+            >
+              <WorkspaceViewSummariesIcon
+                className={
+                  activeTab === "copy_illustrator"
+                    ? "text-[color:var(--accent-foreground)]"
+                    : "text-[color:var(--foreground)]"
+                }
+              />
+              Summaries
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "references"}
+              onClick={() => setActiveTab("references")}
+              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
+                activeTab === "references"
+                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
+                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
+              }`}
+            >
+              <WorkspaceViewReferencesIcon
+                className={
+                  activeTab === "references"
+                    ? "text-[color:var(--accent-foreground)]"
+                    : "text-[color:var(--foreground)]"
+                }
+              />
+              References
+            </button>
+          </div>
+          <p className="max-w-md text-xs leading-relaxed text-[color:var(--foreground)]/85 sm:text-[13px]">
+            Switch between article summaries and reference materials.
+          </p>
+        </div>
       </div>
       {items.length === 0 ? (
         <Card>
@@ -2821,73 +3166,113 @@ export function MonthlyDigestView({
         <>
           {activeTab === "copy_illustrator" ? (
             <div className="space-y-4">
-              <Card className="rounded-xl border-[color:var(--border)]/55 bg-[color:var(--background)]/75 p-3 shadow-none">
-                <div className="flex flex-wrap items-start justify-between gap-2.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {(
-                      [
-                        ["total", "Total highlights", queueStats.total],
-                        ["ready", "Ready", queueStats.ready],
-                        ["needs", "Needs review", queueStats.needsReview],
-                        ["visual", "Missing visual", queueStats.missingVisual],
-                        ["brief", "Missing summary", queueStats.missingBrief],
-                      ] as const
-                    ).map(([key, label, value]) => (
-                      <div
-                        key={key}
-                        className="min-w-[6.75rem] rounded-lg border border-[color:var(--border)]/50 bg-[color:var(--card)]/70 px-2.5 py-1.5"
-                      >
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
-                          {label}
-                        </p>
-                        <p className="mt-0.5 text-base font-semibold tracking-tight text-[color:var(--foreground)]">{value}</p>
-                      </div>
-                    ))}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                  Active Drafts
+                </p>
+                <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
+                  Signals still being shaped, reviewed, edited, or prepared for release. Mark one complete to tuck it into the
+                  Completed Library.
+                </p>
+              </div>
+              {activeDigestItems.length > 0 ? (
+                <Card className="rounded-xl border-[color:var(--border)]/55 bg-[color:var(--background)]/75 p-3 shadow-none">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-snug">
+                    <BrowseTypeSectionFilterIcon />
+                    <span className="font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+                      Filter by type
+                    </span>
+                    <span
+                      className="hidden h-3 w-px bg-[color:var(--border)]/80 sm:block"
+                      aria-hidden
+                    />
+                    <span className="text-[color:var(--muted-foreground)]">
+                      Click a category to filter draft signals.
+                    </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        const first = filteredDigestItems.find(
-                          (it) => digestWorkflowStatus(it, it.summaries) !== "ready",
-                        );
-                        if (first) {
-                          setExpandedDigestItemIds((prev) => new Set(prev).add(first.id));
-                        }
-                      }}
-                      className="h-7 px-2.5 text-[11px]"
-                    >
-                      Expand first unfinished
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setExpandedDigestItemIds(new Set())}
-                      className="h-7 px-2.5 text-[11px]"
-                    >
-                      Collapse all
-                    </Button>
+                  <div
+                    className="mt-3 flex flex-wrap gap-2.5"
+                    role="group"
+                    aria-label="Filter draft signals by category"
+                  >
+                    {DIGEST_CATEGORY_FILTER_CHIPS.map((f) => {
+                      const count =
+                        f === "all"
+                          ? activeDigestItems.length
+                          : digestActiveCategoryCounts.get(f) ?? 0;
+                      const isEmpty = f !== "all" && count === 0;
+                      const selected = queueFilter === f;
+                      const label =
+                        f === "all" ? "Total" : digestCategoryChipLabel(f);
+                      const iconTone = isEmpty
+                        ? "text-[color:var(--muted-foreground)]/45"
+                        : selected
+                          ? "text-[color:var(--foreground)]"
+                          : "text-[color:var(--muted-foreground)]";
+                      const labelTone = isEmpty
+                        ? "text-[color:var(--muted-foreground)]/45"
+                        : selected
+                          ? "text-[color:var(--foreground)]"
+                          : "text-[color:var(--muted-foreground)]";
+                      const countTone = isEmpty
+                        ? "text-[color:var(--muted-foreground)]/45"
+                        : "text-[color:var(--foreground)]";
+                      return (
+                        <button
+                          key={f}
+                          type="button"
+                          disabled={isEmpty}
+                          aria-pressed={selected}
+                          title={
+                            isEmpty
+                              ? `No signals in ${digestCategoryChipLabel(f)} for Active Drafts this month`
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (!isEmpty) setQueueFilter(f);
+                          }}
+                          className={`flex min-h-[3.625rem] min-w-[6.5rem] max-w-[14rem] flex-col justify-between gap-0.5 rounded-xl border px-2 py-1.5 transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
+                            isEmpty
+                              ? "cursor-not-allowed border-[color:var(--border)]/30 bg-[color:var(--muted)]/6"
+                              : selected
+                                ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/16 shadow-[0_1px_2px_rgba(52,38,30,0.06)] ring-1 ring-[color:var(--accent)]/20"
+                                : "border-[color:var(--border)]/55 bg-[color:var(--card)]/80 hover:border-[color:var(--border)]/75 hover:bg-[color:var(--muted)]/10"
+                          }`}
+                        >
+                          <div className="flex w-full items-center gap-1.5">
+                            <span
+                              className={`inline-flex shrink-0 rounded-md p-0.5 ${
+                                !isEmpty && selected ? "bg-[color:var(--accent)]/18" : ""
+                              }`}
+                              aria-hidden
+                            >
+                              <DigestQueueCategoryFilterIcon chip={f} className={iconTone} />
+                            </span>
+                            <p
+                              className={`min-w-0 flex-1 text-left text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${labelTone}`}
+                            >
+                              {label}
+                            </p>
+                          </div>
+                          <p
+                            className={`w-full text-center text-lg font-semibold tabular-nums leading-none tracking-tight ${countTone}`}
+                          >
+                            {count}
+                          </p>
+                        </button>
+                      );
+                    })}
                   </div>
-                </div>
-                <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-[color:var(--border)]/40 pt-2.5">
-                  {(["all", "needs_work", "ready", "missing_visual", "missing_brief"] as const).map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setQueueFilter(f)}
-                      className={`rounded-md border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                        queueFilter === f
-                          ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
-                          : "border-[color:var(--border)]/60 bg-[color:var(--background)]/60 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-                      }`}
-                    >
-                      {digestFilterLabel(f)}
-                    </button>
-                  ))}
-                </div>
-              </Card>
-              {filteredDigestItems.length === 0 ? (
+                </Card>
+              ) : null}
+              {activeDigestItems.length === 0 ? (
+                <Card className="rounded-2xl border-dashed border-[color:var(--border)]/70 bg-[color:var(--background)]/65 p-6 text-center">
+                  <p className="text-sm text-[color:var(--muted-foreground)]">
+                    No active drafts for this month. When you mark signals complete, they appear in the Completed Library
+                    below.
+                  </p>
+                </Card>
+              ) : filteredDigestItems.length === 0 ? (
                 <Card className="rounded-2xl border-dashed border-[color:var(--border)]/70 bg-[color:var(--background)]/65 p-6 text-center">
                   <p className="text-sm text-[color:var(--muted-foreground)]">
                     No highlights match this filter for the selected month.
@@ -2914,6 +3299,33 @@ export function MonthlyDigestView({
                   ))}
                 </ul>
               )}
+              {completedDigestItems.length > 0 ? (
+                <details
+                  className="scroll-mt-6 rounded-2xl border border-[color:var(--border)]/50 bg-[color:var(--background)]/70 open:border-[color:var(--border)]/65 open:shadow-[0_14px_44px_-32px_rgba(52,38,30,0.38)]"
+                  open
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors hover:bg-[color:var(--muted)]/12 [&::-webkit-details-marker]:hidden">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                        Completed Library
+                      </p>
+                      <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
+                        Finished outputs — browse compact rows here; open one for output preview or reactivate to edit again.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-[color:var(--border)]/55 bg-[color:var(--card)]/85 px-2.5 py-1 text-xs font-semibold tabular-nums text-[color:var(--foreground)]">
+                      {completedDigestItems.length}
+                    </span>
+                  </summary>
+                  <div className="border-t border-[color:var(--border)]/45 px-3 pb-4 pt-3">
+                    <ul className="space-y-2">
+                      {completedDigestItems.map((item) => (
+                        <DigestCompletedSignalCard key={item.id} item={item} model={aiModel} />
+                      ))}
+                    </ul>
+                  </div>
+                </details>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-5">

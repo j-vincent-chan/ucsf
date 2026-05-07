@@ -165,6 +165,7 @@ export function SummaryEditor({
   omitPublishChrome,
   digestBriefSaveOutletRef,
   onBriefSaveBusyChange,
+  onDigestBriefDraftChange,
   onAfterSuccessfulBriefSave,
   omitDigestOutputTabs = false,
 }: {
@@ -185,6 +186,8 @@ export function SummaryEditor({
   digestBriefSaveOutletRef?: MutableRefObject<(() => Promise<void>) | null>;
   /** Digest: mirror saving state so external Save disables (e.g. checklist + collapsed strip share one flag). */
   onBriefSaveBusyChange?: (busy: boolean) => void;
+  /** Digest expanded card: draft differs from persisted summary (external checklist Save bar). */
+  onDigestBriefDraftChange?: (state: { dirty: boolean }) => void;
   /** Digest queue card: collapse the expanded row after a successful save so the Output preview is visible again. */
   onAfterSuccessfulBriefSave?: () => void;
   /** Digest expanded card: parent renders channel tabs above Content studio — hide duplicate tab strip here. */
@@ -436,6 +439,40 @@ export function SummaryEditor({
 
   const isSocialChannel = isDigestSocialOutputStyle(summary.style);
   const saveInBriefOutlet = Boolean(digestBriefSaveOutletRef);
+
+  const digestBriefDirty = useMemo(() => {
+    if (!saveInBriefOutlet || variant !== "embedded") return false;
+    if (isDigestStudioPlaceholderSummary(summary)) return false;
+    const raw = summary.edited_text ?? summary.generated_text ?? "";
+    const baselineParsed = mergeWhyIntoBlurb(
+      parseBlurbJson(raw) ?? {
+        headline: "",
+        blurb: raw,
+        why_it_matters: "",
+        confidence_notes: "",
+      },
+    );
+    const textDirty = stringifyBlurbContent(content) !== stringifyBlurbContent(baselineParsed);
+    const baselineTone: DigestSummaryTone =
+      summary.digest_tone && DIGEST_SUMMARY_TONE_OPTIONS.some((o) => o.id === summary.digest_tone)
+        ? (summary.digest_tone as DigestSummaryTone)
+        : DEFAULT_DIGEST_SUMMARY_TONE;
+    const toneDirty = tone !== baselineTone;
+    const dbChars = summary.target_blurb_chars;
+    const baselineChars =
+      typeof dbChars === "number" && Number.isFinite(dbChars) && dbChars > 0
+        ? snapBlurbCharsToSliderStep(dbChars)
+        : charRange.default;
+    const charsDirty = targetBlurbChars !== baselineChars;
+    const statusDirty = outputStatus !== normalizeOutputStatus(summary.output_status);
+    return textDirty || toneDirty || charsDirty || statusDirty;
+  }, [saveInBriefOutlet, variant, summary, content, tone, targetBlurbChars, outputStatus, charRange]);
+
+  useEffect(() => {
+    if (!onDigestBriefDraftChange || !saveInBriefOutlet || variant !== "embedded") return;
+    onDigestBriefDraftChange({ dirty: digestBriefDirty });
+  }, [digestBriefDirty, onDigestBriefDraftChange, saveInBriefOutlet, variant]);
+
   const showPublishSettingsInline = isSocialChannel && !omitPublishChrome;
   const showPostInActionsFooter = showPublishSettingsInline;
   /** Inline Save stays in Output Settings unless parent owns the handler (wired Save elsewhere). */

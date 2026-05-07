@@ -100,7 +100,7 @@ function itemToCandidate(
     published_at: published,
     raw_summary: "Lab website (RSS)",
     source_type: "lab_website",
-    category: "community_update" as ItemCategory,
+    category: "other" as ItemCategory,
   };
 }
 
