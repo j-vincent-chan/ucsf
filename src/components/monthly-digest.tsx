@@ -2974,10 +2974,8 @@ export function MonthlyDigestView({
   const [truncatePaperAuthors, setTruncatePaperAuthors] = useState(true);
   const [referenceSortMode, setReferenceSortMode] = useState<ReferencePublicationsSortMode>("impact");
   const [expandedCategories, setExpandedCategories] = useState<Set<RefCategoryKey>>(
-    () => new Set<RefCategoryKey>(["papers"]),
+    () => new Set<RefCategoryKey>(["papers", "funding"]),
   );
-  /** Category the sticky “Generate selected” action targets (last interacted). */
-  const [stickyGenerateTarget, setStickyGenerateTarget] = useState<RefCategoryKey>("papers");
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<RefCategoryKey | "all">("all");
   const [runningCategory, setRunningCategory] = useState<RefCategoryKey | null>(null);
   const [statusLine, setStatusLine] = useState("");
@@ -3456,7 +3454,7 @@ export function MonthlyDigestView({
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-24">
+    <div className="mx-auto max-w-7xl space-y-6 pb-12">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-3xl font-semibold tracking-tight">Digest for {monthLabel}</h1>
@@ -3636,7 +3634,7 @@ export function MonthlyDigestView({
                             ? "Marking complete…"
                             : "Mark selected complete"}
                         </Button>
-                        <div className="ml-auto flex w-max max-w-full shrink-0 items-center gap-2">
+                        <div className="ml-auto mr-2 flex w-max max-w-full shrink-0 items-center gap-2 sm:mr-3">
                           <label
                             htmlFor="active-draft-sort"
                             className="shrink-0 whitespace-nowrap text-xs font-semibold text-[color:var(--foreground)]/90"
@@ -3752,55 +3750,6 @@ export function MonthlyDigestView({
                   role="group"
                   aria-label="Reference categories and selection totals"
                 >
-                  {categories.map((category) => {
-                    const selected = activeCategoryFilter === category.key;
-                    const filterChip: DigestCategoryFilterChip =
-                      category.key === "papers" ? "paper" : "funding";
-                    const iconTone = selected
-                      ? "text-[color:var(--foreground)]"
-                      : "text-[color:var(--muted-foreground)]";
-                    const labelTone = iconTone;
-                    const countTone = selected
-                      ? "text-[color:var(--foreground)]"
-                      : "text-[color:var(--muted-foreground)]";
-                    return (
-                      <button
-                        key={category.key}
-                        type="button"
-                        onClick={() => {
-                          setActiveCategoryFilter(category.key);
-                          setExpandedCategories((prev) => new Set(prev).add(category.key));
-                          setStickyGenerateTarget(category.key);
-                        }}
-                        className={`flex min-h-[3.625rem] min-w-[6.5rem] max-w-[14rem] flex-col justify-between gap-0.5 rounded-xl border px-2 py-1.5 text-left transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
-                          selected
-                            ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/16 shadow-[0_1px_2px_rgba(52,38,30,0.06)] ring-1 ring-[color:var(--accent)]/20"
-                            : "border-[color:var(--border)]/55 bg-[color:var(--card)]/80 hover:border-[color:var(--border)]/75 hover:bg-[color:var(--muted)]/10"
-                        }`}
-                      >
-                        <div className="flex w-full items-center gap-1.5">
-                          <span
-                            className={`inline-flex shrink-0 rounded-md p-0.5 ${
-                              selected ? "bg-[color:var(--accent)]/18" : ""
-                            }`}
-                            aria-hidden
-                          >
-                            <DigestQueueCategoryFilterIcon chip={filterChip} className={iconTone} />
-                          </span>
-                          <p
-                            className={`min-w-0 flex-1 text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${labelTone}`}
-                          >
-                            {category.title}
-                          </p>
-                        </div>
-                        <p
-                          className={`w-full text-center text-lg font-semibold tabular-nums leading-none tracking-tight ${countTone}`}
-                        >
-                          {selectedByCategory[category.key].size}
-                        </p>
-                      </button>
-                    );
-                  })}
                   <button
                     type="button"
                     onClick={() => setActiveCategoryFilter("all")}
@@ -3846,6 +3795,54 @@ export function MonthlyDigestView({
                       {totalSelectedCount}
                     </p>
                   </button>
+                  {categories.map((category) => {
+                    const selected = activeCategoryFilter === category.key;
+                    const filterChip: DigestCategoryFilterChip =
+                      category.key === "papers" ? "paper" : "funding";
+                    const iconTone = selected
+                      ? "text-[color:var(--foreground)]"
+                      : "text-[color:var(--muted-foreground)]";
+                    const labelTone = iconTone;
+                    const countTone = selected
+                      ? "text-[color:var(--foreground)]"
+                      : "text-[color:var(--muted-foreground)]";
+                    return (
+                      <button
+                        key={category.key}
+                        type="button"
+                        onClick={() => {
+                          setActiveCategoryFilter(category.key);
+                          setExpandedCategories((prev) => new Set(prev).add(category.key));
+                        }}
+                        className={`flex min-h-[3.625rem] min-w-[6.5rem] max-w-[14rem] flex-col justify-between gap-0.5 rounded-xl border px-2 py-1.5 text-left transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
+                          selected
+                            ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/16 shadow-[0_1px_2px_rgba(52,38,30,0.06)] ring-1 ring-[color:var(--accent)]/20"
+                            : "border-[color:var(--border)]/55 bg-[color:var(--card)]/80 hover:border-[color:var(--border)]/75 hover:bg-[color:var(--muted)]/10"
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-1.5">
+                          <span
+                            className={`inline-flex shrink-0 rounded-md p-0.5 ${
+                              selected ? "bg-[color:var(--accent)]/18" : ""
+                            }`}
+                            aria-hidden
+                          >
+                            <DigestQueueCategoryFilterIcon chip={filterChip} className={iconTone} />
+                          </span>
+                          <p
+                            className={`min-w-0 flex-1 text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${labelTone}`}
+                          >
+                            {category.title}
+                          </p>
+                        </div>
+                        <p
+                          className={`w-full text-center text-lg font-semibold tabular-nums leading-none tracking-tight ${countTone}`}
+                        >
+                          {selectedByCategory[category.key].size}
+                        </p>
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="mt-3 border-t border-[color:var(--border)]/45 pt-3">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -3877,23 +3874,27 @@ export function MonthlyDigestView({
                       />
                       Format: Truncate
                     </label>
-                    <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-sm font-medium text-[color:var(--foreground)]">
-                      <span className="shrink-0 whitespace-nowrap text-[color:var(--muted-foreground)]">
+                    <div className="ml-auto mr-2 flex w-max max-w-full shrink-0 items-center gap-2 sm:mr-3">
+                      <label
+                        htmlFor="reference-sort-output"
+                        className="shrink-0 whitespace-nowrap text-xs font-semibold text-[color:var(--foreground)]/90"
+                      >
                         Sort
-                      </span>
+                      </label>
                       <Select
+                        id="reference-sort-output"
                         value={referenceSortMode}
                         onChange={(e) =>
                           setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)
                         }
-                        className="box-border h-9 min-h-9 !w-[min(17rem,calc(100vw-8rem))] min-w-[12.5rem] rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
+                        className="!w-[min(100%,17rem)] max-w-full shrink-0 cursor-pointer py-2.5 text-sm leading-normal"
                         aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
                       >
                         <option value="impact">Journal impact · Funding amount</option>
                         <option value="recent">Most recent</option>
                         <option value="alphabetical">Alphabetical (1st author)</option>
                       </Select>
-                    </label>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -3925,7 +3926,6 @@ export function MonthlyDigestView({
                             else next.add(category.key);
                             return next;
                           });
-                          setStickyGenerateTarget(category.key);
                         }}
                         onToggleItem={(id) => toggleSelected(category.key, id)}
                         onSelectAll={() => selectAll(category.key)}
@@ -3937,25 +3937,45 @@ export function MonthlyDigestView({
                 </div>
                 <div className="min-w-0 h-fit xl:min-h-0">
                   <Card className="h-fit min-w-0 rounded-2xl border-[color:var(--border)]/75 bg-[color:var(--background)]/92 p-5 shadow-[0_20px_40px_-30px_rgba(43,27,21,0.75)]">
-                  <div className="shrink-0 flex items-center justify-between gap-2 border-b border-[color:var(--border)]/55 pb-3.5">
+                  <div className="shrink-0 flex flex-wrap items-start justify-between gap-2 border-b border-[color:var(--border)]/55 pb-3.5">
                     <div>
                       <p className="text-base font-semibold tracking-tight text-[color:var(--foreground)]">Output preview</p>
                       <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
                         Review digest-ready references before copy/export.
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => void copyText(combinedOutputText, "Combined references copied")}
-                      disabled={!combinedOutputText}
-                      className="h-10 min-h-10 w-10 min-w-10 shrink-0 overflow-visible p-0 leading-none"
-                      aria-label="Copy all references"
-                      title="Copy all references"
-                    >
-                      <ReferencesCopyIcon />
-                      <span className="sr-only">Copy all references</span>
-                    </Button>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void runGenerateAllSelectedCategories()}
+                        disabled={Boolean(runningCategory) || totalSelectedCount === 0}
+                        className="h-10 shrink-0 px-3 text-xs font-semibold"
+                      >
+                        Generate all categories
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={clearGeneratedOutput}
+                        disabled={totalGeneratedCount === 0 || Boolean(runningCategory)}
+                        className="h-10 shrink-0 px-3 text-xs text-[color:var(--muted-foreground)] hover:!bg-transparent disabled:hover:!bg-transparent"
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void copyText(combinedOutputText, "Combined references copied")}
+                        disabled={!combinedOutputText}
+                        className="h-10 min-h-10 w-10 min-w-10 shrink-0 overflow-visible p-0 leading-none"
+                        aria-label="Copy all references"
+                        title="Copy all references"
+                      >
+                        <ReferencesCopyIcon />
+                        <span className="sr-only">Copy all references</span>
+                      </Button>
+                    </div>
                   </div>
                   <div
                     ref={referencesPreviewScrollRef}
@@ -4030,91 +4050,6 @@ export function MonthlyDigestView({
           )}
         </>
       )}
-      {(totalSelectedCount > 0 || totalGeneratedCount > 0) && activeTab === "references" ? (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-5xl rounded-2xl border border-[color:var(--border)]/85 bg-[color:var(--background)]/96 p-3.5 shadow-[0_24px_68px_-34px_rgba(33,20,15,0.85)] backdrop-blur-md [&_button]:!transition-none">
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-[color:var(--muted-foreground)]">
-              <span className="font-semibold text-[color:var(--foreground)]">{totalSelectedCount}</span> selected ·{" "}
-              <span className="font-semibold text-[color:var(--foreground)]">{totalGeneratedCount}</span> generated
-            </p>
-            <div className="flex flex-wrap items-center gap-2 overflow-visible sm:gap-3">
-              <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--muted)]/15 px-2.5 text-xs font-medium text-[color:var(--muted-foreground)]">
-                <input
-                  type="checkbox"
-                  checked={numberedLines}
-                  onChange={(e) => setNumberedLines(e.target.checked)}
-                  className="rounded border-[color:var(--border)]"
-                />
-                Format: Numbering
-              </label>
-              <label
-                className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--muted)]/15 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]"
-                title="Papers: on = first 3 authors + et al.; off = full author list."
-              >
-                <input
-                  type="checkbox"
-                  checked={truncatePaperAuthors}
-                  onChange={(e) => setTruncatePaperAuthors(e.target.checked)}
-                  className="rounded border-[color:var(--border)]"
-                  aria-label="Format: truncate paper authors to three plus et al."
-                />
-                Format: Truncate
-              </label>
-              <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-xs font-medium text-[color:var(--muted-foreground)]">
-                <span className="shrink-0 whitespace-nowrap">Sort</span>
-                <Select
-                  value={referenceSortMode}
-                  onChange={(e) => setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)}
-                  className="box-border h-9 min-h-9 !w-[min(16rem,calc(100vw-9rem))] min-w-[12rem] rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
-                  aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
-                >
-                  <option value="impact">Journal impact · Funding amount</option>
-                  <option value="recent">Most recent</option>
-                  <option value="alphabetical">A–Z (1st author)</option>
-                </Select>
-              </label>
-              <Button
-                type="button"
-                onClick={() => void runCategoryGeneration(stickyGenerateTarget)}
-                disabled={Boolean(runningCategory) || selectedByCategory[stickyGenerateTarget].size === 0}
-                className="h-8 shrink-0 px-3 text-xs shadow-[0_10px_18px_-14px_rgba(87,57,45,0.85)] hover:!translate-y-0 hover:!brightness-100 disabled:hover:!brightness-100"
-              >
-                Generate selected
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void runGenerateAllSelectedCategories()}
-                disabled={Boolean(runningCategory) || totalSelectedCount === 0}
-                className="h-8 shrink-0 px-3 text-xs hover:!translate-y-0 hover:!bg-[color:var(--card)]/95"
-              >
-                Generate all categories
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void copyText(combinedOutputText, "Combined references copied")}
-                disabled={!combinedOutputText}
-                className="h-8 min-h-8 w-8 min-w-8 shrink-0 overflow-visible p-0 leading-none hover:!translate-y-0 hover:!bg-[color:var(--card)]/95"
-                aria-label="Copy output"
-                title="Copy output"
-              >
-                <ReferencesCopyIcon />
-                <span className="sr-only">Copy output</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={clearGeneratedOutput}
-                disabled={totalGeneratedCount === 0 || Boolean(runningCategory)}
-                className="h-8 px-3 text-xs text-[color:var(--muted-foreground)] hover:!bg-transparent hover:!text-[color:var(--muted-foreground)] disabled:hover:!bg-transparent"
-              >
-                Clear
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
