@@ -73,10 +73,28 @@ export function SignalWordmark({
 export function SignalLogo({
   className = "",
   showSubtitle = true,
+  variant = "full",
 }: {
   className?: string;
   showSubtitle?: boolean;
+  /** Narrow sidebar: lighthouse mark only (no wordmark). */
+  variant?: "full" | "mark";
 }) {
+  if (variant === "mark") {
+    return (
+      <div className={`flex shrink-0 items-center justify-center ${className}`.trim()} aria-hidden>
+        <Image
+          src="/signal-logo.png"
+          alt=""
+          width={332}
+          height={279}
+          className="h-9 w-9 shrink-0 object-contain"
+          priority
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className={`grid w-full min-w-0 grid-cols-[auto_1fr] gap-x-2.5 ${showSubtitle ? "gap-y-0" : "items-center"} ${className}`.trim()}

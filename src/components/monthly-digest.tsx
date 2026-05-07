@@ -22,10 +22,11 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { CategoryTag, SourceTypeTag } from "@/app/(main)/items/queue-cell-tags";
+import { CategoryTag, sourceTypeDisplayLabel, SourceTypeTag } from "@/app/(main)/items/queue-cell-tags";
 import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 import {
   DIGEST_CATEGORY_FILTER_CHIPS,
+  categoryDisplayLabel,
   digestCategoryChipLabel,
   matchesDigestCategoryChip,
   type DigestCategoryFilterChip,
@@ -123,6 +124,63 @@ function BrowseTypeSectionFilterIcon({ className = "" }: { className?: string })
     </svg>
   );
 }
+
+function BulkActionsSectionIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 text-[color:var(--muted-foreground)] ${className}`}
+      aria-hidden
+    >
+      <path d="m3 17 2 2 4-4" />
+      <path d="m3 7 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </svg>
+  );
+}
+
+/** Sliders — pairs with “Output options” like BulkActionsSectionIcon + “Bulk actions”. */
+function OutputOptionsSectionIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 text-[color:var(--muted-foreground)] ${className}`}
+      aria-hidden
+    >
+      <path d="M4 21v-7" />
+      <path d="M4 10V3" />
+      <path d="M12 21v-9" />
+      <path d="M12 8V3" />
+      <path d="M20 21v-5" />
+      <path d="M20 12V3" />
+      <path d="M2 14h4" />
+      <path d="M10 8h4" />
+      <path d="M18 16h4" />
+    </svg>
+  );
+}
+
+/** Shared shell: Active Drafts filter + References selection panels (photo 1 baseline). */
+const DIGEST_WORKSPACE_PANEL_CLASS =
+  "rounded-xl border-[color:var(--border)]/55 bg-[color:var(--background)]/75 p-3 shadow-[0_8px_28px_-22px_rgba(52,38,30,0.22)]";
 
 function WorkspaceViewSummariesIcon({ className = "" }: { className?: string }) {
   return (
@@ -456,6 +514,130 @@ function StatusPill({ children, className = "" }: { children: ReactNode; classNa
   );
 }
 
+/** Publication / found date label for digest rows (matches former StatusPill date text). */
+function digestItemSignalDateLabel(item: DigestItemPayload): string {
+  return item.published_at
+    ? new Date(item.published_at).toLocaleDateString()
+    : `Found ${new Date(item.found_at).toLocaleDateString()} (no publish date)`;
+}
+
+const digestMetaPillClass =
+  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[color:var(--border)]/90 bg-[color:var(--muted)]/55 px-3 py-1 text-xs font-semibold tracking-tight text-[color:var(--muted-foreground)]";
+
+function DigestMetaIconCalendar({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={`shrink-0 opacity-90 ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" x2="16" y1="2" y2="6" />
+      <line x1="8" x2="8" y1="2" y2="6" />
+      <line x1="3" x2="21" y1="10" y2="10" />
+    </svg>
+  );
+}
+
+function DigestMetaIconCategory({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={`shrink-0 opacity-90 ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l6.59-6.59a1 1 0 0 0 0-1.41L12 2z" />
+      <path d="M7 7h.01" />
+    </svg>
+  );
+}
+
+function DigestMetaSourceGlyph({ type, className = "" }: { type: SourceType; className?: string }) {
+  const cn = `shrink-0 opacity-90 ${className}`;
+  switch (type) {
+    case "pubmed":
+      return (
+        <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+          />
+          <polyline strokeLinecap="round" strokeLinejoin="round" points="14 2 14 8 20 8" />
+          <line x1="16" x2="8" y1="13" y2="13" />
+          <line x1="16" x2="8" y1="17" y2="17" />
+        </svg>
+      );
+    case "web":
+      return (
+        <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <circle cx="12" cy="12" r="10" />
+          <path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20" />
+        </svg>
+      );
+    case "manual":
+      return (
+        <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "lab_website":
+      return (
+        <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline strokeLinecap="round" strokeLinejoin="round" points="9 22 9 12 15 12 15 22" />
+        </svg>
+      );
+    case "reporter":
+    default:
+      return (
+        <svg className={cn} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M7 16l4-4 4 4 5-7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+  }
+}
+
+/** Top meta row: signal date, source, category — larger than legacy StatusPill, with leading icons. */
+function DigestItemMetaStrip({
+  item,
+  className = "mb-2",
+}: {
+  item: DigestItemPayload;
+  className?: string;
+}) {
+  const dateLabel = digestItemSignalDateLabel(item);
+  const sourceLabel = sourceTypeDisplayLabel(item.source_type);
+  const categoryLabel = categoryDisplayLabel(item.category);
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      <span className={`${digestMetaPillClass} normal-case tracking-normal`} title="Publication or found date">
+        <DigestMetaIconCalendar className="h-3.5 w-3.5" />
+        {dateLabel}
+      </span>
+      <span className={`${digestMetaPillClass} normal-case`} title="Source">
+        <DigestMetaSourceGlyph type={item.source_type} className="h-3.5 w-3.5" />
+        {sourceLabel}
+      </span>
+      <span className={`${digestMetaPillClass} capitalize`} title="Category">
+        <DigestMetaIconCategory className="h-3.5 w-3.5" />
+        {categoryLabel}
+      </span>
+    </div>
+  );
+}
+
 /** One row in the digest drafting workspace: title, optional status, expand/collapse. */
 type BulkRefResult = {
   source_item_id: string;
@@ -465,14 +647,6 @@ type BulkRefResult = {
   paper_author_list_full?: string | null;
   paper_author_list_truncated?: string | null;
 };
-
-const AI_MODEL_OPTIONS = [
-  { value: "", label: "Default" },
-  { value: "gpt-4o-mini", label: "GPT-4o mini" },
-  { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
-  { value: "gpt-4o", label: "GPT-4o" },
-  { value: "gpt-4.1", label: "GPT-4.1" },
-] as const;
 
 function extractJournalFromRawSummary(rawSummary: string | null): string | null {
   if (!rawSummary) return null;
@@ -561,13 +735,6 @@ function formatDigestBriefLastSavedLabel(iso: string | null | undefined): string
 
 type RefCategoryKey = "papers" | "funding";
 
-type DigestWorkflowStatus =
-  | "ready"
-  | "not_started"
-  | "needs_review"
-  | "missing_visual"
-  | "missing_brief";
-
 /** Full headline + body for the collapsed-card output preview (not single-line clamped). */
 function digestCardOutputPreview(summary: Summary | null): { headline: string; body: string } {
   if (!summary) return { headline: "No summary generated yet", body: "" };
@@ -582,9 +749,9 @@ function digestCardOutputPreview(summary: Summary | null): { headline: string; b
 }
 
 /** Collapsed digest card — empty summary column (matches visuals placeholder layout). */
-function DigestOutputPreviewEmptySummary() {
-  return (
-    <div className="flex min-h-[10rem] flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+function DigestOutputPreviewEmptySummary({ noChrome }: { noChrome?: boolean }) {
+  const inner = (
+    <>
       <svg
         className="mb-3 h-11 w-11 shrink-0 text-[#7c6f64]"
         viewBox="0 0 24 24"
@@ -605,13 +772,31 @@ function DigestOutputPreviewEmptySummary() {
       <p className="mt-1.5 max-w-[15rem] text-sm leading-relaxed text-[#7c6f64]">
         Expand the card to draft copy.
       </p>
+    </>
+  );
+  if (noChrome) {
+    return (
+      <div className="flex min-h-[10rem] flex-1 flex-col items-center justify-center bg-[color:var(--card)] px-4 py-8 text-center">
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-[10rem] flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+      {inner}
     </div>
   );
 }
 
-function DigestOutputPreviewEmptyVisuals({ variant }: { variant: "none" | "pending_load" }) {
-  return (
-    <div className="flex min-h-[10rem] flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+function DigestOutputPreviewEmptyVisuals({
+  variant,
+  noChrome,
+}: {
+  variant: "none" | "pending_load";
+  noChrome?: boolean;
+}) {
+  const inner = (
+    <>
       <svg
         className="mb-3 h-11 w-11 shrink-0 text-[#7c6f64]"
         viewBox="0 0 24 24"
@@ -634,6 +819,18 @@ function DigestOutputPreviewEmptyVisuals({ variant }: { variant: "none" | "pendi
           ? "Expand the card to load the selected visual."
           : "Generate or add visuals after expanding."}
       </p>
+    </>
+  );
+  if (noChrome) {
+    return (
+      <div className="flex min-h-[10rem] flex-1 flex-col items-center justify-center bg-[color:var(--card)] px-4 py-8 text-center">
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-[10rem] flex-col items-center justify-center rounded-xl border border-dashed border-[#e5e1de] bg-[#f3f0eb] px-4 py-8 text-center">
+      {inner}
     </div>
   );
 }
@@ -754,33 +951,6 @@ function digestItemHasVisual(item: DigestItemPayload): boolean {
   // List queries often omit bundle JSON via `digest_cover_has_asset`; treat as visuals present until hydrated.
   if (item.digest_cover == null) return true;
   return digestCoverStoreHasHeroSelection(parseDigestCoverStoreFromDb(item.digest_cover));
-}
-
-function digestWorkflowStatus(item: DigestItemPayload, summaries: Summary[]): DigestWorkflowStatus {
-  const hasVisual = digestItemHasVisual(item);
-  const hasDraft = summaries.length > 0;
-  const briefSaved = summaries.some((s) => Boolean(s.edited_text?.trim()));
-  if (hasVisual && briefSaved) return "ready";
-  if (!hasVisual && !hasDraft) return "not_started";
-  if (!hasVisual && hasDraft) return "missing_visual";
-  if (hasVisual && !hasDraft) return "missing_brief";
-  return "needs_review";
-}
-
-function digestStatusPill(status: DigestWorkflowStatus): ReactNode {
-  switch (status) {
-    case "ready":
-      return <StatusPill className="border-emerald-500/45 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300">Ready</StatusPill>;
-    case "missing_visual":
-      return <StatusPill className="border-amber-500/45 bg-amber-500/12 text-amber-800 dark:text-amber-300">Missing visual</StatusPill>;
-    case "missing_brief":
-      return <StatusPill className="border-amber-500/45 bg-amber-500/12 text-amber-800 dark:text-amber-300">Missing summary</StatusPill>;
-    case "needs_review":
-      return <StatusPill className="border-sky-500/45 bg-sky-500/12 text-sky-800 dark:text-sky-300">Needs review</StatusPill>;
-    case "not_started":
-    default:
-      return <StatusPill>Not started</StatusPill>;
-  }
 }
 
 type DigestRefCategory = {
@@ -1061,7 +1231,6 @@ function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; m
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
-  const workflowStatus = digestWorkflowStatus(item, item.summaries);
   const destLabels = useMemo(() => {
     const styles = new Set(
       item.summaries
@@ -1127,11 +1296,9 @@ function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; m
             <p className="line-clamp-2 text-sm font-semibold leading-snug text-[color:var(--foreground)]">
               {item.title}
             </p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <SourceTypeTag type={item.source_type} />
-              <CategoryTag category={item.category} />
-              {digestStatusPill(workflowStatus)}
-              <span className="rounded-md border border-[color:var(--border)]/55 bg-[color:var(--card)]/75 px-2 py-0.5 text-[10px] font-medium text-[color:var(--muted-foreground)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <DigestItemMetaStrip item={item} className="" />
+              <span className="rounded-md border border-[color:var(--border)]/55 bg-[color:var(--card)]/75 px-2.5 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)]">
                 Done {completedAt}
               </span>
             </div>
@@ -1174,6 +1341,7 @@ function DigestItemRow({
   expanded,
   onToggleExpanded,
   libraryPreviewMode,
+  bulkSelect,
 }: {
   item: DigestItemPayload;
   model: string;
@@ -1184,6 +1352,8 @@ function DigestItemRow({
     onReactivate: () => void;
     reactivating: boolean;
   };
+  /** When set, show a row checkbox for bulk “mark complete” in Active Drafts. */
+  bulkSelect?: { selected: boolean; onToggle: () => void };
 }) {
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
@@ -1256,15 +1426,13 @@ function DigestItemRow({
     });
   }, [digestContentStudioSummaries]);
 
-  /** Collapsed “Output preview” strip — short labels; same selectability rules as Content studio. */
+  /** Collapsed Output preview — same tab chrome as expanded Channel row (`DigestStudioOutputTabs` default). */
   const outputPreviewTabs = useMemo((): DigestStudioOutputTab[] => {
     return DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS.map((opt) => {
       const row = digestContentStudioSummaries.find((s) => s.style === opt.style);
-      const shortLabel =
-        opt.style === "bluesky_x" ? "Social" : opt.style === "newsletter" ? "Newsletter" : "LinkedIn";
       return {
         style: opt.style,
-        label: shortLabel,
+        label: opt.label,
         selectable: row ? digestSummaryHasGeneratedText(row) : false,
         leading: <DigestStudioTabLeadingIcon style={opt.style} />,
       };
@@ -1351,8 +1519,6 @@ function DigestItemRow({
     },
     [digestContentStudioSummaries],
   );
-
-  const workflowStatus = digestWorkflowStatus(item, summaries);
 
   useEffect(() => {
     const st = activeSummary?.style;
@@ -1664,10 +1830,6 @@ function DigestItemRow({
     }
   }
 
-  const dateLabel = item.published_at
-    ? new Date(item.published_at).toLocaleDateString()
-    : `Found ${new Date(item.found_at).toLocaleDateString()} (no publish date)`;
-  const sourceLabel = item.source_type === "pubmed" ? "PubMed" : item.source_type.replace(/_/g, " ");
   const piListedSeparately =
     Boolean(item.pi_name) &&
     item.investigators.length > 0 &&
@@ -1818,6 +1980,23 @@ function DigestItemRow({
     hasHttpSourceUrl &&
     (socialPreviewUsesArticleLink || (!selectedPreviewImageUrl && linkPreviewHero));
 
+  /** Single dashed frame for both placeholders — avoids double bottom borders side by side. */
+  const mergedOutputPreviewEmptyPlaceholders = useMemo(
+    () =>
+      showOutputPreviewSummaryEmpty &&
+      !showDigestHeroImage &&
+      !showArticleLinkPreviewCard &&
+      !((socialPreviewUsesArticleLink || linkPreviewHero) && !hasHttpSourceUrl),
+    [
+      showOutputPreviewSummaryEmpty,
+      showDigestHeroImage,
+      showArticleLinkPreviewCard,
+      socialPreviewUsesArticleLink,
+      linkPreviewHero,
+      hasHttpSourceUrl,
+    ],
+  );
+
   const canDownloadDigestHero = Boolean(selectedPreviewImageUrl) && !socialPreviewUsesArticleLink && !linkPreviewHero;
 
   const digestStripDownloadImage = useCallback(async () => {
@@ -1937,13 +2116,25 @@ function DigestItemRow({
         }`}
       >
       <div className="space-y-3.5 p-4 sm:p-[1.125rem]">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex gap-2.5 sm:gap-3">
+          {bulkSelect ? (
+            <label className="mt-1 flex shrink-0 cursor-pointer items-start pt-0.5 sm:mt-1.5">
+              <input
+                type="checkbox"
+                checked={bulkSelect.selected}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  bulkSelect.onToggle();
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="h-4 w-4 shrink-0 rounded border-[color:var(--border)] accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
+                aria-label={`Select for bulk actions: ${item.title}`}
+              />
+            </label>
+          ) : null}
+          <div className="flex min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <div className="mb-2 flex flex-wrap items-center gap-1.5">
-              {digestStatusPill(workflowStatus)}
-              <StatusPill>{sourceLabel}</StatusPill>
-              <StatusPill>{dateLabel}</StatusPill>
-            </div>
+            <DigestItemMetaStrip item={item} />
           <h3 className="text-xl font-semibold leading-snug tracking-tight text-[color:var(--foreground)]">
             <Link href={`/items/${item.id}`} className="hover:underline">
               {item.title}
@@ -2015,10 +2206,6 @@ function DigestItemRow({
               <span>Unassigned</span>
             )}
           </p>
-          <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs text-[color:var(--muted-foreground)]">
-            <SourceTypeTag type={item.source_type} />
-            <CategoryTag category={item.category} />
-          </div>
           </div>
           <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2">
             {libraryPreviewMode ? (
@@ -2195,25 +2382,41 @@ function DigestItemRow({
             ) : null}
           </div>
         </div>
+        </div>
       </div>
 
       {!expanded ? (
         <div className="px-4 pb-6 sm:px-5 sm:pb-6">
-          <div className="rounded-2xl border border-[#e8e2dc] bg-[#fcfaf8] p-4 shadow-[0_18px_52px_-36px_rgba(58,44,34,0.28)] ring-1 ring-[#ebe6df]/55 sm:p-5">
+          <div className="rounded-2xl border border-[#e8e2dc]/85 bg-[#fcfaf8] p-4 shadow-[0_18px_52px_-36px_rgba(58,44,34,0.22)] sm:p-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#7c6f64]">
               Output preview
             </p>
-            <div className="-mx-1 mt-2 block sm:mx-0">
+            <div className="-mx-4 mt-3 sm:-mx-5">
               <DigestStudioOutputTabs
-                variant="warm"
+                omitNavChrome
                 tabs={outputPreviewTabs}
                 activeStyle={outputPreviewStyle}
                 onSelectStyle={setOutputPreviewStyle}
                 disabled={generating || archiving || illustrating}
               />
             </div>
-            <hr className="-mx-4 my-0 h-px shrink-0 border-0 bg-[#e8e2dc] sm:-mx-5" />
-            <div className="-mx-4 flex flex-col gap-5 px-4 pt-4 sm:-mx-5 sm:px-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(12rem,42%)] md:items-stretch md:gap-6">
+            <div className="-mx-4 flex flex-col gap-5 border-t border-[color:var(--border)]/35 bg-[color:var(--card)] px-4 pb-4 pt-4 sm:-mx-5 sm:px-5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(12rem,42%)] md:items-stretch md:gap-6">
+              {mergedOutputPreviewEmptyPlaceholders ? (
+                <div className="min-w-0 md:col-span-2">
+                  <div className="flex min-h-[10rem] flex-col divide-y divide-dashed divide-[#e5e1de]/90 overflow-hidden rounded-xl border border-dashed border-[#e5e1de] bg-[color:var(--card)] md:flex-row md:divide-x md:divide-y-0">
+                    <div className="flex min-h-0 min-w-0 flex-1 bg-[color:var(--card)]">
+                      <DigestOutputPreviewEmptySummary noChrome />
+                    </div>
+                    <div className="flex min-h-0 min-w-0 flex-1 bg-[color:var(--card)]">
+                      <DigestOutputPreviewEmptyVisuals
+                        noChrome
+                        variant={digestItemHasVisual(item) ? "pending_load" : "none"}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
               <div
                 className={`min-w-0 space-y-2 ${showOutputPreviewSummaryEmpty ? "md:flex md:min-h-0 md:flex-col md:h-full" : ""}`}
               >
@@ -2286,6 +2489,8 @@ function DigestItemRow({
                   <DigestOutputPreviewEmptyVisuals variant="none" />
                 )}
               </div>
+                </>
+              )}
             </div>
           </div>
           {!libraryPreviewMode ? (
@@ -2594,8 +2799,8 @@ function DigestItemRow({
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10" />
-                    <path d="M12 16v-4" />
-                    <path d="M12 8h.01" />
+                    <path d="M12 12V6.8" strokeLinecap="round" />
+                    <path d="M12 12l4.8 2.2" strokeLinecap="round" />
                   </svg>
                 </span>
                 <div className="min-w-0 leading-tight">
@@ -2655,6 +2860,88 @@ function DigestItemRow({
   );
 }
 
+const digestWorkspaceSegmentedClass =
+  "flex w-full min-w-0 gap-1 rounded-xl border border-[color:var(--border)]/90 bg-[color:var(--card)]/95 p-1.5 shadow-[inset_0_1px_3px_rgba(67,54,45,0.07)] sm:inline-flex sm:w-max sm:max-w-none dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.22)]";
+
+/**
+ * Hydration-safe workspace tabs: SSR + first client paint render an inert shell; tablist attaches
+ * after mount so Turbo/HMR cannot mismatch older server HTML vs current client markup.
+ */
+function DigestWorkspaceViewSwitch({
+  activeTab,
+  onActiveTabChange,
+}: {
+  activeTab: "copy_illustrator" | "references";
+  onActiveTabChange: (tab: "copy_illustrator" | "references") => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    queueMicrotask(() => setMounted(true));
+  }, []);
+
+  return (
+    <div className="w-full space-y-2 sm:w-fit">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+        View
+      </p>
+      {mounted ? (
+        <div
+          className="flex w-full flex-col gap-2 sm:w-fit"
+          role="tablist"
+          aria-label="Digest workspaces"
+        >
+          <div className={digestWorkspaceSegmentedClass}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "copy_illustrator"}
+              onClick={() => onActiveTabChange("copy_illustrator")}
+              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
+                activeTab === "copy_illustrator"
+                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
+                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
+              }`}
+            >
+              <WorkspaceViewSummariesIcon
+                className={
+                  activeTab === "copy_illustrator"
+                    ? "text-[color:var(--accent-foreground)]"
+                    : "text-[color:var(--foreground)]"
+                }
+              />
+              Summaries
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "references"}
+              onClick={() => onActiveTabChange("references")}
+              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
+                activeTab === "references"
+                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
+                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
+              }`}
+            >
+              <WorkspaceViewReferencesIcon
+                className={
+                  activeTab === "references"
+                    ? "text-[color:var(--accent-foreground)]"
+                    : "text-[color:var(--foreground)]"
+                }
+              />
+              References
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex w-full flex-col gap-2 sm:w-fit" aria-hidden>
+          <div className={`${digestWorkspaceSegmentedClass} min-h-[2.75rem]`} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MonthlyDigestView({
   monthLabel,
   items,
@@ -2670,16 +2957,18 @@ export function MonthlyDigestView({
 }) {
   const router = useRouter();
   const [monthInput, setMonthInput] = useState(selectedMonth ?? "");
-  const [aiModel, setAiModel] = useState<string>("");
   const [activeTab, setActiveTab] = useState<"copy_illustrator" | "references">(
     "copy_illustrator",
   );
   const [queueFilter, setQueueFilter] = useState<DigestCategoryFilterChip>("all");
+  const [activeDraftSortMode, setActiveDraftSortMode] = useState<"category" | "recent">("category");
   const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() => {
     const first = items.find((i) => i.digestMarkedCompleteAt == null);
     return first ? new Set([first.id]) : new Set();
   });
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [bulkSelectedDigestIds, setBulkSelectedDigestIds] = useState<Set<string>>(() => new Set());
+  const [bulkMarkingComplete, setBulkMarkingComplete] = useState(false);
+  const bulkSelectAllInViewRef = useRef<HTMLInputElement>(null);
   const [numberedLines, setNumberedLines] = useState(true);
   /** When true, paper references show first 3 authors + et al.; when false, full PubMed author list. */
   const [truncatePaperAuthors, setTruncatePaperAuthors] = useState(true);
@@ -2698,6 +2987,36 @@ export function MonthlyDigestView({
     () => items.filter((item) => item.digestMarkedCompleteAt == null),
     [items],
   );
+  const sortedActiveDigestItems = useMemo(() => {
+    const rank = (cat: ItemCategory | null): number => {
+      // Default Active Drafts sort (top → bottom): News, Awards, Funding, Papers, Other/Unknown.
+      if (cat === "media") return 0; // News
+      if (cat === "award") return 1; // Awards
+      if (cat === "funding") return 2; // Funding
+      if (cat === "paper") return 3; // Papers
+      return 4;
+    };
+    const ts = (item: DigestItemPayload): number => {
+      const iso = item.published_at ?? item.found_at;
+      const d = new Date(iso);
+      const t = d.getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    const arr = [...activeDigestItems];
+    arr.sort((a, b) => {
+      if (activeDraftSortMode === "recent") {
+        return ts(b) - ts(a);
+      }
+      const ra = rank(a.category);
+      const rb = rank(b.category);
+      if (ra !== rb) return ra - rb;
+      // Within a category, keep most recent first.
+      const dt = ts(b) - ts(a);
+      if (dt !== 0) return dt;
+      return a.title.localeCompare(b.title);
+    });
+    return arr;
+  }, [activeDigestItems, activeDraftSortMode]);
   const completedDigestItems = useMemo(() => {
     const done = items.filter((item) => item.digestMarkedCompleteAt != null);
     done.sort(
@@ -2774,9 +3093,89 @@ export function MonthlyDigestView({
 
   const filteredDigestItems = useMemo(
     () =>
-      activeDigestItems.filter((item) => matchesDigestCategoryChip(item.category, queueFilter)),
-    [activeDigestItems, queueFilter],
+      sortedActiveDigestItems.filter((item) => matchesDigestCategoryChip(item.category, queueFilter)),
+    [sortedActiveDigestItems, queueFilter],
   );
+
+  const filteredDigestItemIds = useMemo(
+    () => filteredDigestItems.map((i) => i.id),
+    [filteredDigestItems],
+  );
+
+  const bulkSelectedInViewCount = useMemo(() => {
+    let n = 0;
+    for (const id of filteredDigestItemIds) {
+      if (bulkSelectedDigestIds.has(id)) n++;
+    }
+    return n;
+  }, [filteredDigestItemIds, bulkSelectedDigestIds]);
+
+  const allFilteredSelected =
+    filteredDigestItemIds.length > 0 && bulkSelectedInViewCount === filteredDigestItemIds.length;
+
+  useEffect(() => {
+    const visible = new Set(filteredDigestItemIds);
+    setBulkSelectedDigestIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [filteredDigestItemIds]);
+
+  useEffect(() => {
+    const el = bulkSelectAllInViewRef.current;
+    if (!el) return;
+    el.indeterminate =
+      bulkSelectedInViewCount > 0 && bulkSelectedInViewCount < filteredDigestItemIds.length;
+  }, [bulkSelectedInViewCount, filteredDigestItemIds.length]);
+
+  const toggleSelectAllInView = useCallback(() => {
+    setBulkSelectedDigestIds((prev) => {
+      const visible = filteredDigestItemIds;
+      const every = visible.length > 0 && visible.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (every) {
+        for (const id of visible) next.delete(id);
+      } else {
+        for (const id of visible) next.add(id);
+      }
+      return next;
+    });
+  }, [filteredDigestItemIds]);
+
+  const markBulkSelectedComplete = useCallback(async () => {
+    const ids = filteredDigestItemIds.filter((id) => bulkSelectedDigestIds.has(id));
+    if (ids.length === 0) return;
+    setBulkMarkingComplete(true);
+    try {
+      let ok = 0;
+      let fail = 0;
+      for (const source_item_id of ids) {
+        const res = await fetch("/api/digest-workflow-state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source_item_id, complete: true }),
+        });
+        if (res.ok) ok++;
+        else fail++;
+      }
+      if (fail > 0) {
+        toast.error(
+          `${fail} ${fail === 1 ? "update" : "updates"} failed${ok ? `; ${ok} marked complete` : ""}`,
+        );
+      } else {
+        toast.success(`Marked ${ok} ${ok === 1 ? "signal" : "signals"} complete`);
+      }
+      setBulkSelectedDigestIds(new Set());
+      router.refresh();
+    } finally {
+      setBulkMarkingComplete(false);
+    }
+  }, [bulkSelectedDigestIds, filteredDigestItemIds, router]);
 
   useEffect(() => {
     if (queueFilter === "all") return;
@@ -2959,7 +3358,7 @@ export function MonthlyDigestView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             source_item_id: item.id,
-            model: aiModel.trim() || undefined,
+            model: undefined,
           }),
         });
         const data = (await res.json()) as {
@@ -3098,62 +3497,7 @@ export function MonthlyDigestView({
           </Button>
         </form>
       </div>
-      <div className="w-full space-y-2 sm:w-fit">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
-          View
-        </p>
-        <div
-          className="flex w-full flex-col gap-2 sm:w-fit"
-          role="tablist"
-          aria-label="Digest workspaces"
-        >
-          <div className="flex w-full min-w-0 gap-1 rounded-xl border border-[color:var(--border)]/90 bg-[color:var(--card)]/95 p-1.5 shadow-[inset_0_1px_3px_rgba(67,54,45,0.07)] sm:inline-flex sm:w-max sm:max-w-none dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.22)]">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "copy_illustrator"}
-              onClick={() => setActiveTab("copy_illustrator")}
-              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
-                activeTab === "copy_illustrator"
-                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
-                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
-              }`}
-            >
-              <WorkspaceViewSummariesIcon
-                className={
-                  activeTab === "copy_illustrator"
-                    ? "text-[color:var(--accent-foreground)]"
-                    : "text-[color:var(--foreground)]"
-                }
-              />
-              Summaries
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "references"}
-              onClick={() => setActiveTab("references")}
-              className={`inline-flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)] sm:flex-initial sm:px-5 ${
-                activeTab === "references"
-                  ? "bg-[color:var(--accent)] text-[color:var(--accent-foreground)] shadow-[0_2px_8px_-2px_rgba(89,67,52,0.35)] ring-1 ring-[color:var(--accent-foreground)]/25"
-                  : "text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/65"
-              }`}
-            >
-              <WorkspaceViewReferencesIcon
-                className={
-                  activeTab === "references"
-                    ? "text-[color:var(--accent-foreground)]"
-                    : "text-[color:var(--foreground)]"
-                }
-              />
-              References
-            </button>
-          </div>
-          <p className="max-w-md text-xs leading-relaxed text-[color:var(--foreground)]/85 sm:text-[13px]">
-            Switch between article summaries and reference materials.
-          </p>
-        </div>
-      </div>
+      <DigestWorkspaceViewSwitch activeTab={activeTab} onActiveTabChange={setActiveTab} />
       {items.length === 0 ? (
         <Card>
           <CardTitle>No approved items this month</CardTitle>
@@ -3171,12 +3515,11 @@ export function MonthlyDigestView({
                   Active Drafts
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                  Signals still being shaped, reviewed, edited, or prepared for release. Mark one complete to tuck it into the
-                  Completed Library.
+                  Signals still being shaped, reviewed, edited, or prepared for release. Mark complete to tuck it into the Completed Library.
                 </p>
               </div>
               {activeDigestItems.length > 0 ? (
-                <Card className="rounded-xl border-[color:var(--border)]/55 bg-[color:var(--background)]/75 p-3 shadow-none">
+                <Card className={DIGEST_WORKSPACE_PANEL_CLASS}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-snug">
                     <BrowseTypeSectionFilterIcon />
                     <span className="font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
@@ -3263,6 +3606,57 @@ export function MonthlyDigestView({
                       );
                     })}
                   </div>
+                  {filteredDigestItems.length > 0 ? (
+                    <div className="mt-3 border-t border-[color:var(--border)]/45 pt-3">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <span className="inline-flex items-center gap-x-2 text-[11px] leading-snug">
+                          <BulkActionsSectionIcon />
+                          <span className="font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+                            Bulk actions
+                          </span>
+                        </span>
+                        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[color:var(--foreground)]">
+                          <input
+                            ref={bulkSelectAllInViewRef}
+                            type="checkbox"
+                            checked={allFilteredSelected}
+                            onChange={toggleSelectAllInView}
+                            className="h-4 w-4 rounded border-[color:var(--border)] accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
+                          />
+                          Select all
+                        </label>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          disabled={bulkSelectedInViewCount === 0 || bulkMarkingComplete}
+                          className="h-9 px-3 text-sm font-semibold"
+                          onClick={() => void markBulkSelectedComplete()}
+                        >
+                          {bulkMarkingComplete
+                            ? "Marking complete…"
+                            : "Mark selected complete"}
+                        </Button>
+                        <div className="ml-auto flex w-max max-w-full shrink-0 items-center gap-2">
+                          <label
+                            htmlFor="active-draft-sort"
+                            className="shrink-0 whitespace-nowrap text-xs font-semibold text-[color:var(--foreground)]/90"
+                          >
+                            Sort
+                          </label>
+                          <Select
+                            id="active-draft-sort"
+                            value={activeDraftSortMode}
+                            onChange={(e) => setActiveDraftSortMode(e.target.value as "category" | "recent")}
+                            className="!w-[min(100%,8rem)] max-w-full shrink-0 cursor-pointer py-2.5 text-sm leading-normal"
+                            aria-label="Sort Active Drafts"
+                          >
+                            <option value="category">Category</option>
+                            <option value="recent">Most recent</option>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </Card>
               ) : null}
               {activeDigestItems.length === 0 ? (
@@ -3284,7 +3678,7 @@ export function MonthlyDigestView({
                     <li key={item.id}>
                       <DigestItemRow
                         item={item}
-                        model={aiModel}
+                        model=""
                         expanded={expandedDigestItemIds.has(item.id)}
                         onToggleExpanded={() =>
                           setExpandedDigestItemIds((prev) => {
@@ -3294,6 +3688,16 @@ export function MonthlyDigestView({
                             return next;
                           })
                         }
+                        bulkSelect={{
+                          selected: bulkSelectedDigestIds.has(item.id),
+                          onToggle: () =>
+                            setBulkSelectedDigestIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(item.id)) next.delete(item.id);
+                              else next.add(item.id);
+                              return next;
+                            }),
+                        }}
                       />
                     </li>
                   ))}
@@ -3320,7 +3724,7 @@ export function MonthlyDigestView({
                   <div className="border-t border-[color:var(--border)]/45 px-3 pb-4 pt-3">
                     <ul className="space-y-2">
                       {completedDigestItems.map((item) => (
-                        <DigestCompletedSignalCard key={item.id} item={item} model={aiModel} />
+                        <DigestCompletedSignalCard key={item.id} item={item} model="" />
                       ))}
                     </ul>
                   </div>
@@ -3329,126 +3733,169 @@ export function MonthlyDigestView({
             </div>
           ) : (
             <div className="space-y-5">
-              <Card className="rounded-2xl border-[color:var(--border)]/75 bg-[color:var(--background)]/88 p-4 shadow-[0_12px_32px_-26px_rgba(52,31,24,0.75)]">
-                <div className="flex flex-wrap items-stretch gap-2.5">
-                  {categories.map((category) => (
-                    <button
-                      key={category.key}
-                      type="button"
-                      onClick={() => {
-                        setActiveCategoryFilter(category.key);
-                        setExpandedCategories((prev) => new Set(prev).add(category.key));
-                        setStickyGenerateTarget(category.key);
-                      }}
-                      className={`flex min-h-[5.75rem] flex-col rounded-xl border px-3.5 py-2.5 text-left transition-all ${
-                        activeCategoryFilter === category.key
-                          ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/12 shadow-[0_8px_20px_-18px_rgba(127,86,76,0.95)]"
-                          : "border-[color:var(--border)]/75 bg-[color:var(--card)]/92 hover:border-[color:var(--accent)]/45 hover:bg-[color:var(--muted)]/28"
-                      }`}
-                    >
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
-                        {category.title}
-                      </p>
-                      <p className="mt-1 text-base font-semibold tracking-tight text-[color:var(--foreground)]">
-                        {selectedByCategory[category.key].size}
-                        <span className="ml-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-                          of {category.items.length} selected
-                        </span>
-                      </p>
-                      <p className="text-[11px] text-[color:var(--muted-foreground)]">
-                        {resultsByCategory[category.key].filter((r) => r.reference).length} generated
-                      </p>
-                    </button>
-                  ))}
+              <Card className={DIGEST_WORKSPACE_PANEL_CLASS}>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-snug">
+                  <WorkspaceViewReferencesIcon className="!h-4 !w-4 shrink-0 text-[color:var(--muted-foreground)] sm:!h-4 sm:!w-4" />
+                  <span className="font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+                    Selection summary
+                  </span>
+                  <span
+                    className="hidden h-3 w-px bg-[color:var(--border)]/80 sm:block"
+                    aria-hidden
+                  />
+                  <span className="text-[color:var(--muted-foreground)]">
+                    Choose a category to expand signals and generate references.
+                  </span>
+                </div>
+                <div
+                  className="mt-3 flex flex-wrap gap-2.5"
+                  role="group"
+                  aria-label="Reference categories and selection totals"
+                >
+                  {categories.map((category) => {
+                    const selected = activeCategoryFilter === category.key;
+                    const filterChip: DigestCategoryFilterChip =
+                      category.key === "papers" ? "paper" : "funding";
+                    const iconTone = selected
+                      ? "text-[color:var(--foreground)]"
+                      : "text-[color:var(--muted-foreground)]";
+                    const labelTone = iconTone;
+                    const countTone = selected
+                      ? "text-[color:var(--foreground)]"
+                      : "text-[color:var(--muted-foreground)]";
+                    return (
+                      <button
+                        key={category.key}
+                        type="button"
+                        onClick={() => {
+                          setActiveCategoryFilter(category.key);
+                          setExpandedCategories((prev) => new Set(prev).add(category.key));
+                          setStickyGenerateTarget(category.key);
+                        }}
+                        className={`flex min-h-[3.625rem] min-w-[6.5rem] max-w-[14rem] flex-col justify-between gap-0.5 rounded-xl border px-2 py-1.5 text-left transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
+                          selected
+                            ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/16 shadow-[0_1px_2px_rgba(52,38,30,0.06)] ring-1 ring-[color:var(--accent)]/20"
+                            : "border-[color:var(--border)]/55 bg-[color:var(--card)]/80 hover:border-[color:var(--border)]/75 hover:bg-[color:var(--muted)]/10"
+                        }`}
+                      >
+                        <div className="flex w-full items-center gap-1.5">
+                          <span
+                            className={`inline-flex shrink-0 rounded-md p-0.5 ${
+                              selected ? "bg-[color:var(--accent)]/18" : ""
+                            }`}
+                            aria-hidden
+                          >
+                            <DigestQueueCategoryFilterIcon chip={filterChip} className={iconTone} />
+                          </span>
+                          <p
+                            className={`min-w-0 flex-1 text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${labelTone}`}
+                          >
+                            {category.title}
+                          </p>
+                        </div>
+                        <p
+                          className={`w-full text-center text-lg font-semibold tabular-nums leading-none tracking-tight ${countTone}`}
+                        >
+                          {selectedByCategory[category.key].size}
+                        </p>
+                      </button>
+                    );
+                  })}
                   <button
                     type="button"
                     onClick={() => setActiveCategoryFilter("all")}
-                    className={`flex min-h-[5.75rem] flex-col rounded-xl border px-3.5 py-2.5 text-left transition-all ${
+                    className={`flex min-h-[3.625rem] min-w-[6.5rem] max-w-[14rem] flex-col justify-between gap-0.5 rounded-xl border px-2 py-1.5 text-left transition-[border-color,background-color,box-shadow] duration-150 ease-out ${
                       activeCategoryFilter === "all"
-                        ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/12 shadow-[0_8px_20px_-18px_rgba(127,86,76,0.95)]"
-                        : "border-[color:var(--border)]/75 bg-[color:var(--card)]/92 hover:border-[color:var(--accent)]/45 hover:bg-[color:var(--muted)]/28"
+                        ? "border-[color:var(--accent)]/65 bg-[color:var(--accent)]/16 shadow-[0_1px_2px_rgba(52,38,30,0.06)] ring-1 ring-[color:var(--accent)]/20"
+                        : "border-[color:var(--border)]/55 bg-[color:var(--card)]/80 hover:border-[color:var(--border)]/75 hover:bg-[color:var(--muted)]/10"
                     }`}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
-                      Total selected
-                    </p>
-                    <p className="mt-1 text-base font-semibold tracking-tight text-[color:var(--foreground)]">
-                      {totalSelectedCount}
-                      <span className="ml-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-                        signals
+                    <div className="flex w-full items-center gap-1.5">
+                      <span
+                        className={`inline-flex shrink-0 rounded-md p-0.5 ${
+                          activeCategoryFilter === "all" ? "bg-[color:var(--accent)]/18" : ""
+                        }`}
+                        aria-hidden
+                      >
+                        <DigestQueueCategoryFilterIcon
+                          chip="all"
+                          className={
+                            activeCategoryFilter === "all"
+                              ? "text-[color:var(--foreground)]"
+                              : "text-[color:var(--muted-foreground)]"
+                          }
+                        />
                       </span>
-                    </p>
-                    <p className="text-[11px] text-[color:var(--muted-foreground)]">
-                      {categories.reduce(
-                        (n, c) => n + resultsByCategory[c.key].filter((r) => r.reference).length,
-                        0,
-                      )}{" "}
-                      generated
+                      <p
+                        className={`min-w-0 flex-1 text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${
+                          activeCategoryFilter === "all"
+                            ? "text-[color:var(--foreground)]"
+                            : "text-[color:var(--muted-foreground)]"
+                        }`}
+                      >
+                        Total selected
+                      </p>
+                    </div>
+                    <p
+                      className={`w-full text-center text-lg font-semibold tabular-nums leading-none tracking-tight ${
+                        activeCategoryFilter === "all"
+                          ? "text-[color:var(--foreground)]"
+                          : "text-[color:var(--muted-foreground)]"
+                      }`}
+                    >
+                      {totalSelectedCount}
                     </p>
                   </button>
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2.5 overflow-visible">
-                  <button
-                    type="button"
-                    onClick={() => setShowAdvancedSettings((open) => !open)}
-                    className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 text-xs font-semibold text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)]"
-                  >
-                    {showAdvancedSettings ? "Hide generation settings" : "Generation settings"}
-                  </button>
-                  <label className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 text-xs font-medium text-[color:var(--muted-foreground)]">
-                    <input
-                      type="checkbox"
-                      checked={numberedLines}
-                      onChange={(e) => setNumberedLines(e.target.checked)}
-                      className="rounded border-[color:var(--border)]"
-                    />
-                    Numbered lines
-                  </label>
-                  <label
-                    className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--background)]/95 px-2.5 py-1 text-xs font-medium text-[color:var(--muted-foreground)]"
-                    title="Papers: on = first 3 authors + et al.; off = full author list (requires generated references from updated API)."
-                  >
-                    <input
-                      type="checkbox"
-                      checked={truncatePaperAuthors}
-                      onChange={(e) => setTruncatePaperAuthors(e.target.checked)}
-                      className="rounded border-[color:var(--border)]"
-                      aria-label="Format: truncate paper authors to three plus et al."
-                    />
-                    Format: Truncate
-                  </label>
-                  <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-xs font-medium text-[color:var(--muted-foreground)]">
-                    <span className="shrink-0 whitespace-nowrap">Sort</span>
-                    <Select
-                      value={referenceSortMode}
-                      onChange={(e) => setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)}
-                      className="box-border h-9 min-h-9 !w-[min(17rem,calc(100vw-8rem))] min-w-[12.5rem] rounded-lg border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
-                      aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
+                <div className="mt-3 border-t border-[color:var(--border)]/45 pt-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="inline-flex items-center gap-x-2 text-[11px] leading-snug">
+                      <OutputOptionsSectionIcon />
+                      <span className="font-semibold uppercase tracking-[0.1em] text-[color:var(--muted-foreground)]">
+                        Output options
+                      </span>
+                    </span>
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[color:var(--foreground)]">
+                      <input
+                        type="checkbox"
+                        checked={numberedLines}
+                        onChange={(e) => setNumberedLines(e.target.checked)}
+                        className="h-4 w-4 rounded border-[color:var(--border)] accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
+                      />
+                      Numbered lines
+                    </label>
+                    <label
+                      className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[color:var(--foreground)]"
+                      title="Papers: on = first 3 authors + et al.; off = full author list (requires generated references from updated API)."
                     >
-                      <option value="impact">Journal impact · Funding amount</option>
-                      <option value="recent">Most recent</option>
-                      <option value="alphabetical">Alphabetical (1st author)</option>
-                    </Select>
-                  </label>
-                </div>
-                {showAdvancedSettings ? (
-                  <div className="mt-3 max-w-sm space-y-1.5 rounded-xl border border-[color:var(--border)]/70 bg-[color:var(--muted)]/28 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-                      AI model
-                    </p>
-                    <Select
-                      value={aiModel}
-                      onChange={(e) => setAiModel(e.target.value)}
-                      aria-label="AI model for reference generation"
-                    >
-                      {AI_MODEL_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Select>
+                      <input
+                        type="checkbox"
+                        checked={truncatePaperAuthors}
+                        onChange={(e) => setTruncatePaperAuthors(e.target.checked)}
+                        className="h-4 w-4 rounded border-[color:var(--border)] accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]"
+                        aria-label="Format: truncate paper authors to three plus et al."
+                      />
+                      Format: Truncate
+                    </label>
+                    <label className="flex min-h-9 shrink-0 cursor-pointer items-center gap-2 overflow-visible text-sm font-medium text-[color:var(--foreground)]">
+                      <span className="shrink-0 whitespace-nowrap text-[color:var(--muted-foreground)]">
+                        Sort
+                      </span>
+                      <Select
+                        value={referenceSortMode}
+                        onChange={(e) =>
+                          setReferenceSortMode(e.target.value as ReferencePublicationsSortMode)
+                        }
+                        className="box-border h-9 min-h-9 !w-[min(17rem,calc(100vw-8rem))] min-w-[12.5rem] rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-2 py-1 text-xs leading-snug shadow-none focus:border-[color:var(--accent)]/45 focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]"
+                        aria-label="Sort order: papers use journal impact (SCImago); funding uses award amount when available"
+                      >
+                        <option value="impact">Journal impact · Funding amount</option>
+                        <option value="recent">Most recent</option>
+                        <option value="alphabetical">Alphabetical (1st author)</option>
+                      </Select>
+                    </label>
                   </div>
-                ) : null}
+                </div>
               </Card>
               <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.18fr)_minmax(0,0.82fr)]">
                 <div ref={referencesLeftColRef} className="min-w-0 space-y-4">
@@ -3584,7 +4031,7 @@ export function MonthlyDigestView({
         </>
       )}
       {(totalSelectedCount > 0 || totalGeneratedCount > 0) && activeTab === "references" ? (
-        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-5xl rounded-2xl border border-[color:var(--border)]/85 bg-[color:var(--background)]/96 p-3.5 shadow-[0_24px_68px_-34px_rgba(33,20,15,0.85)] backdrop-blur-md">
+        <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-5xl rounded-2xl border border-[color:var(--border)]/85 bg-[color:var(--background)]/96 p-3.5 shadow-[0_24px_68px_-34px_rgba(33,20,15,0.85)] backdrop-blur-md [&_button]:!transition-none">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <p className="text-sm font-medium text-[color:var(--muted-foreground)]">
               <span className="font-semibold text-[color:var(--foreground)]">{totalSelectedCount}</span> selected ·{" "}
@@ -3630,7 +4077,7 @@ export function MonthlyDigestView({
                 type="button"
                 onClick={() => void runCategoryGeneration(stickyGenerateTarget)}
                 disabled={Boolean(runningCategory) || selectedByCategory[stickyGenerateTarget].size === 0}
-                className="h-8 shrink-0 px-3 text-xs shadow-[0_10px_18px_-14px_rgba(87,57,45,0.85)]"
+                className="h-8 shrink-0 px-3 text-xs shadow-[0_10px_18px_-14px_rgba(87,57,45,0.85)] hover:!translate-y-0 hover:!brightness-100 disabled:hover:!brightness-100"
               >
                 Generate selected
               </Button>
@@ -3639,7 +4086,7 @@ export function MonthlyDigestView({
                 variant="secondary"
                 onClick={() => void runGenerateAllSelectedCategories()}
                 disabled={Boolean(runningCategory) || totalSelectedCount === 0}
-                className="h-8 shrink-0 px-3 text-xs"
+                className="h-8 shrink-0 px-3 text-xs hover:!translate-y-0 hover:!bg-[color:var(--card)]/95"
               >
                 Generate all categories
               </Button>
@@ -3648,7 +4095,7 @@ export function MonthlyDigestView({
                 variant="secondary"
                 onClick={() => void copyText(combinedOutputText, "Combined references copied")}
                 disabled={!combinedOutputText}
-                className="h-8 min-h-8 w-8 min-w-8 shrink-0 overflow-visible p-0 leading-none"
+                className="h-8 min-h-8 w-8 min-w-8 shrink-0 overflow-visible p-0 leading-none hover:!translate-y-0 hover:!bg-[color:var(--card)]/95"
                 aria-label="Copy output"
                 title="Copy output"
               >
@@ -3660,7 +4107,7 @@ export function MonthlyDigestView({
                 variant="ghost"
                 onClick={clearGeneratedOutput}
                 disabled={totalGeneratedCount === 0 || Boolean(runningCategory)}
-                className="h-8 px-3 text-xs text-[color:var(--muted-foreground)]"
+                className="h-8 px-3 text-xs text-[color:var(--muted-foreground)] hover:!bg-transparent hover:!text-[color:var(--muted-foreground)] disabled:hover:!bg-transparent"
               >
                 Clear
               </Button>

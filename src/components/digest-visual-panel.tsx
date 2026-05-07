@@ -927,6 +927,13 @@ export function DigestVisualPanel({
                 Selected asset
               </p>
             )}
+            {digestQueueLayout ? (
+              <p className="mt-1 max-w-md text-xs leading-relaxed text-[color:var(--muted-foreground)]">
+                {showSelectedAssetVisual
+                  ? "Preview, edit, or remove the current hero."
+                  : "Choose or generate a visual, then make it the hero for this signal."}
+              </p>
+            ) : null}
             {!digestQueueLayout && !showSelectedAssetVisual ? (
               <p className="mt-1 max-w-md text-sm text-[color:var(--muted-foreground)]">
                 {sorted.length > 0 ? (

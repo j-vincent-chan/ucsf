@@ -71,6 +71,7 @@ export function DigestStudioOutputTabs({
   onSelectStyle,
   disabled,
   variant = "default",
+  omitNavChrome = false,
 }: {
   tabs: DigestStudioOutputTab[];
   activeStyle: SummaryStyle | null;
@@ -79,15 +80,20 @@ export function DigestStudioOutputTabs({
   disabled?: boolean;
   /** Warm cream card + terracotta active accent (digest output preview). */
   variant?: "default" | "warm";
+  /** No outer tab-strip border — use when a parent card already provides edges (avoids double lines). */
+  omitNavChrome?: boolean;
 }) {
   const warm = variant === "warm";
+  const flatChrome = !warm && omitNavChrome;
 
   return (
     <nav
       className={
         warm
           ? "flex flex-wrap gap-x-2 gap-y-0 leading-none"
-          : "-mx-px flex flex-wrap rounded-t-lg border-x border-t border-[color:var(--border)]/65 bg-[color:var(--muted)]/14 px-0.5 pt-0.5 sm:mx-0"
+          : flatChrome
+            ? "flex flex-wrap rounded-none border-0 bg-[color:var(--muted)]/10 px-0.5 pt-0.5"
+            : "-mx-px flex flex-wrap rounded-t-lg border-x border-t border-[color:var(--border)]/65 bg-[color:var(--muted)]/14 px-0.5 pt-0.5 sm:mx-0"
       }
       role="tablist"
       aria-label="Digest outputs"
@@ -151,7 +157,9 @@ export function DigestStudioOutputTabs({
               tabDisabled
                 ? "mb-[-1px] cursor-not-allowed border border-transparent text-[color:var(--muted-foreground)] opacity-50"
                 : isCurrent
-                  ? "relative z-[1] mb-[-1px] border border-[color:var(--border)]/70 border-b-0 bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[0_-2px_12px_-4px_rgba(55,42,36,0.12)]"
+                  ? flatChrome
+                    ? "relative z-[1] mb-[-1px] border border-[color:var(--border)]/40 border-b-0 bg-[color:var(--card)] text-[color:var(--foreground)]"
+                    : "relative z-[1] mb-[-1px] border border-[color:var(--border)]/70 border-b-0 bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[0_-2px_12px_-4px_rgba(55,42,36,0.12)]"
                   : "mb-[-1px] border border-transparent text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/45 hover:bg-[color:var(--card)]/40 hover:text-[color:var(--foreground)]"
             } `}
           >
