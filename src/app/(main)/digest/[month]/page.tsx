@@ -15,6 +15,8 @@ import {
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
 import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
+import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
+import { fetchWorkspaceConnectedAccountAvatars } from "@/lib/social-signals/aggregate";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +66,7 @@ async function fetchJunctionInChunks(
         `
         source_item_id,
         tracked_entity_id,
-        tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website )
+        tracked_entities!tracked_entity_id ( id, name, first_name, last_name, lab_website, headshot_url, headshot_storage_path )
       `,
       )
       .in("source_item_id", chunk);
@@ -112,15 +114,31 @@ async function fetchTrackedEntitiesByIdsInChunks(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ids: string[],
 ): Promise<{
-  data: { id: string; name: string; first_name: string; last_name: string; lab_website: string | null }[];
+  data: {
+    id: string;
+    name: string;
+    first_name: string;
+    last_name: string;
+    lab_website: string | null;
+    headshot_url: string | null;
+    headshot_storage_path: string | null;
+  }[];
   error: { message: string } | null;
 }> {
-  const out: { id: string; name: string; first_name: string; last_name: string; lab_website: string | null }[] = [];
+  const out: {
+    id: string;
+    name: string;
+    first_name: string;
+    last_name: string;
+    lab_website: string | null;
+    headshot_url: string | null;
+    headshot_storage_path: string | null;
+  }[] = [];
   for (let i = 0; i < ids.length; i += TRACKED_ENTITY_IN_CHUNK) {
     const chunk = ids.slice(i, i + TRACKED_ENTITY_IN_CHUNK);
     const { data, error } = await supabase
       .from("tracked_entities")
-      .select("id, name, first_name, last_name, lab_website")
+      .select("id, name, first_name, last_name, lab_website, headshot_url, headshot_storage_path")
       .in("id", chunk);
     if (error) return { data: [], error: { message: error.message } };
     if (data?.length) out.push(...data);
@@ -238,14 +256,14 @@ function mapRow(
   summaries.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   );
-  const investigators = investigatorsFromSourceItemRow(primaryTrackedEntity, junctionRows).map(
-    (chip) => ({
-      id: chip.id,
-      name: chip.name,
-      first_name: chip.first_name,
-      last_name: chip.last_name,
-    }),
-  );
+  const investigators = investigatorsFromSourceItemRow(primaryTrackedEntity, junctionRows).map((chip) => ({
+    id: chip.id,
+    name: chip.name,
+    first_name: chip.first_name,
+    last_name: chip.last_name,
+    headshot_url: chip.headshot_url ?? null,
+    headshot_storage_path: chip.headshot_storage_path ?? null,
+  }));
   return {
     id: r.id,
     title: r.title,
@@ -360,7 +378,15 @@ export default async function DigestMonthPage({
   const summariesByItem = new Map<string, Summary[]>();
   const trackedEntityById = new Map<
     string,
-    { id: string; name: string; first_name: string; last_name: string; lab_website: string | null }
+    {
+      id: string;
+      name: string;
+      first_name: string;
+      last_name: string;
+      lab_website: string | null;
+      headshot_url: string | null;
+      headshot_storage_path: string | null;
+    }
   >();
   if (!loadErr) {
     const allIds = [...new Set([...byPub, ...byFound].map((row) => row.id))];
@@ -520,6 +546,10 @@ export default async function DigestMonthPage({
     );
   }
 
+  const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
+  const workspaceCfg = socialFeedIngestFromWorkspace(social);
+  const handleAvatars = await fetchWorkspaceConnectedAccountAvatars(workspaceCfg);
+
   return (
     <MonthlyDigestView
       monthLabel={heading}
@@ -527,6 +557,10 @@ export default async function DigestMonthPage({
       selectedMonth={`${year}-${String(month).padStart(2, "0")}`}
       minMonth={minMonth}
       maxMonth={maxMonth}
+      workspaceAccounts={{
+        xAvatarUrl: handleAvatars.xAvatarUrl ?? null,
+        blueskyAvatarUrl: handleAvatars.blueskyAvatarUrl ?? null,
+      }}
     />
   );
 }

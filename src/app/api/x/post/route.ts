@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
+import { getProfile, getSessionUser } from "@/lib/auth";
 import {
   createTweet,
   describeXPostPermissionError,
@@ -13,6 +13,7 @@ import {
   resolvePublishSourceUrlForItem,
   resolvePublishVisualForSourceItem,
 } from "@/lib/publish-source-visual";
+import { substituteBlueskyHandlesForX } from "@/lib/x-mention-substitute";
 
 const bodySchema = z.object({
   /** Tweet body (UTF-8); length limits depend on X account tier — we validate a safe upper bound. */
@@ -118,6 +119,19 @@ export async function POST(req: Request) {
       if (url) {
         tweetText = tweetTextWithSourceLink(tweetText, url).text;
       }
+    }
+  }
+
+  const profile = await getProfile();
+  if (profile?.community_id) {
+    const { data: handlePairs } = await admin
+      .from("tracked_entities")
+      .select("x_handle, bluesky_handle")
+      .eq("community_id", profile.community_id)
+      .not("x_handle", "is", null)
+      .not("bluesky_handle", "is", null);
+    if (handlePairs?.length) {
+      tweetText = substituteBlueskyHandlesForX(tweetText, handlePairs);
     }
   }
 

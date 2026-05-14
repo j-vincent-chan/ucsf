@@ -207,3 +207,46 @@ export async function fetchSocialFeed(
     accounts,
   };
 }
+
+/** X + Bluesky profile avatars only (no timelines) — digest cards, composer, etc. */
+export async function fetchWorkspaceConnectedAccountAvatars(
+  workspaceCfg?: SocialFeedWorkspaceConfig | null,
+): Promise<{ xAvatarUrl?: string; blueskyAvatarUrl?: string }> {
+  const bearer = process.env.X_BEARER_TOKEN?.trim();
+  const handleWs = workspaceCfg?.communityHandle?.trim();
+  const envHandleRaw = process.env.X_COMMUNITY_HANDLE?.trim()?.replace(/^@+/, "") ?? "";
+  const xCommunityHandle = (handleWs || envHandleRaw).replace(/^@+/, "") || undefined;
+
+  const bskyId = process.env.BSKY_IDENTIFIER?.trim();
+  const bskyPw = process.env.BSKY_APP_PASSWORD?.trim();
+
+  let xAvatarUrl: string | undefined;
+  let blueskyAvatarUrl: string | undefined;
+
+  const tasks: Promise<void>[] = [];
+
+  if (bearer && xCommunityHandle) {
+    tasks.push(
+      (async () => {
+        const u = await fetchXUserByUsername(bearer, xCommunityHandle);
+        if (u?.profileImageUrl) {
+          xAvatarUrl = u.profileImageUrl;
+        }
+      })(),
+    );
+  }
+
+  if (bskyId && bskyPw) {
+    tasks.push(
+      (async () => {
+        const p = await fetchBlueskyProfileSummary(bskyId, bskyPw);
+        if (p?.avatarUrl) {
+          blueskyAvatarUrl = p.avatarUrl;
+        }
+      })(),
+    );
+  }
+
+  await Promise.all(tasks);
+  return { xAvatarUrl, blueskyAvatarUrl };
+}

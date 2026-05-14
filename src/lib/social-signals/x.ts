@@ -167,7 +167,7 @@ function mapXTweetsResponse(raw: {
 }
 
 const X_TIMELINE_PARAMS = new URLSearchParams({
-  max_results: "30",
+  max_results: "100",
   "tweet.fields":
     "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
   expansions:
@@ -247,7 +247,7 @@ export async function fetchXMentionSearch(
   const query = `@${handle}`;
   const params = new URLSearchParams({
     query,
-    max_results: "30",
+    max_results: "100",
     "tweet.fields":
       "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
     expansions:

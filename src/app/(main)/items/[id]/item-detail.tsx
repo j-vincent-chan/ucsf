@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { ItemCategory, ItemStatus, SourceItem, Summary } from "@/types/database";
+import type { ItemCategory, ItemStatus, SourceItem } from "@/types/database";
 import {
   ARCHIVE_REASON_OPTIONS,
   archiveReasonFormOptions,
@@ -21,7 +21,6 @@ import {
   normalizeCategoryForSelect,
   type SelectableItemCategory,
 } from "@/lib/item-category-ui";
-import { SummaryEditor, type SummaryRegeneratePayload } from "@/components/summary-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,13 +33,11 @@ import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 export function ItemDetail({
   item,
   investigators,
-  summaries: initialSummaries,
   duplicates,
   duplicateOf,
 }: {
   item: SourceItem;
   investigators: InvestigatorChip[];
-  summaries: Summary[];
   duplicates: Pick<SourceItem, "id" | "title" | "status" | "duplicate_key">[];
   duplicateOf: Pick<SourceItem, "id" | "title"> | null;
 }) {
@@ -60,62 +57,6 @@ export function ItemDetail({
     isoTimestampToDateInputValue(item.published_at),
   );
   const [savingMeta, setSavingMeta] = useState(false);
-  const [summaries, setSummaries] = useState(initialSummaries);
-  const [regeneratingSummaryId, setRegeneratingSummaryId] = useState<string | null>(null);
-
-  const refreshSummaries = useCallback(async () => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("summaries")
-      .select("*")
-      .eq("source_item_id", item.id)
-      .order("created_at", { ascending: false });
-    if (!error && data) setSummaries(data as Summary[]);
-  }, [item.id]);
-
-  const regenerateSummary = useCallback(
-    async (s: Summary, payload: SummaryRegeneratePayload) => {
-      const allowed = new Set([
-        "newsletter",
-        "donor",
-        "social",
-        "concise",
-        "linkedin",
-        "bluesky_x",
-        "x",
-        "bluesky",
-        "web_blurb",
-        "internal_digest",
-      ]);
-      if (!allowed.has(s.style)) {
-        toast.error("Generate isn’t available for this summary format.");
-        return;
-      }
-      setRegeneratingSummaryId(s.id);
-      try {
-        const res = await fetch("/api/generate-blurb", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_item_id: item.id,
-            style: s.style,
-            tone: payload.tone,
-            target_blurb_chars: payload.targetBlurbChars,
-            refinement_instruction: payload.refinement || undefined,
-          }),
-        });
-        const data = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(data.error ?? "Request failed");
-        toast.success("Summary generated");
-        await refreshSummaries();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Generation failed");
-      } finally {
-        setRegeneratingSummaryId(null);
-      }
-    },
-    [item.id, refreshSummaries],
-  );
 
   const quickSetStatus = useCallback(async (s: ItemStatus) => {
     const supabase = createClient();
@@ -252,8 +193,7 @@ export function ItemDetail({
   }
 
   return (
-    <div className="mx-auto max-w-6xl gap-8 lg:grid lg:grid-cols-[1fr_340px]">
-      <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm text-neutral-500">
@@ -363,7 +303,7 @@ export function ItemDetail({
           <Link href={`/digest/${monthKeyForItem(item)}`} className="underline">
             Open monthly digest
           </Link>{" "}
-          for this item&apos;s month to draft summaries alongside other approved stories.
+          for this item&apos;s month.
         </p>
 
         {(duplicates.length > 0 || duplicateOf) && (
@@ -501,34 +441,6 @@ export function ItemDetail({
             </Button>
           </form>
         </Card>
-      </div>
-
-      <aside className="mt-8 space-y-4 lg:mt-0">
-        <h2 className="text-lg font-semibold">Summaries</h2>
-        <p className="text-sm text-neutral-500">
-          Generate new copy from the{" "}
-          <Link href={`/digest/${monthKeyForItem(item)}`} className="underline">
-            monthly digest
-          </Link>{" "}
-          for this item&apos;s month.
-        </p>
-        {summaries.length === 0 ? (
-          <p className="text-sm text-neutral-500">No summaries yet.</p>
-        ) : (
-          summaries.map((s) => (
-            <SummaryEditor
-              key={s.id}
-              summary={s}
-              onSaved={refreshSummaries}
-              sourceUrl={item.source_url}
-              standaloneRegenerate={{
-                onRegenerate: (payload) => regenerateSummary(s, payload),
-                busy: regeneratingSummaryId === s.id,
-              }}
-            />
-          ))
-        )}
-      </aside>
     </div>
   );
 }

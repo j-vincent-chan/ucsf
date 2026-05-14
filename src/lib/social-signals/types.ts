@@ -27,6 +27,14 @@ export type SocialPost = {
   viewCount?: number;
   /** Bluesky record CID for in-app like/repost/reply (from feed when available). */
   bskyRecordCid?: string;
+  /** Workspace Bluesky account already reposted this post (from feed `viewer` when available). */
+  viewerReposted?: boolean;
+  /** `at://…/app.bsky.feed.repost/…` for the workspace repost (undo without scanning). */
+  bskyViewerRepostUri?: string;
+  /** Workspace Bluesky account already liked this post (from feed `viewer` when available). */
+  viewerLiked?: boolean;
+  /** `at://…/app.bsky.feed.like/…` for the workspace like (future unlike / UI hints). */
+  bskyViewerLikeUri?: string;
 };
 
 export type SourceMeta = {

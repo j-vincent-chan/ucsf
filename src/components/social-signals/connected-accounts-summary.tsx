@@ -1,4 +1,5 @@
 import type { AggregatedFeed, SourceMeta } from "@/lib/social-signals/types";
+import { PlatformBadge } from "@/components/social-signals/platform-badge";
 
 function AccountAvatar({
   url,
@@ -56,13 +57,18 @@ export function ConnectedAccountsSummary({
     "B";
 
   return (
-    <div className="rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/92 p-4 shadow-[0_10px_28px_-22px_rgba(35,22,16,0.65)]">
+    <div className="min-w-0 rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/92 p-4 shadow-[0_10px_28px_-22px_rgba(35,22,16,0.65)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
         Connected accounts
       </p>
       <ul className="mt-3 space-y-2.5 text-sm">
         <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-[color:var(--border)]/45 pb-2.5">
-          <span className="font-semibold text-[color:var(--foreground)]">X</span>
+          <span className="inline-flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
+            <span aria-hidden>
+              <PlatformBadge platform="x" size="xs" />
+            </span>
+            <span>X</span>
+          </span>
           <div className="flex min-w-0 items-center gap-2">
             <AccountAvatar
               url={accounts.xAvatarUrl}
@@ -78,7 +84,12 @@ export function ConnectedAccountsSummary({
           </span>
         </li>
         <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
-          <span className="font-semibold text-[color:var(--foreground)]">Bluesky</span>
+          <span className="inline-flex items-center gap-2 font-semibold text-[color:var(--foreground)]">
+            <span aria-hidden>
+              <PlatformBadge platform="bluesky" size="xs" />
+            </span>
+            <span>Bluesky</span>
+          </span>
           <div className="flex min-w-0 items-center gap-2">
             <AccountAvatar
               url={accounts.blueskyAvatarUrl}

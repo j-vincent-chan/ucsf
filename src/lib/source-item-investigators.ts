@@ -4,21 +4,35 @@ export type InvestigatorChip = {
   first_name: string;
   last_name: string;
   lab_website: string | null;
+  headshot_url?: string | null;
+  headshot_storage_path?: string | null;
 };
 
 function parseTe(
   raw: unknown,
-): { id: string; name: string; first_name: string; last_name: string; lab_website: string | null } | null {
+): {
+  id: string;
+  name: string;
+  first_name: string;
+  last_name: string;
+  lab_website: string | null;
+  headshot_url: string | null;
+  headshot_storage_path: string | null;
+} | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const id = typeof o.id === "string" ? o.id : null;
   if (!id) return null;
+  const hu = o.headshot_url;
+  const hp = o.headshot_storage_path;
   return {
     id,
     name: typeof o.name === "string" ? o.name : "",
     first_name: typeof o.first_name === "string" ? o.first_name : "",
     last_name: typeof o.last_name === "string" ? o.last_name : "",
     lab_website: typeof o.lab_website === "string" ? o.lab_website : null,
+    headshot_url: typeof hu === "string" && hu.trim() ? hu.trim() : null,
+    headshot_storage_path: typeof hp === "string" && hp.trim() ? hp.trim() : null,
   };
 }
 

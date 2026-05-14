@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Fragment,
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -14,10 +15,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, Json, SourceType, Summary, SummaryStyle } from "@/types/database";
-import {
-  SummaryEditor,
-  type DigestPublishAttachmentMode,
-} from "@/components/summary-editor";
+import { SummaryEditor } from "@/components/summary-editor";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -43,6 +41,8 @@ import {
   type DigestStudioOutputTab,
 } from "@/components/digest-studio-output-tabs";
 import { DigestIllustrationOverlays } from "@/components/digest-illustration-overlays";
+import { LinkedInvestigatorsFacepile } from "@/components/linked-investigators-facepile";
+import { WorkspaceHandleAvatarImg, type WorkspaceAccountAvatars } from "@/components/workspace-handle-avatar-img";
 import {
   DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS,
   DIGEST_CONTENT_STUDIO_STYLES,
@@ -965,11 +965,13 @@ function DigestSignalRow({
   selected,
   disabled,
   onToggle,
+  workspaceAccounts,
 }: {
   item: DigestItemPayload;
   selected: boolean;
   disabled: boolean;
   onToggle: () => void;
+  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const paperJournal = item.category === "paper" ? extractJournalFromRawSummary(item.raw_summary) : null;
   const dateLabel = new Date(item.published_at ?? item.found_at).toLocaleDateString();
@@ -994,6 +996,15 @@ function DigestSignalRow({
           disabled={disabled}
           className="mt-1 shrink-0 rounded border-[color:var(--border)]"
         />
+        <div className="mt-0.5 shrink-0 self-start">
+          <WorkspaceHandleAvatarImg
+            postToX
+            postToBluesky
+            accounts={workspaceAccounts}
+            size="sm"
+            hideWhenEmpty
+          />
+        </div>
         <span className="min-w-0 flex-1">
           <Link
             href={`/items/${item.id}`}
@@ -1011,6 +1022,9 @@ function DigestSignalRow({
             <SourceTypeTag type={item.source_type} />
             <CategoryTag category={item.category} />
           </span>
+          {item.investigators.length > 0 ? (
+            <LinkedInvestigatorsFacepile variant="inline" investigators={item.investigators} maxVisible={3} />
+          ) : null}
         </span>
         <span
           className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
@@ -1038,6 +1052,7 @@ function DigestCategoryCard({
   onSelectAll,
   onSelectNone,
   onGenerateCategory,
+  workspaceAccounts,
 }: {
   category: DigestRefCategory;
   expanded: boolean;
@@ -1050,6 +1065,7 @@ function DigestCategoryCard({
   onSelectAll: () => void;
   onSelectNone: () => void;
   onGenerateCategory: () => void;
+  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const allSelected = category.items.length > 0 && selectedCount === category.items.length;
   return (
@@ -1126,6 +1142,7 @@ function DigestCategoryCard({
                   selected={selectedIds.has(item.id)}
                   disabled={running}
                   onToggle={() => onToggleItem(item.id)}
+                  workspaceAccounts={workspaceAccounts}
                 />
               ))}
             </ul>
@@ -1150,7 +1167,14 @@ export type DigestItemPayload = {
   source_url: string | null;
   raw_summary: string | null;
   /** Primary + junction-linked watchlist investigators, sorted by name */
-  investigators: { id: string; name: string; first_name: string; last_name: string }[];
+  investigators: {
+    id: string;
+    name: string;
+    first_name: string;
+    last_name: string;
+    headshot_url: string | null;
+    headshot_storage_path: string | null;
+  }[];
   /** Primary `source_items.tracked_entity_id` (e.g. funding: contact / lead PI). */
   primary_tracked_entity_id: string | null;
   /** For papers, PubMed co–last / co–corresponding (second author from the end) when available. */
@@ -1227,7 +1251,15 @@ function digestSummaryShareText(summary: Summary): string {
   return `${merged.headline}\n\n${merged.blurb?.trim() ?? ""}`.trim();
 }
 
-function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; model: string }) {
+function DigestCompletedSignalCard({
+  item,
+  model,
+  workspaceAccounts,
+}: {
+  item: DigestItemPayload;
+  model: string;
+  workspaceAccounts?: WorkspaceAccountAvatars | null;
+}) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
@@ -1279,6 +1311,7 @@ function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; m
             onReactivate: () => void reactivate(),
             reactivating,
           }}
+          workspaceAccounts={workspaceAccounts}
         />
       </li>
     );
@@ -1296,11 +1329,19 @@ function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; m
             <p className="line-clamp-2 text-sm font-semibold leading-snug text-[color:var(--foreground)]">
               {item.title}
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <DigestItemMetaStrip item={item} className="" />
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <DigestItemMetaStrip item={item} className="mb-0" />
               <span className="rounded-md border border-[color:var(--border)]/55 bg-[color:var(--card)]/75 px-2.5 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)]">
                 Done {completedAt}
               </span>
+              {item.investigators.length > 0 ? (
+                <LinkedInvestigatorsFacepile
+                  variant="inline"
+                  investigators={item.investigators}
+                  maxVisible={4}
+                  className="min-w-0"
+                />
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-1">
               {destLabels.length ? (
@@ -1316,19 +1357,19 @@ function DigestCompletedSignalCard({ item, model }: { item: DigestItemPayload; m
                 <span className="text-[10px] text-[color:var(--muted-foreground)]">No channel outputs yet</span>
               )}
             </div>
-            {item.investigators.length ? (
-              <p className="text-[11px] leading-snug text-[color:var(--muted-foreground)]">
-                {item.investigators
-                  .slice(0, 4)
-                  .map((i) => i.name)
-                  .join(", ")}
-                {item.investigators.length > 4 ? ` +${item.investigators.length - 4}` : ""}
-              </p>
-            ) : null}
           </div>
-          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] opacity-70 transition group-hover:opacity-100">
-            Open
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <WorkspaceHandleAvatarImg
+              postToX
+              postToBluesky
+              accounts={workspaceAccounts}
+              size="sm"
+              hideWhenEmpty
+            />
+            <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] opacity-70 transition group-hover:opacity-100">
+              Open
+            </span>
+          </div>
         </div>
       </button>
     </li>
@@ -1342,6 +1383,7 @@ function DigestItemRow({
   onToggleExpanded,
   libraryPreviewMode,
   bulkSelect,
+  workspaceAccounts,
 }: {
   item: DigestItemPayload;
   model: string;
@@ -1354,6 +1396,7 @@ function DigestItemRow({
   };
   /** When set, show a row checkbox for bulk “mark complete” in Active Drafts. */
   bulkSelect?: { selected: boolean; onToggle: () => void };
+  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
@@ -1378,7 +1421,6 @@ function DigestItemRow({
   const [coverLoading, setCoverLoading] = useState(false);
   const [postToX, setPostToX] = useState(true);
   const [postToBluesky, setPostToBluesky] = useState(true);
-  const [publishAttachmentMode, setPublishAttachmentMode] = useState<DigestPublishAttachmentMode>("digest_visual");
   const [digestStripPosting, setDigestStripPosting] = useState(false);
   const [digestStripSaving, setDigestStripSaving] = useState(false);
   const [publishStripMoreMenuOpen, setPublishStripMoreMenuOpen] = useState(false);
@@ -1611,12 +1653,7 @@ function DigestItemRow({
   useEffect(() => {
     setPostToX(true);
     setPostToBluesky(true);
-    setPublishAttachmentMode("digest_visual");
   }, [activeSummary?.id, contentStudioEditorSummary.style]);
-
-  useEffect(() => {
-    if (!item.source_url?.trim()) setPublishAttachmentMode("digest_visual");
-  }, [item.source_url]);
 
   const digestStripPost = useCallback(async () => {
     const s = activeSummary;
@@ -1638,7 +1675,7 @@ function DigestItemRow({
       const publishPayload: Record<string, unknown> = {
         text,
         source_item_id: s.source_item_id,
-        attachment: publishAttachmentMode,
+        attachment: "digest_visual",
       };
       if (postToX) {
         const res = await fetch("/api/x/post", {
@@ -1683,7 +1720,7 @@ function DigestItemRow({
     } finally {
       setDigestStripPosting(false);
     }
-  }, [activeSummary, outputPreviewStyle, postToX, postToBluesky, publishAttachmentMode]);
+  }, [activeSummary, outputPreviewStyle, postToX, postToBluesky]);
 
   const collapseExpandedCardIfNeeded = useCallback(() => {
     if (!expanded) return;
@@ -1928,11 +1965,9 @@ function DigestItemRow({
   const [linkPreviewMeta, setLinkPreviewMeta] = useState<LinkPreviewMeta | null>(null);
   const [linkPreviewStatus, setLinkPreviewStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
-  /** Load OG data when the bundle is link-only, or when previewing Social with “article link” attachment. */
+  /** Load OG data when the bundle is link-only (article link card in output preview). */
   const needsArticleLinkPreview = Boolean(
-    item.source_url?.trim().startsWith("http") &&
-      (linkPreviewHero ||
-        (outputPreviewStyle === "bluesky_x" && publishAttachmentMode === "source_link")),
+    item.source_url?.trim().startsWith("http") && linkPreviewHero,
   );
 
   useEffect(() => {
@@ -1968,11 +2003,10 @@ function DigestItemRow({
     return () => {
       cancelled = true;
     };
-  }, [needsArticleLinkPreview, item.source_url, outputPreviewStyle, publishAttachmentMode]);
+  }, [needsArticleLinkPreview, item.source_url]);
 
   /** Social tab + “Article link” attachment shows OG/link-preview card instead of the digest thumbnail. */
-  const socialPreviewUsesArticleLink =
-    outputPreviewStyle === "bluesky_x" && publishAttachmentMode === "source_link";
+  const socialPreviewUsesArticleLink = false;
   const hasHttpSourceUrl = Boolean(item.source_url?.trim().startsWith("http"));
   const showDigestHeroImage =
     !socialPreviewUsesArticleLink && Boolean(selectedPreviewImageUrl);
@@ -2055,14 +2089,14 @@ function DigestItemRow({
             ...(postToX ? ["x"] : []),
             ...(postToBluesky ? ["bluesky"] : []),
           ],
-          attachment: publishAttachmentMode,
+          attachment: "digest_visual",
           image_url: canDownloadDigestHero ? selectedPreviewImageUrl : null,
           source_url: item.source_url ?? null,
         }),
       });
       const data = (await res.json()) as { error?: string; created?: number };
       if (!res.ok) throw new Error(data.error ?? "Schedule request failed");
-      toast.success(`Draft${data.created === 1 ? "" : "s"} sent to review queue`);
+      toast.success(`Draft${data.created === 1 ? "" : "s"} added to Social Signals · Scheduler`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Schedule failed");
     } finally {
@@ -2073,7 +2107,6 @@ function DigestItemRow({
     outputPreviewStyle,
     postToX,
     postToBluesky,
-    publishAttachmentMode,
     canDownloadDigestHero,
     selectedPreviewImageUrl,
     item.source_url,
@@ -2088,11 +2121,11 @@ function DigestItemRow({
             postToBluesky,
             onPostToXChange: setPostToX,
             onPostToBlueskyChange: setPostToBluesky,
-            attachmentMode: publishAttachmentMode,
-            onAttachmentModeChange: setPublishAttachmentMode,
+            attachmentMode: "digest_visual" as const,
+            onAttachmentModeChange: () => {},
           }
         : undefined,
-    [contentStudioEditorSummary, postToX, postToBluesky, publishAttachmentMode],
+    [contentStudioEditorSummary, postToX, postToBluesky],
   );
 
   useEffect(() => {
@@ -2134,7 +2167,17 @@ function DigestItemRow({
           ) : null}
           <div className="flex min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <DigestItemMetaStrip item={item} />
+            <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <DigestItemMetaStrip item={item} className="mb-0" />
+              {item.investigators.length > 0 ? (
+                <LinkedInvestigatorsFacepile
+                  variant="inline"
+                  investigators={item.investigators}
+                  maxVisible={4}
+                  className="min-w-0"
+                />
+              ) : null}
+            </div>
           <h3 className="text-xl font-semibold leading-snug tracking-tight text-[color:var(--foreground)]">
             <Link href={`/items/${item.id}`} className="hover:underline">
               {item.title}
@@ -2208,6 +2251,13 @@ function DigestItemRow({
           </p>
           </div>
           <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2">
+            <WorkspaceHandleAvatarImg
+              postToX
+              postToBluesky
+              accounts={workspaceAccounts}
+              size="sm"
+              hideWhenEmpty
+            />
             {libraryPreviewMode ? (
               <Button
                 type="button"
@@ -2600,44 +2650,6 @@ function DigestItemRow({
                         className="absolute right-0 top-full z-50 mt-1.5 min-w-[14rem] rounded-lg border border-[color:var(--border)]/85 bg-[color:var(--card)] py-1 shadow-lg"
                         role="menu"
                       >
-                        <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
-                          Social attachment
-                        </p>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45"
-                          onClick={() => {
-                            setPublishAttachmentMode("digest_visual");
-                            setPublishStripMoreMenuOpen(false);
-                          }}
-                        >
-                          <span>Digest hero image</span>
-                          {publishAttachmentMode === "digest_visual" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          disabled={!hasHttpSourceUrl}
-                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm text-[color:var(--foreground)] hover:bg-[color:var(--muted)]/45 disabled:cursor-not-allowed disabled:opacity-40"
-                          onClick={() => {
-                            if (!hasHttpSourceUrl) return;
-                            setPublishAttachmentMode("source_link");
-                            setPublishStripMoreMenuOpen(false);
-                          }}
-                        >
-                          <span>Article link preview</span>
-                          {publishAttachmentMode === "source_link" ? (
-                            <ToggleCheckMiniIcon className="text-[color:var(--accent)]" />
-                          ) : (
-                            <span className="w-3.5" />
-                          )}
-                        </button>
-                        <div className="my-1 border-t border-[color:var(--border)]/60" role="separator" />
                         <button
                           type="button"
                           role="menuitem"
@@ -2948,12 +2960,15 @@ export function MonthlyDigestView({
   selectedMonth,
   minMonth,
   maxMonth,
+  workspaceAccounts,
 }: {
   monthLabel: string;
   items: DigestItemPayload[];
   selectedMonth?: string;
   minMonth?: string;
   maxMonth?: string;
+  /** Connected X / Bluesky avatars for digest signal cards (X prioritized). */
+  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const router = useRouter();
   const [monthInput, setMonthInput] = useState(selectedMonth ?? "");
@@ -3132,54 +3147,48 @@ export function MonthlyDigestView({
   }, [bulkSelectedInViewCount, filteredDigestItemIds.length]);
 
   const toggleSelectAllInView = useCallback(() => {
-    setBulkSelectedDigestIds((prev) => {
-      const visible = filteredDigestItemIds;
-      const every = visible.length > 0 && visible.every((id) => prev.has(id));
-      const next = new Set(prev);
-      if (every) {
-        for (const id of visible) next.delete(id);
-      } else {
-        for (const id of visible) next.add(id);
-      }
-      return next;
+    startTransition(() => {
+      setBulkSelectedDigestIds((prev) => {
+        const visible = filteredDigestItemIds;
+        const every = visible.length > 0 && visible.every((id) => prev.has(id));
+        const next = new Set(prev);
+        if (every) {
+          for (const id of visible) next.delete(id);
+        } else {
+          for (const id of visible) next.add(id);
+        }
+        return next;
+      });
     });
   }, [filteredDigestItemIds]);
 
   const markBulkSelectedComplete = useCallback(async () => {
-    const ids = filteredDigestItemIds.filter((id) => bulkSelectedDigestIds.has(id));
+    const ids = [...new Set(filteredDigestItemIds.filter((id) => bulkSelectedDigestIds.has(id)))];
     if (ids.length === 0) return;
     setBulkMarkingComplete(true);
     try {
-      let ok = 0;
-      let fail = 0;
-      for (const source_item_id of ids) {
-        const res = await fetch("/api/digest-workflow-state", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ source_item_id, complete: true }),
-        });
-        if (res.ok) ok++;
-        else fail++;
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ source_item_ids: ids, complete: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        updated?: number;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Bulk update failed");
+        return;
       }
-      if (fail > 0) {
-        toast.error(
-          `${fail} ${fail === 1 ? "update" : "updates"} failed${ok ? `; ${ok} marked complete` : ""}`,
-        );
-      } else {
-        toast.success(`Marked ${ok} ${ok === 1 ? "signal" : "signals"} complete`);
-      }
+      const n = typeof data.updated === "number" ? data.updated : ids.length;
+      toast.success(`Marked ${n} ${n === 1 ? "signal" : "signals"} complete`);
       setBulkSelectedDigestIds(new Set());
-      router.refresh();
+      startTransition(() => router.refresh());
     } finally {
       setBulkMarkingComplete(false);
     }
   }, [bulkSelectedDigestIds, filteredDigestItemIds, router]);
-
-  useEffect(() => {
-    if (queueFilter === "all") return;
-    const n = digestActiveCategoryCounts.get(queueFilter) ?? 0;
-    if (n === 0) setQueueFilter("all");
-  }, [queueFilter, digestActiveCategoryCounts]);
 
   useEffect(() => {
     const visibleIds = new Set(filteredDigestItems.map((i) => i.id));
@@ -3696,6 +3705,7 @@ export function MonthlyDigestView({
                               return next;
                             }),
                         }}
+                        workspaceAccounts={workspaceAccounts}
                       />
                     </li>
                   ))}
@@ -3722,7 +3732,7 @@ export function MonthlyDigestView({
                   <div className="border-t border-[color:var(--border)]/45 px-3 pb-4 pt-3">
                     <ul className="space-y-2">
                       {completedDigestItems.map((item) => (
-                        <DigestCompletedSignalCard key={item.id} item={item} model="" />
+                        <DigestCompletedSignalCard key={item.id} item={item} model="" workspaceAccounts={workspaceAccounts} />
                       ))}
                     </ul>
                   </div>
@@ -3776,13 +3786,13 @@ export function MonthlyDigestView({
                         />
                       </span>
                       <p
-                        className={`min-w-0 flex-1 text-[10px] font-semibold uppercase leading-none tracking-[0.09em] ${
+                        className={`min-w-0 flex-1 text-[10px] font-semibold leading-none tracking-[0.02em] ${
                           activeCategoryFilter === "all"
                             ? "text-[color:var(--foreground)]"
                             : "text-[color:var(--muted-foreground)]"
                         }`}
                       >
-                        Total selected
+                        Selected
                       </p>
                     </div>
                     <p
@@ -3919,6 +3929,7 @@ export function MonthlyDigestView({
                         selectedCount={selectedByCategory[category.key].size}
                         running={runningCategory === category.key}
                         selectedIds={selectedByCategory[category.key]}
+                        workspaceAccounts={workspaceAccounts}
                         onExpand={() => {
                           setExpandedCategories((prev) => {
                             const next = new Set(prev);

@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { InvestigatorMentionTextarea } from "@/components/investigator-mention-textarea";
 import {
   DEFAULT_DIGEST_SUMMARY_TONE,
   DIGEST_SUMMARY_TONE_OPTIONS,
@@ -65,6 +65,14 @@ const GENERATE_BLURB_STYLES = new Set<string>([
 function normalizeOutputStatus(v: string | null | undefined): SummaryOutputStatus {
   if (v === "ready" || v === "reviewed" || v === "draft") return v;
   return "draft";
+}
+
+/** Headline + blurb length for UI/save (preserves trailing spaces in blurb). */
+function digestCombinedCharCountChars(c: Pick<BlurbContent, "headline" | "blurb">): number {
+  const h = c.headline.trim();
+  const b = c.blurb ?? "";
+  if (!h.length) return [...b].length;
+  return [...`${h} ${b}`].length;
 }
 
 /** Matches summary `Textarea` `min-h`; used when syncing height to `scrollHeight`. */
@@ -306,21 +314,21 @@ export function SummaryEditor({
     }
   }, [sourceUrl, publishPlatforms]);
 
+  /** Blurb as edited (preserves trailing spaces for typing @mentions at end of paragraph). */
   function summaryBody(): string {
-    return content.blurb?.trim() ?? "";
+    return content.blurb ?? "";
   }
 
   function applySummaryBody(raw: string) {
-    const t = raw.trimEnd();
     const legacy = "\n\nWhy it matters:";
-    const idx = t.toLowerCase().lastIndexOf(legacy.toLowerCase());
+    const idx = raw.toLowerCase().lastIndexOf(legacy.toLowerCase());
     if (idx >= 0) {
-      const blurbPart = t.slice(0, idx).trim();
-      const whyPart = t.slice(idx + legacy.length).trim();
+      const blurbPart = raw.slice(0, idx).trimEnd();
+      const whyPart = raw.slice(idx + legacy.length).trim();
       setContent((c) => mergeWhyIntoBlurb({ ...c, blurb: blurbPart, why_it_matters: whyPart }));
       return;
     }
-    setContent((c) => ({ ...c, blurb: t.trim(), why_it_matters: "" }));
+    setContent((c) => ({ ...c, blurb: raw, why_it_matters: "" }));
   }
 
   const syncSummaryBodyTextareaHeight = useCallback(() => {
@@ -353,7 +361,7 @@ export function SummaryEditor({
     try {
       const supabase = createClient();
       const edited = stringifyBlurbContent(content);
-      const cc = charCount(`${content.headline} ${summaryBody()}`.trim());
+      const cc = digestCombinedCharCountChars(content);
       const { error } = await supabase
         .from("summaries")
         .update({
@@ -395,12 +403,11 @@ export function SummaryEditor({
     };
   }, [digestBriefSaveOutletRef, saveEdits]);
 
-  function charCount(s: string): number {
-    return [...s].length;
-  }
-
   function baseCopyText(): string {
-    return `${content.headline}\n\n${summaryBody()}`.trim();
+    const h = content.headline.trim();
+    const b = content.blurb ?? "";
+    if (!h.length) return b;
+    return `${h}\n\n${b}`;
   }
 
   const dw = digestWorkflow;
@@ -617,21 +624,22 @@ export function SummaryEditor({
           }
         >
           <Label className="text-xs font-semibold text-[color:var(--foreground)]/90">Summary</Label>
-          <Textarea
+          <InvestigatorMentionTextarea
             ref={summaryBodyTextareaRef}
+            mentionNetwork="bluesky"
             className={`w-full min-w-0 box-border resize-y border-[color:var(--border)]/85 bg-[color:var(--background)]/95 ${
               variant === "embedded"
                 ? "min-h-0 flex-1 overflow-auto"
                 : "min-h-[168px] overflow-hidden"
             }`}
             value={summaryBody()}
-            onChange={(e) => applySummaryBody(e.target.value)}
+            onChange={(v) => applySummaryBody(v)}
           />
         </div>
         {digestWorkflow ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[color:var(--border)]/45 pt-3 text-[11px] font-medium tabular-nums text-[color:var(--muted-foreground)]">
             <span className="min-w-0 shrink-0">
-              {charCount(`${content.headline} ${summaryBody()}`.trim()).toLocaleString("en-US")}{" "}
+              {digestCombinedCharCountChars(content).toLocaleString("en-US")}{" "}
               characters
             </span>
             <span className="min-w-0 max-w-[min(100%,22rem)] text-right leading-snug">
@@ -752,7 +760,7 @@ export function SummaryEditor({
 
         {!digestWorkflow ? (
           <p className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
-            Draft {charCount(`${content.headline} ${summaryBody()}`.trim())} characters · target ~{targetBlurbChars}{" "}
+            Draft {digestCombinedCharCountChars(content)} characters · target ~{targetBlurbChars}{" "}
             characters when generating
           </p>
         ) : null}

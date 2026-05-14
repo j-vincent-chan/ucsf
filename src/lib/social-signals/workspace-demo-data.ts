@@ -6,7 +6,6 @@ import type {
   RecentActivityItem,
   Recommendation,
   ReviewQueueItem,
-  WorkspaceAsset,
   WorkspaceSocialPost,
 } from "./workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "./workspace-types";
@@ -166,63 +165,6 @@ export const INITIAL_CAMPAIGNS: Campaign[] = [
     impressionsDemo: 2100,
     engagementRateDemo: 2.4,
     upcomingCount: 0,
-  },
-];
-
-export const INITIAL_ASSETS: WorkspaceAsset[] = [
-  {
-    id: "as1",
-    name: "Program wordmark — approved crop",
-    kind: "logo",
-    usageNotes: "Clear space ≥ 0.25× height; light backgrounds only in social crops.",
-    previewHint: "Logo",
-  },
-  {
-    id: "as2",
-    name: "Hashtag bank — translational immunology",
-    kind: "hashtag_bank",
-    campaign: "Diabetes Research Digest",
-    usageNotes: "Rotate; max 3 per post.",
-    body: "#Immunology #Type1Diabetes #UCSF #ClinicalResearch",
-  },
-  {
-    id: "as3",
-    name: "CTA — Apply / RFA",
-    kind: "cta_snippet",
-    campaign: "Biospecimen Pipeline RFA",
-    usageNotes: "Pair with deadline date from signal.",
-    body: "Learn eligibility and apply →",
-  },
-  {
-    id: "as4",
-    name: "Funder acknowledgement — NIH template",
-    kind: "funder_ack",
-    usageNotes: "Insert when grant number present in signal.",
-    body: "Research supported by the National Institutes of Health.",
-  },
-  {
-    id: "as5",
-    name: "Alt text — microscopy strip",
-    kind: "alt_text_snippet",
-    usageNotes: "Generic microscopy hero shots.",
-    body: "Microscopy image of immune cells in tissue section; labels indicate staining channels.",
-  },
-  {
-    id: "as6",
-    name: "Image prompt — Treg / beta cell narrative",
-    kind: "image_prompt",
-    campaign: "Diabetes Research Digest",
-    usageNotes: "BioRender-inspired editorial schematic style.",
-    body:
-      "Clean editorial schematic: regulatory T cells interacting with pancreatic islet, muted blues and sand tones, no proprietary logos.",
-  },
-  {
-    id: "as7",
-    name: "Program boilerplate — imaging core services",
-    kind: "boilerplate",
-    campaign: "Imaging Core Services Awareness",
-    usageNotes: "Pair with service URL from program update signal.",
-    body: "Core imaging supports compliant multicenter workflows and traceable study data.",
   },
 ];
 
@@ -471,13 +413,3 @@ export const INITIAL_REVIEW_QUEUE: ReviewQueueItem[] = [
     comments: [],
   },
 ];
-
-export const DEMO_SIGNAL_OPTIONS = [
-  { id: "sig1", label: "Paper — Regulatory T cells & type 1 diabetes" },
-  { id: "sig2", label: "News — Schistosomiasis-associated pulmonary hypertension" },
-  { id: "sig3", label: "Funding — Biospecimen Pipeline RFA" },
-  { id: "sig4", label: "Event — ImmunoDiverse Colloquia" },
-  { id: "sig5", label: "Program update — imaging core services" },
-  { id: "sig6", label: "Award — High-impact UCSF publication" },
-  { id: "sig7", label: "Funding — UCSF investigator bridge award" },
-] as const;

@@ -9,6 +9,16 @@ const API = "https://api.reporter.nih.gov/v2/projects/search";
 /** NIH asks for ≤1 request per second to RePORTER APIs. */
 export const NIH_REPORTER_THROTTLE_MS = 1000;
 
+type ReporterProjectNumSplit = {
+  appl_type_code?: string | null;
+  activity_code?: string | null;
+  ic_code?: string | null;
+  serial_num?: string | null;
+  support_year?: string | null;
+  full_support_year?: string | null;
+  suffix_code?: string | null;
+};
+
 type ReporterProjectRow = {
   appl_id?: number;
   project_num?: string;
@@ -21,7 +31,64 @@ type ReporterProjectRow = {
   organization?: { org_name?: string | null };
   award_amount?: number | null;
   agency_ic_admin?: { abbreviation?: string | null; name?: string | null };
+  /** NIH APPLICATION_TYPE (same meaning as `project_num_split.appl_type_code` when present). */
+  award_type?: string | number | null;
+  project_num_split?: ReporterProjectNumSplit | null;
 };
+
+function reporterApplTypeCode(
+  row: ReporterProjectRow,
+): string | null {
+  const fromSplit = (row.project_num_split?.appl_type_code ?? "").trim();
+  if (fromSplit) return fromSplit;
+  const at = row.award_type;
+  if (at == null) return null;
+  const s = String(at).trim();
+  return s || null;
+}
+
+/**
+ * NIH application / award action type (RePORTER APPLICATION_TYPE).
+ * @see https://api.reporter.nih.gov/documents/Data%20Elements%20for%20RePORTER%20Project%20API_V2.pdf
+ */
+export function reporterAwardClassSummary(row: ReporterProjectRow): string | null {
+  const code = reporterApplTypeCode(row);
+  if (!code) return null;
+  const syRaw = (row.project_num_split?.support_year ?? "").trim();
+  const syDisp =
+    syRaw && /^\d+$/.test(syRaw)
+      ? String(Number.parseInt(syRaw, 10))
+      : syRaw || null;
+  const yearSuffix =
+    syDisp && ["2", "3", "4", "5"].includes(code)
+      ? ` · Support year ${syDisp}`
+      : syDisp && code === "1"
+        ? ` · Support year ${syDisp}`
+        : "";
+
+  switch (code) {
+    case "1":
+      return `Award class: New grant${yearSuffix}`;
+    case "2":
+      return `Award class: Competing renewal${yearSuffix}`;
+    case "3":
+      return `Award class: Supplement or revision${yearSuffix}`;
+    case "4":
+      return `Award class: Extension / Fast-Track transition${yearSuffix}`;
+    case "5":
+      return `Award class: Continuing (non-competing)${yearSuffix}`;
+    case "6":
+      return `Award class: Change of organization (successor)`;
+    case "7":
+      return `Award class: Change of grantee institution`;
+    case "8":
+      return `Award class: IC transfer (non-competing)`;
+    case "9":
+      return `Award class: IC change (on competing renewal)`;
+    default:
+      return `Award class: NIH application type ${code}${yearSuffix}`;
+  }
+}
 
 export type NihReporterFetchOptions = {
   profileId: string;
@@ -215,6 +282,8 @@ export async function fetchNihReporterFundingCandidates(
           "Organization",
           "AwardAmount",
           "AgencyIcAdmin",
+          "AwardType",
+          "ProjectNumSplit",
         ],
         sort_field: "award_notice_date",
         sort_order: "desc",
@@ -274,10 +343,12 @@ export async function fetchNihReporterFundingCandidates(
         const abstract = row.abstract_text
           ? row.abstract_text.replace(/\s+/g, " ").trim().slice(0, 420)
           : null;
-        const raw_summary = [ic, org, amount, abstract]
-          .filter(Boolean)
-          .join(" · ")
-          .slice(0, 2000) || null;
+        const awardClass = reporterAwardClassSummary(row);
+        const raw_summary =
+          [awardClass, ic, org, amount, abstract]
+            .filter(Boolean)
+            .join(" · ")
+            .slice(0, 2000) || null;
 
         built.push({
           tracked_entity_id: opts.trackedEntityId,

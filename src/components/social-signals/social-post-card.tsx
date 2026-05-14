@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { LinkifiedText } from "./linkified-text";
 import { PlatformBadge } from "./platform-badge";
 import { SourceSignalTypeBadge } from "./source-signal-type-badge";
 import { StatusBadge } from "./status-badge";
@@ -249,10 +250,11 @@ export function SocialPostCard({
             <span className="sr-only"> · {dtLabel}</span>
           </p>
 
-          <p
-            className={`mt-3 whitespace-pre-wrap leading-relaxed text-[color:var(--foreground)] ${compact ? "text-sm" : "text-[15px]"} ${post.platform === "x" ? "font-[system-ui]" : ""}`}
-          >
-            {post.text}
+          <p className={`mt-3 ${compact ? "text-sm" : "text-[15px]"} ${post.platform === "x" ? "font-[system-ui]" : ""}`}>
+            <LinkifiedText
+              text={post.text}
+              className="whitespace-pre-wrap leading-relaxed text-[color:var(--foreground)]"
+            />
           </p>
 
           {post.hashtags.length > 0 ? (

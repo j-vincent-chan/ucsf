@@ -11,7 +11,7 @@ export function RecommendationPanel({
   onAction?: (id: string) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/92 p-4">
+    <div className="min-w-0 rounded-2xl border border-[color:var(--border)]/75 bg-[color:var(--background)]/92 p-4">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
         AI recommendations
       </p>

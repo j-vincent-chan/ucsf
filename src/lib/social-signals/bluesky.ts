@@ -1,4 +1,5 @@
 import { appendArticleUrlIfAbsent, articleUrlAlreadyInText } from "@/lib/social-article-url";
+import { buildBlueskyMentionFacets } from "@/lib/bluesky-mention-facets";
 import type { SocialPost } from "./types";
 import { compressBufferForBlueskyEmbed } from "./bluesky-image-compress";
 import { BLUESKY_CHAR_LIMIT } from "./workspace-types";
@@ -93,6 +94,7 @@ function mapBskyFeedViewPost(item: {
     repostCount?: number;
     likeCount?: number;
     quoteCount?: number;
+    viewer?: { repost?: string; like?: string };
   };
 }): SocialPost {
   const post = item.post;
@@ -116,6 +118,12 @@ function mapBskyFeedViewPost(item: {
     repostCount: post.repostCount,
     likeCount: post.likeCount,
     ...(post.cid ? { bskyRecordCid: post.cid } : {}),
+    ...(typeof post.viewer?.repost === "string" && post.viewer.repost.startsWith("at://")
+      ? { viewerReposted: true as const, bskyViewerRepostUri: post.viewer.repost }
+      : {}),
+    ...(typeof post.viewer?.like === "string" && post.viewer.like.startsWith("at://")
+      ? { viewerLiked: true as const, bskyViewerLikeUri: post.viewer.like }
+      : {}),
     repostedBy:
       isRepost && by
         ? {
@@ -135,7 +143,7 @@ export async function fetchBlueskyFollowing(
   if (!session?.accessJwt) {
     return { posts: [], detail: "Bluesky: invalid credentials or session failed" };
   }
-  const params = new URLSearchParams({ limit: "40" });
+  const params = new URLSearchParams({ limit: "100" });
   const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getTimeline?${params}`, {
     headers: { Authorization: `Bearer ${session.accessJwt}` },
   });
@@ -164,7 +172,7 @@ export async function fetchBlueskyListFeed(
   if (!list.startsWith("at://") || !list.includes("/app.bsky.graph.list/")) {
     return { posts: [], detail: "Bluesky list: expected an at://…/app.bsky.graph.list/… URI" };
   }
-  const params = new URLSearchParams({ list, limit: "40" });
+  const params = new URLSearchParams({ list, limit: "100" });
   const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getListFeed?${params}`, {
     headers: { Authorization: `Bearer ${session.accessJwt}` },
   });
@@ -195,7 +203,7 @@ export async function fetchBlueskyMentions(
   }
   const params = new URLSearchParams({
     q: `mentions:${clean}`,
-    limit: "40",
+    limit: "100",
   });
   const res = await fetch(`${HOST}/xrpc/app.bsky.feed.searchPosts?${params}`, {
     headers: { Authorization: `Bearer ${session.accessJwt}` },
@@ -222,6 +230,7 @@ export async function fetchBlueskyMentions(
       replyCount?: number;
       repostCount?: number;
       likeCount?: number;
+      viewer?: { repost?: string; like?: string };
     };
     return {
       id: `bsky:${p.uri}`,
@@ -237,6 +246,12 @@ export async function fetchBlueskyMentions(
       repostCount: counts.repostCount,
       likeCount: counts.likeCount,
       ...(counts.cid ? { bskyRecordCid: counts.cid } : {}),
+      ...(typeof counts.viewer?.repost === "string" && counts.viewer.repost.startsWith("at://")
+        ? { viewerReposted: true as const, bskyViewerRepostUri: counts.viewer.repost }
+        : {}),
+      ...(typeof counts.viewer?.like === "string" && counts.viewer.like.startsWith("at://")
+        ? { viewerLiked: true as const, bskyViewerLikeUri: counts.viewer.like }
+        : {}),
     };
   });
   return { posts };
@@ -414,6 +429,119 @@ async function bskyRepoCreateRecord(
   return { uri: raw.uri };
 }
 
+function parseAtUriCollectionAndRkey(uri: string): { collection: string; rkey: string } | null {
+  const u = uri.trim();
+  if (!u.startsWith("at://")) return null;
+  const path = u.slice("at://".length);
+  const slash = path.indexOf("/");
+  if (slash < 0) return null;
+  const rest = path.slice(slash + 1);
+  const lastSlash = rest.lastIndexOf("/");
+  if (lastSlash < 0) return null;
+  const collection = rest.slice(0, lastSlash);
+  const rkey = rest.slice(lastSlash + 1);
+  if (!collection || !rkey) return null;
+  return { collection, rkey };
+}
+
+async function bskyRepoDeleteRecord(
+  accessJwt: string,
+  repo: string,
+  collection: string,
+  rkey: string,
+): Promise<void> {
+  const res = await fetch(`${HOST}/xrpc/com.atproto.repo.deleteRecord`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessJwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ repo, collection, rkey }),
+  });
+  const raw = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(raw.message ?? raw.error ?? `Bluesky delete failed (${res.status})`);
+  }
+}
+
+const BSKY_LIST_REPOST_MAX_PAGES = 12;
+
+async function blueskyFindRepostRkeyForSubject(
+  accessJwt: string,
+  repo: string,
+  subjectPostUri: string,
+): Promise<string | null> {
+  let cursor: string | undefined;
+  for (let page = 0; page < BSKY_LIST_REPOST_MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      repo,
+      collection: "app.bsky.feed.repost",
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetch(`${HOST}/xrpc/com.atproto.repo.listRecords?${params}`, {
+      headers: { Authorization: `Bearer ${accessJwt}` },
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      records?: Array<{ uri?: string; value?: { subject?: { uri?: string } } }>;
+      cursor?: string;
+      message?: string;
+    };
+    if (!res.ok) {
+      throw new Error(raw.message ?? `Bluesky listRecords failed (${res.status})`);
+    }
+    for (const rec of raw.records ?? []) {
+      const subj = rec.value?.subject?.uri;
+      if (subj === subjectPostUri && typeof rec.uri === "string") {
+        const parsed = parseAtUriCollectionAndRkey(rec.uri);
+        if (parsed?.collection === "app.bsky.feed.repost") return parsed.rkey;
+      }
+    }
+    cursor = raw.cursor;
+    if (!cursor) break;
+  }
+  return null;
+}
+
+const BSKY_LIST_LIKE_MAX_PAGES = 12;
+
+async function blueskyFindLikeRkeyForSubject(
+  accessJwt: string,
+  repo: string,
+  subjectPostUri: string,
+): Promise<string | null> {
+  let cursor: string | undefined;
+  for (let page = 0; page < BSKY_LIST_LIKE_MAX_PAGES; page++) {
+    const params = new URLSearchParams({
+      repo,
+      collection: "app.bsky.feed.like",
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetch(`${HOST}/xrpc/com.atproto.repo.listRecords?${params}`, {
+      headers: { Authorization: `Bearer ${accessJwt}` },
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      records?: Array<{ uri?: string; value?: { subject?: { uri?: string } } }>;
+      cursor?: string;
+      message?: string;
+    };
+    if (!res.ok) {
+      throw new Error(raw.message ?? `Bluesky listRecords failed (${res.status})`);
+    }
+    for (const rec of raw.records ?? []) {
+      const subj = rec.value?.subject?.uri;
+      if (subj === subjectPostUri && typeof rec.uri === "string") {
+        const parsed = parseAtUriCollectionAndRkey(rec.uri);
+        if (parsed?.collection === "app.bsky.feed.like") return parsed.rkey;
+      }
+    }
+    cursor = raw.cursor;
+    if (!cursor) break;
+  }
+  return null;
+}
+
 /** Resolve CID for a post AT URI (uses feed cache when {@link hintCid} is set). */
 export async function resolveBskyPostStrongRef(
   accessJwt: string,
@@ -445,6 +573,27 @@ export async function resolveBskyPostStrongRef(
     throw new Error("Could not resolve Bluesky post CID — refresh the feed and try again.");
   }
   return { uri: p.uri ?? uri, cid };
+}
+
+/**
+ * Like/repost/reply mutations must use the **current** record CID. Client-supplied `hintCid`
+ * from feed/search can be stale; prefer {@link resolveBskyPostStrongRef} without a hint, then
+ * fall back to the hint only when getPosts fails (e.g. transient errors).
+ */
+export async function resolveBskyStrongRefForEngage(
+  accessJwt: string,
+  atUri: string,
+  hintCid?: string | null,
+): Promise<BlueskyStrongRef> {
+  try {
+    return await resolveBskyPostStrongRef(accessJwt, atUri, null);
+  } catch (e) {
+    const h = hintCid?.trim();
+    if (h) {
+      return resolveBskyPostStrongRef(accessJwt, atUri, h);
+    }
+    throw e instanceof Error ? e : new Error("Could not resolve Bluesky post");
+  }
 }
 
 function bskyReplyThreadRefsForTarget(
@@ -496,8 +645,8 @@ export async function blueskyEngageLike(
   accessJwt: string,
   repo: string,
   subject: BlueskyStrongRef,
-): Promise<void> {
-  await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.like", {
+): Promise<{ uri: string }> {
+  return bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.like", {
     $type: "app.bsky.feed.like",
     subject: { uri: subject.uri, cid: subject.cid },
     createdAt: new Date().toISOString(),
@@ -508,12 +657,56 @@ export async function blueskyEngageRepost(
   accessJwt: string,
   repo: string,
   subject: BlueskyStrongRef,
-): Promise<void> {
-  await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.repost", {
+): Promise<{ uri: string }> {
+  return bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.repost", {
     $type: "app.bsky.feed.repost",
     subject: { uri: subject.uri, cid: subject.cid },
     createdAt: new Date().toISOString(),
   });
+}
+
+/** Remove the workspace account’s repost of {@link subject}. */
+export async function blueskyEngageUnrepost(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+  options?: { repostRecordUri?: string },
+): Promise<void> {
+  let rkey: string | null = null;
+  const hint = options?.repostRecordUri?.trim();
+  if (hint?.startsWith("at://")) {
+    const parsed = parseAtUriCollectionAndRkey(hint);
+    if (parsed?.collection === "app.bsky.feed.repost") rkey = parsed.rkey;
+  }
+  if (!rkey) {
+    rkey = await blueskyFindRepostRkeyForSubject(accessJwt, repo, subject.uri);
+  }
+  if (!rkey) {
+    throw new Error("Could not find a repost to remove — refresh the feed and try again.");
+  }
+  await bskyRepoDeleteRecord(accessJwt, repo, "app.bsky.feed.repost", rkey);
+}
+
+/** Remove the workspace account’s like of {@link subject}. */
+export async function blueskyEngageUnlike(
+  accessJwt: string,
+  repo: string,
+  subject: BlueskyStrongRef,
+  options?: { likeRecordUri?: string },
+): Promise<void> {
+  let rkey: string | null = null;
+  const hint = options?.likeRecordUri?.trim();
+  if (hint?.startsWith("at://")) {
+    const parsed = parseAtUriCollectionAndRkey(hint);
+    if (parsed?.collection === "app.bsky.feed.like") rkey = parsed.rkey;
+  }
+  if (!rkey) {
+    rkey = await blueskyFindLikeRkeyForSubject(accessJwt, repo, subject.uri);
+  }
+  if (!rkey) {
+    throw new Error("Could not find a like to remove — refresh the feed and try again.");
+  }
+  await bskyRepoDeleteRecord(accessJwt, repo, "app.bsky.feed.like", rkey);
 }
 
 export async function blueskyEngageReply(
@@ -578,34 +771,34 @@ function isBlueskyDuplicateRecordError(message: string): boolean {
   return m.includes("duplicate") || m.includes("already exists");
 }
 
-/** Like; returns false if the account already liked this post. */
+/** Like; `{ applied: false }` when the account already liked this post. */
 export async function blueskyEngageLikeAllowDuplicate(
   accessJwt: string,
   repo: string,
   subject: BlueskyStrongRef,
-): Promise<boolean> {
+): Promise<{ applied: boolean; likeRecordUri?: string }> {
   try {
-    await blueskyEngageLike(accessJwt, repo, subject);
-    return true;
+    const { uri } = await blueskyEngageLike(accessJwt, repo, subject);
+    return { applied: true, likeRecordUri: uri };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
-    if (isBlueskyDuplicateRecordError(msg)) return false;
+    if (isBlueskyDuplicateRecordError(msg)) return { applied: false };
     throw e;
   }
 }
 
-/** Repost; returns false if already reposted. */
+/** Repost; returns `{ applied: false }` if already reposted. */
 export async function blueskyEngageRepostAllowDuplicate(
   accessJwt: string,
   repo: string,
   subject: BlueskyStrongRef,
-): Promise<boolean> {
+): Promise<{ applied: boolean; repostRecordUri?: string }> {
   try {
-    await blueskyEngageRepost(accessJwt, repo, subject);
-    return true;
+    const { uri } = await blueskyEngageRepost(accessJwt, repo, subject);
+    return { applied: true, repostRecordUri: uri };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
-    if (isBlueskyDuplicateRecordError(msg)) return false;
+    if (isBlueskyDuplicateRecordError(msg)) return { applied: false };
     throw e;
   }
 }
@@ -693,6 +886,9 @@ export async function publishBlueskyText(
     createdAt: new Date().toISOString(),
   };
   if (embed) record.embed = embed;
+
+  const facets = await buildBlueskyMentionFacets(forPost);
+  if (facets?.length) record.facets = facets;
 
   const created = await bskyRepoCreateRecord(accessJwt, repo, "app.bsky.feed.post", record);
   const uri = created.uri;

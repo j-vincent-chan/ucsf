@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type { ProfileRole } from "@/types/database";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { SignalLogo } from "@/components/signal-logo";
 import { signOut } from "@/app/actions/auth-actions";
 
 const STORAGE_KEY = "ui.sidebar.collapsed";
+/** When viewport is in this inclusive width range (desktop `lg` layout), force icon rail so the main column wins space before we drop the Social sidebar. */
+const NAV_AUTO_COLLAPSE_MAX = 1399;
+
+/** Shell segment shared by SSR/preflight aside and real aside (avoids hydration class drift). */
+const ASIDE_BASE =
+  "min-h-screen min-w-0 shrink-0 overflow-hidden border-r border-[color:var(--border)]/80 bg-[color:var(--background)]/92";
 
 function CollapseIcon({ collapsed }: { collapsed: boolean }) {
   return (
@@ -18,7 +24,7 @@ function CollapseIcon({ collapsed }: { collapsed: boolean }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${collapsed ? "rotate-180" : ""}`}
+      className={`shrink-0 transition-transform duration-200 ${collapsed ? "h-3.5 w-3.5 rotate-180" : "h-4 w-4"}`}
       aria-hidden
     >
       <path d="M15 18l-6-6 6-6" />
@@ -40,60 +46,110 @@ export function AppShellClient({
   userEmail: string | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  /** Preflight aside matches SSR + first paint; swap to interactive shell before paint via useLayoutEffect. */
+  const [shellReady, setShellReady] = useState(false);
 
-  useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(STORAGE_KEY);
-      if (v === "1") queueMicrotask(() => setCollapsed(true));
-    } catch {
-      // ignore
-    }
+  useLayoutEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const w = window.innerWidth;
+        if (w >= 1024 && w <= NAV_AUTO_COLLAPSE_MAX) {
+          setCollapsed(true);
+        } else if (w > NAV_AUTO_COLLAPSE_MAX) {
+          setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
+        }
+      } catch {
+        // ignore
+      }
+      setShellReady(true);
+    });
   }, []);
 
   useEffect(() => {
+    if (!shellReady) return;
+    const onResize = () => {
+      const w = window.innerWidth;
+      try {
+        if (w >= 1024 && w <= NAV_AUTO_COLLAPSE_MAX) {
+          setCollapsed(true);
+        } else if (w > NAV_AUTO_COLLAPSE_MAX) {
+          setCollapsed(window.localStorage.getItem(STORAGE_KEY) === "1");
+        }
+      } catch {
+        if (w >= 1024 && w <= NAV_AUTO_COLLAPSE_MAX) setCollapsed(true);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [shellReady]);
+
+  useEffect(() => {
+    if (!shellReady) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
     } catch {
       // ignore
     }
-  }, [collapsed]);
+  }, [collapsed, shellReady]);
 
-  const asideWidth = useMemo(() => (collapsed ? "lg:w-20" : "lg:w-80"), [collapsed]);
+  const asideWidth = useMemo(() => (collapsed ? "w-20" : "w-80"), [collapsed]);
+
+  if (!shellReady) {
+    return (
+      <div className="flex min-h-full bg-[radial-gradient(circle_at_top_left,rgba(201,125,99,0.12),transparent_24%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_92%,white),var(--background))]">
+        <aside
+          className={`${ASIDE_BASE} w-80`}
+          aria-label="Sidebar"
+        >
+          <div className="flex h-full min-w-0 flex-col p-5 lg:p-6" aria-hidden>
+            <div className="h-16 w-[min(100%,14rem)] max-w-full rounded-[1.6rem] bg-[color:var(--muted)]/35" />
+          </div>
+        </aside>
+        <main className="min-w-0 flex-1 p-3 sm:p-5 md:p-6 lg:p-8 xl:p-10">{children}</main>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-full bg-[radial-gradient(circle_at_top_left,rgba(201,125,99,0.12),transparent_24%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_92%,white),var(--background))] lg:flex">
+    <div className="flex min-h-full bg-[radial-gradient(circle_at_top_left,rgba(201,125,99,0.12),transparent_24%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_92%,white),var(--background))]">
       <aside
-        className={`min-w-0 overflow-hidden border-b border-[color:var(--border)]/80 bg-[color:var(--background)]/92 lg:min-h-screen lg:shrink-0 lg:border-r lg:border-b-0 ${asideWidth} transition-[width] duration-200 ease-out`}
+        className={`${ASIDE_BASE} ${asideWidth} transition-[width] duration-200 ease-out`}
         aria-label="Sidebar"
       >
         <div
-          className={`flex h-full min-w-0 flex-col ${collapsed ? "p-5 lg:px-2 lg:pb-3 lg:pt-3" : "p-5 lg:p-6"}`}
+          className={`flex h-full min-w-0 flex-col ${collapsed ? "px-1.5 py-2 pt-2" : "p-5"}`}
         >
           <div
-            className={`flex min-w-0 shrink-0 items-start gap-2 ${collapsed ? "lg:flex-col lg:items-center" : "justify-between"}`}
+            className={`flex min-w-0 shrink-0 ${collapsed ? "flex-col items-center gap-2.5" : "w-full items-start gap-2"}`}
           >
-            <Link
-              href="/dashboard"
-              className={`surface-card block min-w-0 shrink-0 rounded-[1.6rem] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${collapsed ? "lg:flex lg:h-11 lg:w-11 lg:items-center lg:justify-center lg:p-0 lg:rounded-2xl" : "px-4 py-4"}`}
-              aria-label="Go to dashboard"
-            >
-              {collapsed ? <SignalLogo variant="mark" /> : <SignalLogo showSubtitle />}
-            </Link>
             <button
               type="button"
               onClick={() => setCollapsed((v) => !v)}
-              className="mt-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[color:var(--border)]/80 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] shadow-[0_8px_20px_-14px_rgba(48,32,25,0.55)] ring-1 ring-[color:var(--border)]/30 transition-colors hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] lg:mt-0"
+              className={`inline-flex shrink-0 items-center justify-center rounded-full border border-[color:var(--border)]/80 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] shadow-[0_8px_20px_-14px_rgba(48,32,25,0.55)] ring-1 ring-[color:var(--border)]/30 transition-colors hover:bg-[color:var(--muted)]/20 hover:text-[color:var(--foreground)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${
+                collapsed ? "mx-auto h-8 w-8" : "mt-1 h-9 w-9"
+              }`}
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               aria-pressed={collapsed}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               <CollapseIcon collapsed={collapsed} />
             </button>
+            <Link
+              href="/dashboard"
+              className={`block min-w-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${
+                collapsed
+                  ? "surface-card mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0"
+                  : "min-w-0 flex-1 rounded-xl py-2 ps-0 pe-1 transition-colors hover:bg-[color:var(--muted)]/25"
+              }`}
+              aria-label="Go to dashboard"
+            >
+              {collapsed ? <SignalLogo variant="mark" /> : <SignalLogo showSubtitle />}
+            </Link>
           </div>
 
           <Link
             href="/settings"
-            className={`surface-subtle mb-4 mt-6 block rounded-[1.25rem] px-3 py-2.5 transition-colors hover:bg-[color:var(--muted)]/35 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${collapsed ? "lg:hidden" : ""}`}
+            className={`surface-subtle mb-4 mt-6 block rounded-[1.25rem] px-3 py-2.5 transition-colors hover:bg-[color:var(--muted)]/35 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${collapsed ? "hidden" : ""}`}
           >
             <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Workspace</p>
             <p className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">
@@ -109,7 +165,7 @@ export function AppShellClient({
             collapsed={collapsed}
           />
 
-          <div className={`mt-auto space-y-3 pt-6 ${collapsed ? "lg:hidden" : ""}`}>
+          <div className={`mt-auto space-y-3 pt-6 ${collapsed ? "hidden" : ""}`}>
             <div className="rounded-[1.1rem] border border-[color:var(--border)]/75 bg-[color:var(--card)]/55 p-3">
               <p className="truncate text-xs font-medium text-[color:var(--foreground)]/90">{userEmail}</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -146,7 +202,7 @@ export function AppShellClient({
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10">{children}</main>
+      <main className="min-w-0 flex-1 p-3 sm:p-5 md:p-6 lg:p-8 xl:p-10">{children}</main>
     </div>
   );
 }

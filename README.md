@@ -120,10 +120,29 @@ The app expects `tracked_entities.first_name` (and related columns). Run `supaba
 - Never ship `SUPABASE_SERVICE_ROLE_KEY` or `OPENAI_API_KEY` to the browser; keep them server-only.
 - Turn on email confirmation and password policies in Supabase for real deployments.
 - Review RLS policies before production data lands; this app assumes a trusted internal audience.
-- Automated discovery is supported via Vercel Cron:
-  - Set `CRON_SECRET` in your Vercel **production** environment variables (same value Vercel sends as `Authorization: Bearer …`). If this is missing or mismatched, scheduled runs return **401** and nothing is discovered.
-  - `vercel.json` schedules `GET /api/discover-items` nightly at `00:00` **UTC** (evening prior in US timezones).
-  - The endpoint validates `Authorization: Bearer <CRON_SECRET>` and runs discovery with the service-role client using a **rolling window** (`DISCOVERY_CRON_DAYS_BACK`, default 56 days) and `DISCOVERY_CRON_MAX_PER_SOURCE` (default 80) so nightly jobs finish within the route time limit.
+
+### Vercel: nightly automated discovery (Signals)
+
+The app is already wired for a **once-daily** cron job (`vercel.json` → `GET /api/discover-items` at **00:00 UTC** — “midnight” on the UTC clock, not necessarily midnight in your local timezone). Vercel does **not** run this until the project is deployed there and the steps below are done.
+
+1. **Deploy this repo to Vercel** (import from Git, connect the repo, deploy production). Cron entries are read from `vercel.json` on each production deploy.
+2. **Set `CRON_SECRET` in Vercel**  
+   - Dashboard: **Project → Settings → Environment Variables**.  
+   - Add **`CRON_SECRET`** for **Production** only (or Preview too if you want cron there). Use a long random string (16+ characters).  
+   - Vercel automatically sends `Authorization: Bearer <your CRON_SECRET value>` when it invokes the scheduled URL — you do **not** paste the secret into the cron UI. The API route checks that header matches `process.env.CRON_SECRET`. If `CRON_SECRET` is missing, every cron run gets **401** and **no items are discovered** (the list stays static until someone uses **Discover new items**).
+3. **Set Supabase keys for the server** (same as the rest of the app): at minimum **`NEXT_PUBLIC_SUPABASE_URL`**, **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**, and **`SUPABASE_SERVICE_ROLE_KEY`**. The cron handler uses the **service role** client so discovery can write `source_items` for every community without a logged-in user.
+4. **Redeploy** after adding or changing environment variables so the new values are available to the serverless function.
+5. **Confirm it is scheduled:** **Project → Settings → Cron Jobs** — you should see `/api/discover-items` with schedule `0 0 * * *`. Use **View logs** on that job (or **Deployments → Functions** / runtime logs) to verify responses are **200** and the JSON shows `inserted` / `skippedDuplicates` as expected, not `401 Unauthorized cron request`.
+
+Optional tuning (Production env vars):
+
+- **`DISCOVERY_CRON_DAYS_BACK`** — how far back to search (default **56**; max 3100).
+- **`DISCOVERY_CRON_MAX_PER_SOURCE`** — cap per investigator per source per run (default **80**; keeps the job within Vercel’s function time limit). The UI button uses a wider window by design.
+
+**Hobby plan note:** Vercel may run a “daily” cron **any time within that calendar hour** (load spreading), so `0 0 * * *` might not fire at exactly `00:00:00` UTC. Paid plans run within the specified minute window. See [Vercel Cron jobs](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
+
+To run discovery at a different wall-clock (e.g. midnight **Pacific**), change the `schedule` expression in `vercel.json` and redeploy (cron uses **UTC**).
+
 - Manual **Discover new items** in the UI uses a wider window (~730 days) and higher per-source caps (PubMed paginates up to that cap per investigator).
 - **Deep history** (e.g. 2018–present): run locally so serverless timeouts do not apply:
   - `npm run discovery:backfill -- --days=2920 --max-per-source=400`

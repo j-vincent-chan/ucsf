@@ -3,7 +3,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { EntityForm } from "../entity-form";
 
 export default async function NewEntityPage() {
-  await requireAdmin();
+  const { profile } = await requireAdmin();
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
@@ -15,7 +15,7 @@ export default async function NewEntityPage() {
       <Card>
         <CardTitle>Details</CardTitle>
         <div className="mt-4">
-          <EntityForm />
+          <EntityForm communityId={profile.community_id} />
         </div>
       </Card>
     </div>

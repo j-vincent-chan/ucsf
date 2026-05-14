@@ -106,27 +106,6 @@ export type Campaign = {
   upcomingCount: number;
 };
 
-export type AssetKind =
-  | "logo"
-  | "pi_photo"
-  | "illustration"
-  | "boilerplate"
-  | "hashtag_bank"
-  | "cta_snippet"
-  | "funder_ack"
-  | "alt_text_snippet"
-  | "image_prompt";
-
-export type WorkspaceAsset = {
-  id: string;
-  name: string;
-  kind: AssetKind;
-  campaign?: string;
-  usageNotes: string;
-  previewHint?: string;
-  body?: string;
-};
-
 export type Recommendation = {
   id: string;
   action: string;
@@ -177,11 +156,25 @@ export type RecentActivityItem = {
 export type SocialWorkspaceSection =
   | "feed"
   | "composer"
-  | "review"
-  | "calendar"
+  | "scheduler"
   | "campaigns"
   | "analytics"
-  | "assets";
+  | "bookmarks";
+
+/** Rows from `social_review_queue_posts` surfaced in Scheduler (digest “Schedule”, etc.). */
+export type WorkspaceSchedulerPost = {
+  id: string;
+  platform: PublishPlatform;
+  status: PostStatus;
+  text: string;
+  image_url: string | null;
+  source_url: string | null;
+  created_at: string;
+  scheduled_at: string | null;
+  sourceSignalTitle: string;
+  /** From linked source item → tracked entities (queue cards). */
+  investigatorsSummary: string | null;
+};
 
 export const X_CHAR_LIMIT = 280;
 export const BLUESKY_CHAR_LIMIT = 300;

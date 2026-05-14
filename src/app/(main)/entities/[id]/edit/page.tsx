@@ -31,7 +31,7 @@ export default async function EditEntityPage({
       <Card>
         <CardTitle>Details</CardTitle>
         <div className="mt-4">
-          <EntityForm initial={entity} />
+          <EntityForm initial={entity} communityId={entity.community_id} />
         </div>
       </Card>
     </div>

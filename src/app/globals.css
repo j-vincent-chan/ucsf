@@ -260,3 +260,41 @@ input[type="checkbox"] {
     0 0 0 3px color-mix(in srgb, var(--ring) 75%, transparent),
     0 1px 3px rgba(62, 42, 30, 0.22);
 }
+
+/* Social engagement bar: particle burst on Like / Repost */
+@keyframes engage-burst-particle {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(var(--a, 0deg)) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--a, 0deg)) translateY(-15px);
+  }
+}
+
+.engage-burst-particle {
+  animation: engage-burst-particle 0.42s ease-out forwards;
+}
+
+@keyframes engage-icon-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.engage-icon-pop {
+  animation: engage-icon-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Emoji picker: prefer Noto (blob-style) over platform default Apple-style glyphs */
+.emoji-picker-glyphs {
+  font-family: "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", system-ui, sans-serif;
+  line-height: 1;
+}

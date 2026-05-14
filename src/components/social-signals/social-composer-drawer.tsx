@@ -1,284 +1,273 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type {
-  Audience,
-  CtaKind,
-  PublishPlatform,
-  Tone,
-} from "@/lib/social-signals/workspace-types";
+import { toast } from "sonner";
+import type { PublishPlatform } from "@/lib/social-signals/workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
-import { DEMO_SIGNAL_OPTIONS } from "@/lib/social-signals/workspace-demo-data";
+import { WorkspaceHandleAvatarImg, type WorkspaceAccountAvatars } from "@/components/workspace-handle-avatar-img";
 import { PlatformBadge } from "./platform-badge";
 
-const AUDIENCES: { id: Audience; label: string }[] = [
-  { id: "public", label: "Public" },
-  { id: "scientific", label: "Scientific" },
-  { id: "donor_facing", label: "Donor-facing" },
-  { id: "internal", label: "Internal" },
-  { id: "trainee", label: "Trainee" },
-];
+const composerToolbarIcon =
+  "rounded-full p-2 text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-400";
 
-const TONES: { id: Tone; label: string }[] = [
-  { id: "professional", label: "Professional" },
-  { id: "celebratory", label: "Celebratory" },
-  { id: "plain_language", label: "Plain-language" },
-  { id: "punchy", label: "Punchy" },
-  { id: "institutional", label: "Institutional" },
-];
+function IconClose({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
 
-const CTAS: { id: CtaKind; label: string }[] = [
-  { id: "read_more", label: "Read more" },
-  { id: "register", label: "Register" },
-  { id: "apply", label: "Apply" },
-  { id: "congratulate", label: "Congratulate" },
-  { id: "learn_more", label: "Learn more" },
-  { id: "share", label: "Share" },
-];
+function IconMedia({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8.5" cy="11" r="1.5" fill="currentColor" stroke="none" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L9 17" />
+    </svg>
+  );
+}
+
+function IconGif({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path strokeLinecap="round" d="M7 10h4M7 14h6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l3 3-3 3" />
+    </svg>
+  );
+}
+
+function IconPoll({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h13M8 12h13M8 18h13M4 6h.01M4 12h.01M4 18h.01" />
+    </svg>
+  );
+}
+
+function IconList({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 6h12M9 12h12M9 18h12M5 6h.01M5 12h.01M5 18h.01" />
+    </svg>
+  );
+}
+
+function IconEmoji({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
+    </svg>
+  );
+}
+
+function IconSchedule({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path strokeLinecap="round" d="M3 10h18M8 3v4M16 3v4M12 14v3l2 1" />
+    </svg>
+  );
+}
 
 export function SocialComposerDrawer({
   open,
   onClose,
   initialPlatform = "bluesky",
+  accounts,
 }: {
   open: boolean;
   onClose: () => void;
   initialPlatform?: PublishPlatform;
+  /** Connected X / Bluesky profile avatars (X wins when both platforms selected). */
+  accounts?: WorkspaceAccountAvatars | null;
 }) {
-  const [platform, setPlatform] = useState<PublishPlatform>(initialPlatform);
-  const [secondaryDraftPlatform, setSecondaryDraftPlatform] = useState<PublishPlatform | null>(null);
-  const [signalId, setSignalId] = useState<string>(DEMO_SIGNAL_OPTIONS[0]!.id);
-  const [audience, setAudience] = useState<Audience>("scientific");
-  const [tone, setTone] = useState<Tone>("professional");
-  const [lengthPct, setLengthPct] = useState(40);
-  const [cta, setCta] = useState<CtaKind>("read_more");
-  const [text, setText] = useState(
-    "New research signal: regulatory T cells are being explored as a targeted strategy to reduce autoimmune pressure on insulin-producing cells in type 1 diabetes — early-stage science with clear mechanistic rationale.",
-  );
-  const [altText, setAltText] = useState("Editorial schematic suggesting immune regulation near pancreatic islets.");
-  const [threadMode, setThreadMode] = useState(false);
+  const [postToX, setPostToX] = useState(initialPlatform === "x");
+  const [postToBluesky, setPostToBluesky] = useState(initialPlatform !== "x");
+  const [text, setText] = useState("");
 
-  const limit = platform === "x" ? X_CHAR_LIMIT : BLUESKY_CHAR_LIMIT;
-  const over = text.length > limit;
+  const effectivePostToX = postToX;
+  const effectivePostToBluesky = postToBluesky;
+  const postingToBoth = effectivePostToX && effectivePostToBluesky;
+  const postingToNone = !effectivePostToX && !effectivePostToBluesky;
+  const overX = effectivePostToX ? text.length > X_CHAR_LIMIT : false;
+  const overBluesky = effectivePostToBluesky ? text.length > BLUESKY_CHAR_LIMIT : false;
+  const overAny = overX || overBluesky;
 
-  const hashtags = useMemo(() => ["#UCSF", "#Immunology", "#T1D"].join(" "), []);
+  const charSummary = useMemo(() => {
+    if (postingToNone) return "Choose a platform";
+    if (postingToBoth) return `${text.length} / ${X_CHAR_LIMIT} (X) · ${text.length} / ${BLUESKY_CHAR_LIMIT} (Bluesky)`;
+    if (effectivePostToX) return `${text.length} / ${X_CHAR_LIMIT}`;
+    return `${text.length} / ${BLUESKY_CHAR_LIMIT}`;
+  }, [text.length, postingToNone, postingToBoth, effectivePostToX, effectivePostToBluesky]);
+
+  const canPost = Boolean(text.trim()) && !overAny && !postingToNone;
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" role="dialog" aria-modal aria-labelledby="composer-title">
-      <button type="button" className="h-full min-w-0 flex-1 cursor-default" aria-label="Close composer backdrop" onClick={onClose} />
-      <div className="flex h-full w-full max-w-lg flex-col border-l border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-[0_0_60px_-20px_rgba(0,0,0,0.45)]">
-        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--border)]/60 px-4 py-3">
-          <h2 id="composer-title" className="text-base font-semibold text-[color:var(--foreground)]">
-            Composer
-          </h2>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/35 p-4 pb-10 pt-[max(1rem,8vh)] backdrop-blur-[2px] sm:items-center sm:pt-4"
+      role="dialog"
+      aria-modal
+      aria-labelledby="composer-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close composer"
+        onClick={onClose}
+      />
+      <div className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-[0_30px_120px_-65px_rgba(0,0,0,0.75)]">
+        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)]/55 px-3 py-2.5 sm:px-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[color:var(--border)]/70 px-2.5 py-1 text-xs font-semibold text-[color:var(--foreground)]"
+            className={`${composerToolbarIcon} -ml-1`}
+            aria-label="Close"
           >
-            Close
+            <IconClose className="h-5 w-5" />
+          </button>
+          <span id="composer-title" className="sr-only">
+            Composer
+          </span>
+          <button
+            type="button"
+            className="rounded-full px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-500/10 dark:text-sky-400"
+            onClick={() => toast.message("Drafts list is not connected yet.")}
+          >
+            Drafts
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Source signal
-            <select
-              value={signalId}
-              onChange={(e) => setSignalId(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm text-[color:var(--foreground)]"
+        <div className="border-b border-[color:var(--border)]/40 px-3 py-2 sm:px-4">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">Platform</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPostToX(true);
+                setPostToBluesky(false);
+              }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                effectivePostToX && !effectivePostToBluesky
+                  ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
+                  : "border-[color:var(--border)]/70 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+              }`}
+              aria-pressed={effectivePostToX && !effectivePostToBluesky}
             >
-              {DEMO_SIGNAL_OPTIONS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div>
-            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Platform</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(["x", "bluesky"] as const).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPlatform(p)}
-                  className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors ${
-                    platform === p
-                      ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
-                      : "border-[color:var(--border)]/70 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
-                  }`}
-                >
-                  <span className="mr-2 inline-flex align-middle">
-                    <PlatformBadge platform={p} size="xs" />
-                  </span>
-                  {p === "x" ? "X" : "Bluesky"}
-                </button>
-              ))}
-            </div>
+              <span className="mr-1.5 inline-flex align-middle">
+                <PlatformBadge platform="x" size="xs" />
+              </span>
+              X
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPostToX(false);
+                setPostToBluesky(true);
+              }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                effectivePostToBluesky && !effectivePostToX
+                  ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
+                  : "border-[color:var(--border)]/70 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+              }`}
+              aria-pressed={effectivePostToBluesky && !effectivePostToX}
+            >
+              <span className="mr-1.5 inline-flex align-middle">
+                <PlatformBadge platform="bluesky" size="xs" />
+              </span>
+              Bluesky
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPostToX(true);
+                setPostToBluesky(true);
+              }}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                postingToBoth
+                  ? "border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 text-[color:var(--foreground)]"
+                  : "border-[color:var(--border)]/70 bg-[color:var(--card)]/90 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+              }`}
+              aria-pressed={postingToBoth}
+            >
+              <span className="mr-1.5 inline-flex align-middle" aria-hidden>
+                <span className="inline-flex items-center gap-1">
+                  <PlatformBadge platform="x" size="xs" />
+                  <PlatformBadge platform="bluesky" size="xs" />
+                </span>
+              </span>
+              Both
+            </button>
           </div>
+        </div>
 
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Audience
-            <select
-              value={audience}
-              onChange={(e) => setAudience(e.target.value as Audience)}
-              className="mt-1 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm"
-            >
-              {AUDIENCES.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Tone
-            <select
-              value={tone}
-              onChange={(e) => setTone(e.target.value as Tone)}
-              className="mt-1 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm"
-            >
-              {TONES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Length: {lengthPct < 33 ? "Short" : lengthPct < 66 ? "Medium" : "Long"}
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={lengthPct}
-              onChange={(e) => setLengthPct(Number(e.target.value))}
-              className="mt-2 w-full"
+        <div className="flex gap-3 px-3 pt-3 sm:px-4">
+          <div className="shrink-0 pt-0.5" aria-hidden>
+            <WorkspaceHandleAvatarImg
+              postToX={effectivePostToX}
+              postToBluesky={effectivePostToBluesky}
+              accounts={accounts}
+              size="lg"
             />
-          </label>
-
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            CTA
-            <select
-              value={cta}
-              onChange={(e) => setCta(e.target.value as CtaKind)}
-              className="mt-1 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm"
-            >
-              {CTAS.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Post text
+          </div>
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Post text</span>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={7}
-              className="mt-1 w-full resize-y rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm leading-relaxed text-[color:var(--foreground)]"
+              rows={5}
+              placeholder="What would you like to share?"
+              className="w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-relaxed text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]/75 focus:outline-none focus:ring-0 sm:text-[1.05rem]"
             />
           </label>
+        </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className={over ? "font-semibold text-red-600 dark:text-red-400" : "text-[color:var(--muted-foreground)]"}>
-              {text.length}/{limit} characters ({platform === "x" ? "X" : "Bluesky"})
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--border)]/45 px-2 py-1.5 sm:px-3">
+          <div className="flex flex-wrap items-center gap-0.5">
+            <button type="button" disabled className={composerToolbarIcon} title="Add media (coming soon)" aria-label="Add media">
+              <IconMedia className="h-5 w-5" />
+            </button>
+            <button type="button" disabled className={composerToolbarIcon} title="GIF (coming soon)" aria-label="GIF">
+              <IconGif className="h-5 w-5" />
+            </button>
+            <button type="button" disabled className={composerToolbarIcon} title="Poll (coming soon)" aria-label="Poll">
+              <IconPoll className="h-5 w-5" />
+            </button>
+            <button type="button" disabled className={composerToolbarIcon} title="List (coming soon)" aria-label="List">
+              <IconList className="h-5 w-5" />
+            </button>
+            <button type="button" disabled className={composerToolbarIcon} title="Emoji (coming soon)" aria-label="Emoji">
+              <IconEmoji className="h-5 w-5" />
+            </button>
+            <button type="button" disabled className={composerToolbarIcon} title="Schedule (coming soon)" aria-label="Schedule">
+              <IconSchedule className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span
+              className={`text-sm tabular-nums ${overAny ? "font-semibold text-red-600 dark:text-red-400" : "text-[color:var(--muted-foreground)]"}`}
+              aria-live="polite"
+            >
+              {charSummary}
             </span>
-            {platform === "bluesky" ? (
-              <span className="text-[color:var(--muted-foreground)]">Alt text strongly recommended for images.</span>
-            ) : null}
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Suggested hashtags</p>
-            <p className="mt-1 rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--muted)]/15 px-3 py-2 text-xs text-sky-800 dark:text-sky-200">{hashtags}</p>
-          </div>
-
-          <div>
-            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Image prompt / illustration suggestion</p>
-            <p className="mt-1 rounded-xl border border-dashed border-[color:var(--border)]/70 bg-[color:var(--muted)]/12 px-3 py-2 text-[11px] leading-relaxed text-[color:var(--muted-foreground)]">
-              BioRender-inspired schematic: Treg modulation near islets; muted blues/sand; no logos.
-            </p>
-          </div>
-
-          <label className="block text-xs font-medium text-[color:var(--muted-foreground)]">
-            Alt text
-            <textarea
-              value={altText}
-              onChange={(e) => setAltText(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-[color:var(--foreground)]">
-            <input type="checkbox" checked={threadMode} onChange={(e) => setThreadMode(e.target.checked)} className="rounded border-[color:var(--border)]" />
-            Thread mode
-          </label>
-
-          <div className="rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--muted)]/12 px-3 py-2 text-[11px] text-[color:var(--muted-foreground)]">
-            Adapt for the other platform:{" "}
             <button
               type="button"
-              className="font-semibold text-[color:var(--foreground)] underline underline-offset-2"
-              onClick={() => setSecondaryDraftPlatform(platform === "x" ? "bluesky" : "x")}
+              disabled={!canPost}
+              onClick={() => toast.message("Posting is not wired to the APIs yet — your text stays in this session only.")}
+              className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:bg-[color:var(--muted)] disabled:text-[color:var(--muted-foreground)] disabled:opacity-80 dark:bg-sky-500"
             >
-              Prep {platform === "x" ? "Bluesky" : "X"} variant from this copy
+              Post
             </button>
-            {secondaryDraftPlatform ? (
-              <span className="ml-2 text-emerald-700 dark:text-emerald-400">Draft slot ready ({secondaryDraftPlatform})</span>
-            ) : null}
           </div>
         </div>
 
-        <div className="border-t border-[color:var(--border)]/60 px-4 py-3">
-          <div className="flex flex-wrap gap-2">
-            {(
-              [
-                "Generate X post",
-                "Generate Bluesky post",
-                "Generate both",
-                "Create X thread",
-                "Create Bluesky thread",
-                "Regenerate",
-                "Variations",
-                "Save draft",
-                "Send for review",
-                "Schedule",
-                "Publish to X",
-                "Publish to Bluesky",
-              ] as const
-            ).map((label) => {
-              const needsApi =
-                label.startsWith("Publish") ||
-                label.includes("Generate") ||
-                label.includes("Regenerate") ||
-                label.includes("Variations") ||
-                label.includes("thread");
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  disabled={needsApi}
-                  className="rounded-lg border border-[color:var(--border)]/70 bg-[color:var(--card)]/95 px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-[10px] text-[color:var(--muted-foreground)]">
-            Generate / publish actions require API wiring. Edit text locally; validation reflects platform limits.
-          </p>
-        </div>
+        <p className="border-t border-[color:var(--border)]/50 px-3 py-2.5 text-[10px] leading-snug text-[color:var(--muted-foreground)] sm:px-4">
+          Posting requires API wiring. Write above, check limits, then Post when connected.
+        </p>
       </div>
     </div>
   );

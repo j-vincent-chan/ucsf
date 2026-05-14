@@ -1,4 +1,5 @@
 import type { MemberStatus } from "@/types/database";
+import type { EmbeddedHeadshotBytes } from "@/lib/entity-xlsx-embedded-images";
 import { slugify } from "@/lib/slug";
 import { tierFromMemberStatus } from "@/lib/member-tier";
 
@@ -86,6 +87,26 @@ function canonicalHeader(raw: string): string {
     nih_profile_id: "nih_profile_id",
     "nih profile id": "nih_profile_id",
     "nih reporter profile id": "nih_profile_id",
+    "twitter handle": "x_handle",
+    "x/twitter": "x_handle",
+    headshot: "headshot_url",
+    "headshot url": "headshot_url",
+    "head shot": "headshot_url",
+    photo: "headshot_url",
+    "photo url": "headshot_url",
+    "profile photo": "headshot_url",
+    "profile image": "headshot_url",
+    "linkedin photo": "headshot_url",
+    "linkedin image": "headshot_url",
+    "linkedin headshot": "headshot_url",
+    investigator_photo: "headshot_url",
+    "investigator photo": "headshot_url",
+    image_url: "headshot_url",
+    "image url": "headshot_url",
+    portrait: "headshot_url",
+    "portrait url": "headshot_url",
+    image: "headshot_url",
+    photo_url: "headshot_url",
   };
   if (aliases[spaced]) return aliases[spaced];
   return spaced
@@ -106,6 +127,21 @@ function parseNihProfileIdCell(v: string | undefined): string | null {
   const t = (v ?? "").trim();
   if (!t) return null;
   return /^\d+$/.test(t) ? t : null;
+}
+
+/** X / Bluesky usernames: strip leading @, trim; empty → null. */
+function parseSocialHandleCell(v: string | undefined): string | null {
+  const t = (v ?? "").replace(/^@+/u, "").trim();
+  return t || null;
+}
+
+/** Accepts http(s) image URLs; rejects non-URLs and oversized strings. */
+function parseHeadshotUrlCell(v: string | undefined): string | null {
+  const t = (v ?? "").trim();
+  if (!t) return null;
+  if (t.length > 4000) return null;
+  if (!/^https?:\/\//i.test(t)) return null;
+  return t;
 }
 
 function parseMemberStatus(raw: string): MemberStatus | null {
@@ -154,6 +190,15 @@ export type EntityCsvRowResult = {
   lab_website: string | null;
   google_alert_query: string | null;
   nih_profile_id: string | null;
+  /** Present only when the CSV header included this column (avoids wiping handles on re-import). */
+  x_handle?: string | null;
+  bluesky_handle?: string | null;
+  x_lab_handle?: string | null;
+  bluesky_lab_handle?: string | null;
+  /** Present only when the sheet included a headshot / photo URL column. */
+  headshot_url?: string | null;
+  /** Index of this row in the parsed data matrix (0-based). Used for embedded Excel images. */
+  sourceDataRowIndex?: number;
   priority_tier: number;
   active: boolean;
 };
@@ -177,6 +222,11 @@ export function rowsToEntities(
   const iLab = idx("lab_website");
   const iGa = idx("google_alert_query");
   const iNih = idx("nih_profile_id");
+  const iX = idx("x_handle");
+  const iBsky = idx("bluesky_handle");
+  const iXLab = idx("x_lab_handle");
+  const iBskyLab = idx("bluesky_lab_handle");
+  const iHeadshot = idx("headshot_url");
   const iActive = idx("active");
 
   const errors: EntityCsvError[] = [];
@@ -242,6 +292,8 @@ export function rowsToEntities(
     }
     seenSlugs.set(slug, lineNum);
 
+    const headshotCell = iHeadshot >= 0 ? parseHeadshotUrlCell(cells[iHeadshot]) : null;
+
     rows.push({
       first_name: firstName,
       middle_initial: middleInitial,
@@ -253,12 +305,30 @@ export function rowsToEntities(
       lab_website: iLab >= 0 ? (cells[iLab] ?? "").trim() || null : null,
       google_alert_query: iGa >= 0 ? (cells[iGa] ?? "").trim() || null : null,
       nih_profile_id: iNih >= 0 ? parseNihProfileIdCell(cells[iNih]) : null,
+      ...(iX >= 0 ? { x_handle: parseSocialHandleCell(cells[iX]) } : {}),
+      ...(iBsky >= 0 ? { bluesky_handle: parseSocialHandleCell(cells[iBsky]) } : {}),
+      ...(iXLab >= 0 ? { x_lab_handle: parseSocialHandleCell(cells[iXLab]) } : {}),
+      ...(iBskyLab >= 0
+        ? { bluesky_lab_handle: parseSocialHandleCell(cells[iBskyLab]) }
+        : {}),
+      ...(headshotCell ? { headshot_url: headshotCell } : {}),
       priority_tier: tierFromMemberStatus(memberStatus),
       active: iActive >= 0 ? parseBool(cells[iActive]) : true,
+      sourceDataRowIndex: dataIndex,
     });
   });
 
   return { rows, errors };
+}
+
+export function parseEntityTable(
+  header: string[],
+  dataRows: string[][],
+): { rows: EntityCsvRowResult[]; errors: EntityCsvError[] } {
+  if (header.length === 0 || header.every((h) => !String(h ?? "").trim())) {
+    return { rows: [], errors: [{ row: 0, message: "Missing header row" }] };
+  }
+  return rowsToEntities(dataRows, header);
 }
 
 export function parseEntityCsv(text: string): {
@@ -270,10 +340,76 @@ export function parseEntityCsv(text: string): {
     return { rows: [], errors: [{ row: 0, message: "CSV is empty" }] };
   }
   const [header, ...data] = all;
-  return rowsToEntities(data, header);
+  return parseEntityTable(header, data);
 }
 
-export const ENTITY_CSV_TEMPLATE = `Last Name,First Name,Middle Initial,Member status,slug,institution,pubmed_url,lab_website,google_alert_query,nih_profile_id,active
-Smith,Jane,M,Associate,jane-smith,UCSF,,,,,true
-Chen,Maya,,Member,maya-chen,Stanford University,,,,,true
-Ng,Riley,A,Leadership Committee,riley-ng,"UCSF; University of California San Francisco",,,,,true`;
+function stringifySpreadsheetCell(cell: unknown): string {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell === "string") return cell.trim();
+  if (typeof cell === "number" || typeof cell === "boolean") return String(cell);
+  return String(cell).trim();
+}
+
+/** First worksheet only; dynamic import keeps the xlsx bundle off the initial load until used. */
+export async function parseEntityXlsx(arrayBuffer: ArrayBuffer): Promise<{
+  rows: EntityCsvRowResult[];
+  errors: EntityCsvError[];
+  embeddedHeadshotsByDataIndex?: Map<number, EmbeddedHeadshotBytes>;
+  /** Set when the sheet names an Image/Picture column but no anchors matched (misplaced anchors, wrong sheet, etc.). */
+  embeddedHeadshotExtractionWarning?: string;
+}> {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: false });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) {
+    return { rows: [], errors: [{ row: 0, message: "Workbook has no sheets" }] };
+  }
+  const sheet = wb.Sheets[sheetName];
+  if (!sheet) {
+    return { rows: [], errors: [{ row: 0, message: "First sheet could not be read" }] };
+  }
+  const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    defval: "",
+    raw: false,
+  }) as unknown[][];
+  const strMatrix = matrix.map((row) =>
+    (Array.isArray(row) ? row : []).map(stringifySpreadsheetCell),
+  );
+  if (strMatrix.length === 0) {
+    return { rows: [], errors: [{ row: 0, message: "Sheet is empty" }] };
+  }
+  const [headerRow, ...dataRows] = strMatrix;
+  const header = (headerRow ?? []).map((h) => String(h ?? ""));
+  const parsed = parseEntityTable(header, dataRows);
+
+  let embeddedHeadshotsByDataIndex: Map<number, EmbeddedHeadshotBytes> | undefined;
+  let embeddedHeadshotExtractionWarning: string | undefined;
+  if (parsed.errors.length === 0) {
+    try {
+      const {
+        extractEmbeddedHeadshotsFromFirstSheet,
+        findEmbeddedImageHeaderColumn1Based,
+      } = await import("@/lib/entity-xlsx-embedded-images");
+      const embedded = await extractEmbeddedHeadshotsFromFirstSheet(arrayBuffer, {
+        headerLabels: header,
+      });
+      if (embedded.size > 0) {
+        embeddedHeadshotsByDataIndex = embedded;
+      } else if (findEmbeddedImageHeaderColumn1Based(header) != null) {
+        embeddedHeadshotExtractionWarning =
+          "This file has an Image (or Picture) column, but no photos were read from it. " +
+          "Use Excel 365 pictures in that column, paste embedded images, or provide image URLs in the headshot column.";
+      }
+    } catch {
+      /* ignore — tabular import still succeeds */
+    }
+  }
+
+  return { ...parsed, embeddedHeadshotsByDataIndex, embeddedHeadshotExtractionWarning };
+}
+
+export const ENTITY_CSV_TEMPLATE = `Last Name,First Name,Middle Initial,Member status,slug,institution,pubmed_url,lab_website,google_alert_query,nih_profile_id,x_handle,bluesky_handle,x_lab_handle,bluesky_lab_handle,headshot_url,active
+Smith,Jane,M,Associate,jane-smith,UCSF,,,,,,,,,,true
+Chen,Maya,,Member,maya-chen,Stanford University,,,,,,,,,,true
+Ng,Riley,A,Leadership Committee,riley-ng,"UCSF; University of California San Francisco",,,,,,,,,,true`;

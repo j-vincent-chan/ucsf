@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { fetchGiphySearch } from "@/lib/giphy";
+import { fetchKlipySearch } from "@/lib/klipy";
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
@@ -13,11 +13,15 @@ export async function GET(req: Request) {
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : 24;
 
-  const { items, configured, detail } = await fetchGiphySearch(q, Number.isFinite(limit) ? limit : 24);
+  const { items, configured, detail } = await fetchKlipySearch(q, Number.isFinite(limit) ? limit : 24);
 
   if (!configured) {
     return NextResponse.json(
-      { error: "GIPHY search is not configured. Add GIPHY_API_KEY to server env and redeploy.", items: [] },
+      {
+        error:
+          "Klipy GIF search is not configured. Add KLIPY_API_KEY to server env (optional: KLIPY_LOCALE, e.g. en_US) and redeploy.",
+        items: [],
+      },
       { status: 503 },
     );
   }

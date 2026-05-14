@@ -34,7 +34,7 @@ export function GiphyReplyPicker({
       const params = new URLSearchParams();
       if (q) params.set("q", q);
       params.set("limit", "24");
-      const res = await fetch(`/api/giphy/search?${params}`, { method: "GET" });
+      const res = await fetch(`/api/klipy/search?${params}`, { method: "GET" });
       const data = (await res.json().catch(() => ({}))) as { items?: ApiItem[]; error?: string };
       if (!res.ok) {
         setItems([]);
@@ -80,16 +80,16 @@ export function GiphyReplyPicker({
       className="fixed inset-0 z-[60] flex items-end justify-center bg-black/45 p-4 backdrop-blur-[2px] sm:items-center"
       role="dialog"
       aria-modal
-      aria-labelledby="giphy-picker-title"
+      aria-labelledby="gif-picker-title"
     >
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close GIF search" onClick={onClose} />
       <div
         ref={wrapRef}
-        className="relative z-[1] flex max-h-[min(520px,85dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-xl"
+        className="relative z-[1] flex h-[min(520px,85dvh)] max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-xl"
       >
-        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--border)]/60 px-3 py-2">
-          <h2 id="giphy-picker-title" className="text-sm font-semibold text-[color:var(--foreground)]">
-            Search GIPHY
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[color:var(--border)]/60 px-3 py-2">
+          <h2 id="gif-picker-title" className="text-sm font-semibold text-[color:var(--foreground)]">
+            Search GIFs
           </h2>
           <button
             type="button"
@@ -109,35 +109,43 @@ export function GiphyReplyPicker({
             autoFocus
           />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-2">
-          {loading ? (
-            <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">Loading…</p>
-          ) : error ? (
-            <p className="py-8 text-center text-sm text-red-700 dark:text-red-300">{error}</p>
-          ) : items.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[color:var(--muted-foreground)]">No GIFs found.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {items.map((g) => (
-                <button
-                  key={g.id}
-                  type="button"
-                  className="overflow-hidden rounded-lg border border-[color:var(--border)]/60 bg-[color:var(--muted)]/10 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-                  onClick={() => {
-                    onPick({ gifUrl: g.gifUrl, previewUrl: g.previewUrl });
-                    onClose();
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element -- remote GIPHY preview */}
-                  <img src={g.previewUrl} alt="" className="aspect-square w-full object-cover" loading="lazy" />
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex min-h-0 flex-1 flex-col px-3 pb-2 pt-2">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+            {loading ? (
+              <div className="flex min-h-[280px] items-center justify-center">
+                <p className="text-sm text-[color:var(--muted-foreground)]">Loading…</p>
+              </div>
+            ) : error ? (
+              <div className="flex min-h-[280px] items-center justify-center px-2">
+                <p className="text-center text-sm text-red-700 dark:text-red-300">{error}</p>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="flex min-h-[280px] items-center justify-center px-2">
+                <p className="text-center text-sm text-[color:var(--muted-foreground)]">No GIFs found.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pb-1 sm:grid-cols-3">
+                {items.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    className="overflow-hidden rounded-lg border border-[color:var(--border)]/60 bg-[color:var(--muted)]/10 transition-opacity hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+                    onClick={() => {
+                      onPick({ gifUrl: g.gifUrl, previewUrl: g.previewUrl });
+                      onClose();
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- animated GIF preview */}
+                    <img src={g.previewUrl} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        <p className="border-t border-[color:var(--border)]/50 px-3 py-2 text-[10px] text-[color:var(--muted-foreground)]">
-          <a href="https://giphy.com" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-            Powered by GIPHY
+        <p className="shrink-0 border-t border-[color:var(--border)]/50 px-3 py-2 text-[10px] text-[color:var(--muted-foreground)]">
+          <a href="https://klipy.com" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+            Powered by Klipy
           </a>
         </p>
       </div>

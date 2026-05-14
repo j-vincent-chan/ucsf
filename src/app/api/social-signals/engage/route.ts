@@ -5,11 +5,13 @@ import {
   blueskyEngageLikeAllowDuplicate,
   blueskyEngageRepostAllowDuplicate,
   blueskyEngageReply,
+  blueskyEngageUnlike,
+  blueskyEngageUnrepost,
   getBlueskyWorkspaceSession,
-  resolveBskyPostStrongRef,
+  resolveBskyStrongRefForEngage,
 } from "@/lib/social-signals/bluesky";
 import { tryCreateAdminClient } from "@/lib/supabase/admin";
-import { fetchGifFromAllowedCdnUrl } from "@/lib/giphy";
+import { fetchGifFromKlipyCdnUrl } from "@/lib/klipy";
 import {
   createTweet,
   describeXPostPermissionError,
@@ -18,6 +20,8 @@ import {
   uploadTwitterMedia,
   xLikeTweet,
   xRetweet,
+  xUnlikeTweet,
+  xUnretweet,
 } from "@/lib/x-post";
 
 const bodySchema = z.object({
@@ -25,6 +29,11 @@ const bodySchema = z.object({
   action: z.enum(["like", "repost", "reply"]),
   text: z.string().max(25_000).optional(),
   bskyRecordCid: z.string().optional(),
+  undo: z.boolean().optional(),
+  /** Workspace Bluesky repost record URI — avoids scanning listRecords on undo. */
+  bskyRepostUri: z.string().optional(),
+  /** Workspace Bluesky like record URI — avoids scanning listRecords on unlike. */
+  bskyLikeUri: z.string().optional(),
 });
 
 function parseEngageTarget(postId: string): { platform: "x" | "bluesky"; id: string; atUri?: string } {
@@ -46,8 +55,23 @@ function xErrorLooksDuplicate(message: string): boolean {
   return (
     m.includes("already favorited") ||
     m.includes("already liked") ||
+    m.includes("already favorited this tweet") ||
+    m.includes("has already liked") ||
     m.includes("duplicate") ||
     m.includes("you cannot retweet")
+  );
+}
+
+/** Unlike is idempotent on X — treat “not liked” style errors as success. */
+function xErrorLooksUnlikeIdempotent(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes("not favorited") ||
+    m.includes("does not favorite") ||
+    m.includes("no favorite") ||
+    m.includes("not liked") ||
+    m.includes("have not liked") ||
+    m.includes("favorite not found")
   );
 }
 
@@ -71,14 +95,23 @@ async function parseEngageBody(req: Request): Promise<{
     const text = textRaw != null ? String(textRaw) : undefined;
     const bskyRaw = form.get("bskyRecordCid");
     const bskyRecordCid = bskyRaw != null && String(bskyRaw).trim() ? String(bskyRaw).trim() : undefined;
+    const undoRaw = form.get("undo");
+    const undo =
+      undoRaw === "true" || undoRaw === "1" || (typeof undoRaw === "string" && undoRaw.toLowerCase() === "on");
+    const bskyRepostRaw = form.get("bskyRepostUri");
+    const bskyRepostUri =
+      bskyRepostRaw != null && String(bskyRepostRaw).trim() ? String(bskyRepostRaw).trim() : undefined;
+    const bskyLikeRaw = form.get("bskyLikeUri");
+    const bskyLikeUri =
+      bskyLikeRaw != null && String(bskyLikeRaw).trim() ? String(bskyLikeRaw).trim() : undefined;
 
     let media: { buffer: Buffer; mime: string } | null = null;
     const mediaEntry = form.get("media");
-    const giphyUrlRaw = form.get("giphyUrl");
-    const giphyTrim = typeof giphyUrlRaw === "string" ? giphyUrlRaw.trim() : "";
+    const gifUrlRaw = form.get("gifUrl") ?? form.get("giphyUrl");
+    const gifTrim = typeof gifUrlRaw === "string" ? gifUrlRaw.trim() : "";
 
-    if (mediaEntry instanceof File && mediaEntry.size > 0 && giphyTrim) {
-      throw new Error("Attach either a file or one GIPHY GIF, not both.");
+    if (mediaEntry instanceof File && mediaEntry.size > 0 && gifTrim) {
+      throw new Error("Attach either a file or one Klipy GIF, not both.");
     }
 
     if (mediaEntry instanceof File && mediaEntry.size > 0) {
@@ -91,15 +124,23 @@ async function parseEngageBody(req: Request): Promise<{
       }
       const buffer = Buffer.from(await mediaEntry.arrayBuffer());
       media = { buffer, mime };
-    } else if (giphyTrim) {
+    } else if (gifTrim) {
       try {
-        media = await fetchGifFromAllowedCdnUrl(giphyTrim, MAX_REPLY_MEDIA_BYTES);
+        media = await fetchGifFromKlipyCdnUrl(gifTrim, MAX_REPLY_MEDIA_BYTES);
       } catch (e) {
         throw new Error(e instanceof Error ? e.message : "Could not load GIF.");
       }
     }
 
-    const parsed = bodySchema.safeParse({ postId, action, text, bskyRecordCid });
+    const parsed = bodySchema.safeParse({
+      postId,
+      action,
+      text,
+      bskyRecordCid,
+      undo,
+      bskyRepostUri,
+      bskyLikeUri,
+    });
     if (!parsed.success) {
       throw new Error("Invalid form fields");
     }
@@ -153,6 +194,9 @@ export async function POST(req: Request) {
   }
   if (fields.action !== "reply" && media) {
     return NextResponse.json({ error: "Media is only allowed for replies." }, { status: 400 });
+  }
+  if (fields.undo && fields.action !== "repost" && fields.action !== "like") {
+    return NextResponse.json({ error: "undo is only valid for repost or like." }, { status: 400 });
   }
 
   let target: { platform: "x" | "bluesky"; id: string; atUri?: string };
@@ -219,12 +263,25 @@ export async function POST(req: Request) {
 
     try {
       if (fields.action === "like") {
+        if (fields.undo) {
+          try {
+            await xUnlikeTweet(bundle.access_token, xUserId, tweetId);
+          } catch (inner) {
+            const msg = inner instanceof Error ? inner.message : "";
+            if (!xErrorLooksUnlikeIdempotent(msg)) throw inner;
+          }
+          return NextResponse.json({ ok: true as const, liked: false as const });
+        }
         await xLikeTweet(bundle.access_token, xUserId, tweetId);
-        return NextResponse.json({ ok: true as const });
+        return NextResponse.json({ ok: true as const, liked: true as const });
       }
       if (fields.action === "repost") {
+        if (fields.undo) {
+          await xUnretweet(bundle.access_token, xUserId, tweetId);
+          return NextResponse.json({ ok: true as const, reposted: false as const });
+        }
         await xRetweet(bundle.access_token, xUserId, tweetId);
-        return NextResponse.json({ ok: true as const });
+        return NextResponse.json({ ok: true as const, reposted: true as const });
       }
       const replyText = (fields.text ?? "").trim();
       let mediaIds: string[] | undefined;
@@ -241,7 +298,12 @@ export async function POST(req: Request) {
     } catch (e) {
       const firstMsg = e instanceof Error ? e.message : "X action failed";
       if (fields.action !== "reply" && xErrorLooksDuplicate(firstMsg)) {
-        return NextResponse.json({ ok: true as const, duplicate: true as const });
+        return NextResponse.json({
+          ok: true as const,
+          duplicate: true as const,
+          ...(fields.action === "repost" ? { reposted: true as const } : {}),
+          ...(fields.action === "like" ? { liked: true as const } : {}),
+        });
       }
       return NextResponse.json(
         { error: describeXPostPermissionError(firstMsg) },
@@ -269,19 +331,53 @@ export async function POST(req: Request) {
   }
 
   try {
-    const strong = await resolveBskyPostStrongRef(
+    const strong = await resolveBskyStrongRefForEngage(
       bsky.accessJwt,
       target.atUri!,
       fields.bskyRecordCid,
     );
 
     if (fields.action === "like") {
-      const applied = await blueskyEngageLikeAllowDuplicate(bsky.accessJwt, bsky.repo, strong);
-      return NextResponse.json({ ok: true as const, duplicate: applied ? undefined : true });
+      if (fields.undo) {
+        await blueskyEngageUnlike(bsky.accessJwt, bsky.repo, strong, {
+          likeRecordUri: fields.bskyLikeUri,
+        });
+        return NextResponse.json({ ok: true as const, liked: false as const });
+      }
+      const result = await blueskyEngageLikeAllowDuplicate(bsky.accessJwt, bsky.repo, strong);
+      if (result.applied) {
+        return NextResponse.json({
+          ok: true as const,
+          liked: true as const,
+          likeRecordUri: result.likeRecordUri,
+        });
+      }
+      return NextResponse.json({
+        ok: true as const,
+        duplicate: true as const,
+        liked: true as const,
+      });
     }
     if (fields.action === "repost") {
-      const applied = await blueskyEngageRepostAllowDuplicate(bsky.accessJwt, bsky.repo, strong);
-      return NextResponse.json({ ok: true as const, duplicate: applied ? undefined : true });
+      if (fields.undo) {
+        await blueskyEngageUnrepost(bsky.accessJwt, bsky.repo, strong, {
+          repostRecordUri: fields.bskyRepostUri,
+        });
+        return NextResponse.json({ ok: true as const, reposted: false as const });
+      }
+      const result = await blueskyEngageRepostAllowDuplicate(bsky.accessJwt, bsky.repo, strong);
+      if (result.applied) {
+        return NextResponse.json({
+          ok: true as const,
+          reposted: true as const,
+          repostRecordUri: result.repostRecordUri,
+        });
+      }
+      return NextResponse.json({
+        ok: true as const,
+        duplicate: true as const,
+        reposted: true as const,
+      });
     }
     const text = (fields.text ?? "").trim();
     const { url } = await blueskyEngageReply(

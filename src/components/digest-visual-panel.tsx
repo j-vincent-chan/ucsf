@@ -204,6 +204,21 @@ function sortCandidates(candidates: DigestVisualCandidate[]): DigestVisualCandid
   return [...candidates].sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
 }
 
+/**
+ * Merge local + prop candidate pools so the **prop** (`bundle` from parent store) wins on same `id`.
+ * The collapsed digest card reads `visualBundle` directly; `localBundle` can lag behind `bundle` when
+ * the sync effect keeps a previous snapshot — without this, the Selected asset preview can show stale image data.
+ */
+function mergeDigestCandidatesForDisplay(
+  local: DigestVisualCandidate[] | undefined,
+  fromProps: DigestVisualCandidate[] | undefined,
+): DigestVisualCandidate[] {
+  const map = new Map<string, DigestVisualCandidate>();
+  for (const c of local ?? []) map.set(c.id, c);
+  for (const c of fromProps ?? []) map.set(c.id, c);
+  return sortCandidates(Array.from(map.values()));
+}
+
 function TrashIcon({ className = "" }: { className?: string }) {
   return (
     <svg
@@ -757,9 +772,19 @@ export function DigestVisualPanel({
     }
   }
 
-  const effectiveBundle = localBundle;
+  const mergedCandidates = useMemo(
+    () => mergeDigestCandidatesForDisplay(localBundle?.candidates, bundle?.candidates),
+    [localBundle?.candidates, bundle?.candidates],
+  );
+
+  const effectiveBundle = useMemo((): DigestVisualBundle | null => {
+    const meta = localBundle ?? bundle;
+    if (!meta) return null;
+    return { ...meta, candidates: mergedCandidates };
+  }, [localBundle, bundle, mergedCandidates]);
+
   const working = busy || actionBusy != null;
-  const sorted = effectiveBundle ? sortCandidates(effectiveBundle.candidates) : [];
+  const sorted = mergedCandidates;
   const sourceCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "source");
   const schematicCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "schematic");
   const stockCandidates = sorted.filter((c) => mapTypeToTab(c.type) === "stock");
@@ -1018,6 +1043,7 @@ export function DigestVisualPanel({
               <div className="relative mx-auto max-w-full inline-block align-top">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
+                  key={active?.id ?? "hero"}
                   src={activeSrc}
                   alt={active?.caption?.trim() ? active.caption.trim().slice(0, 220) : ""}
                   className="box-border h-auto max-h-[min(42rem,80vh)] w-auto max-w-full rounded-xl object-contain object-center shadow-[0_8px_32px_-16px_rgba(48,36,28,0.35)] ring-1 ring-black/[0.07]"
@@ -1031,6 +1057,7 @@ export function DigestVisualPanel({
                 />
                 {active?.type === "schematic" ? (
                   <DigestIllustrationOverlays
+                    key={active.id}
                     layers={active.illustrationTextLayers ?? []}
                     naturalSize={selectedAssetOverlayLayout.naturalSize}
                     cropNatural={selectedAssetOverlayLayout.cropNatural}

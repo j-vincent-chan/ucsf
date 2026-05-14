@@ -122,6 +122,12 @@ export interface Database {
           lab_website: string | null;
           google_alert_query: string | null;
           nih_profile_id: string | null;
+          x_handle: string | null;
+          bluesky_handle: string | null;
+          x_lab_handle: string | null;
+          bluesky_lab_handle: string | null;
+          headshot_url: string | null;
+          headshot_storage_path: string | null;
           priority_tier: number;
           active: boolean;
           created_at: string;
@@ -142,6 +148,12 @@ export interface Database {
           lab_website?: string | null;
           google_alert_query?: string | null;
           nih_profile_id?: string | null;
+          x_handle?: string | null;
+          bluesky_handle?: string | null;
+          x_lab_handle?: string | null;
+          bluesky_lab_handle?: string | null;
+          headshot_url?: string | null;
+          headshot_storage_path?: string | null;
           priority_tier?: number;
           active?: boolean;
           created_at?: string;
@@ -161,6 +173,12 @@ export interface Database {
           lab_website?: string | null;
           google_alert_query?: string | null;
           nih_profile_id?: string | null;
+          x_handle?: string | null;
+          bluesky_handle?: string | null;
+          x_lab_handle?: string | null;
+          bluesky_lab_handle?: string | null;
+          headshot_url?: string | null;
+          headshot_storage_path?: string | null;
           priority_tier?: number;
           active?: boolean;
           updated_at?: string;
@@ -275,6 +293,7 @@ export interface Database {
           source_url: string | null;
           created_at: string;
           updated_at: string;
+          scheduled_at: string | null;
         };
         Insert: {
           id?: string;
@@ -287,6 +306,7 @@ export interface Database {
           source_url?: string | null;
           created_at?: string;
           updated_at?: string;
+          scheduled_at?: string | null;
         };
         Update: {
           community_id?: string;
@@ -297,6 +317,99 @@ export interface Database {
           image_url?: string | null;
           source_url?: string | null;
           updated_at?: string;
+          scheduled_at?: string | null;
+        };
+        Relationships: [];
+      };
+      social_signal_bookmarks: {
+        Row: {
+          user_id: string;
+          post_id: string;
+          post: Json;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          post_id: string;
+          post: Json;
+          created_at?: string;
+        };
+        Update: {
+          post?: Json;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      reference_organizations: {
+        Row: {
+          id: string;
+          slug: string;
+          display_name: string;
+          x_handle: string;
+          platform: string;
+          domain_focus: string | null;
+          prestige_tier: number;
+          posting_cadence: string | null;
+          historical_approval_correlation: number | null;
+          is_active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          display_name: string;
+          x_handle: string;
+          platform?: string;
+          domain_focus?: string | null;
+          prestige_tier?: number;
+          posting_cadence?: string | null;
+          historical_approval_correlation?: number | null;
+          is_active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          display_name?: string;
+          x_handle?: string;
+          platform?: string;
+          domain_focus?: string | null;
+          prestige_tier?: number;
+          posting_cadence?: string | null;
+          historical_approval_correlation?: number | null;
+          is_active?: boolean;
+        };
+        Relationships: [];
+      };
+      ai_companion_signal_feedback: {
+        Row: {
+          id: string;
+          signal_id: string;
+          community_id: string | null;
+          user_id: string | null;
+          feedback_type: string;
+          recommendation_type: string | null;
+          previous_score: number | null;
+          previous_category: string | null;
+          new_category: string | null;
+          reason: string | null;
+          downstream_outcomes: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          signal_id: string;
+          community_id?: string | null;
+          user_id?: string | null;
+          feedback_type: string;
+          recommendation_type?: string | null;
+          previous_score?: number | null;
+          previous_category?: string | null;
+          new_category?: string | null;
+          reason?: string | null;
+          downstream_outcomes?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          downstream_outcomes?: Json | null;
         };
         Relationships: [];
       };

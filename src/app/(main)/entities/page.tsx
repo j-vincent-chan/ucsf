@@ -5,6 +5,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BulkUploadEntities } from "./bulk-upload-entities";
 import { WatchlistEntitiesTable } from "./watchlist-entities-table";
+import { resolveTrackedEntityHeadshotSrc } from "@/lib/investigator-headshots";
 
 type SearchParams = Promise<{ q?: string; show_all?: string }>;
 
@@ -26,7 +27,24 @@ export default async function EntitiesPage({
 
   if (q) {
     query = query.or(
-      `name.ilike.%${q}%,first_name.ilike.%${q}%,middle_initial.ilike.%${q}%,last_name.ilike.%${q}%,slug.ilike.%${q}%,institution.ilike.%${q}%,nih_profile_id.ilike.%${q}%`,
+      [
+        "name",
+        "first_name",
+        "middle_initial",
+        "last_name",
+        "slug",
+        "institution",
+        "nih_profile_id",
+        "pubmed_url",
+        "lab_website",
+        "google_alert_query",
+        "x_handle",
+        "bluesky_handle",
+        "x_lab_handle",
+        "bluesky_lab_handle",
+      ]
+        .map((col) => `${col}.ilike.%${q}%`)
+        .join(","),
     );
   }
   if (!showAll) {
@@ -40,7 +58,7 @@ export default async function EntitiesPage({
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto min-w-0 max-w-6xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">People</h1>
@@ -62,7 +80,7 @@ export default async function EntitiesPage({
             <Input
               name="q"
               defaultValue={q}
-              placeholder="Name, institution, slug, NIH profile ID…"
+              placeholder="Name, slug, institution, URLs, handles, NIH ID, alert query…"
               className="mt-1"
             />
           </div>
@@ -94,11 +112,13 @@ export default async function EntitiesPage({
           first_name: e.first_name,
           middle_initial: e.middle_initial,
           last_name: e.last_name,
-          member_status: e.member_status,
-          institution: e.institution,
-          nih_profile_id: e.nih_profile_id,
+          pubmed_url: e.pubmed_url,
           lab_website: e.lab_website,
+          nih_profile_id: e.nih_profile_id,
+          x_handle: e.x_handle,
+          bluesky_handle: e.bluesky_handle,
           active: e.active,
+          headshot_display_url: resolveTrackedEntityHeadshotSrc(supabase, e),
         }))}
       />
     </div>

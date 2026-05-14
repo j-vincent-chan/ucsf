@@ -29,6 +29,12 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
+        />
+      </head>
       <body className="min-h-full bg-background text-foreground font-sans">
         <Providers>{children}</Providers>
       </body>

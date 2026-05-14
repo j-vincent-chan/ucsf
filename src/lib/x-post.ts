@@ -49,7 +49,7 @@ export function describeXPostPermissionError(
     return `${m} — A text-only retry also failed: your project likely cannot post with user OAuth on your current X API plan, or the app is not enrolled for write access. Check Developer Portal product access and that deployment X_OAUTH_CLIENT_ID matches this app; then disconnect and reconnect in Settings.`;
   }
 
-  return `${m} — In the X Developer Portal, confirm your app/project is enrolled for posting on your API product. In Settings, disconnect X and reconnect (tweet.write + media.write for images).`;
+  return `${m} — In the X Developer Portal, confirm your app/project is enrolled for posting on your API product. In Settings, disconnect X and reconnect (tweet.write, like.write, media.write for images).`;
 }
 
 /**
@@ -313,8 +313,75 @@ export async function fetchXAuthenticatedUserId(accessToken: string): Promise<st
   return id;
 }
 
+const LIKE_POST_URLS = [
+  `${X_API_V2_BASE}/users`,
+  "https://api.twitter.com/2/users",
+] as const;
+
 export async function xLikeTweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
-  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/likes`, {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  const body = JSON.stringify({ tweet_id: tweetId });
+
+  let lastRaw: unknown = {};
+  let lastStatus = 0;
+
+  for (let i = 0; i < LIKE_POST_URLS.length; i++) {
+    const base = LIKE_POST_URLS[i]!;
+    const res = await fetch(`${base}/${encodeURIComponent(userId)}/likes`, {
+      method: "POST",
+      headers,
+      body,
+    });
+    const raw = await res.json().catch(() => ({}));
+
+    if (res.ok) return;
+
+    lastRaw = raw;
+    lastStatus = res.status;
+
+    const retryable = res.status === 403 || res.status === 401;
+    if (!retryable || i === LIKE_POST_URLS.length - 1) {
+      break;
+    }
+  }
+
+  throw new Error(formatTweetCreateError(lastRaw, lastStatus));
+}
+
+/** Undo like (DELETE /2/users/:id/likes/:tweet_id). Prefer dual-host retry like {@link xLikeTweet}. */
+export async function xUnlikeTweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  let lastRaw: unknown = {};
+  let lastStatus = 0;
+
+  for (let i = 0; i < LIKE_POST_URLS.length; i++) {
+    const base = LIKE_POST_URLS[i]!;
+    const res = await fetch(`${base}/${encodeURIComponent(userId)}/likes/${encodeURIComponent(tweetId)}`, {
+      method: "DELETE",
+      headers,
+    });
+    const raw = await res.json().catch(() => ({}));
+
+    if (res.ok) return;
+
+    lastRaw = raw;
+    lastStatus = res.status;
+
+    const retryable = res.status === 403 || res.status === 401;
+    if (!retryable || i === LIKE_POST_URLS.length - 1) {
+      break;
+    }
+  }
+
+  throw new Error(formatTweetCreateError(lastRaw, lastStatus));
+}
+
+export async function xRetweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
+  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -328,15 +395,15 @@ export async function xLikeTweet(accessToken: string, userId: string, tweetId: s
   }
 }
 
-export async function xRetweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
-  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+/** Undo repost (DELETE /2/users/:id/retweets/:source_tweet_id). Idempotent when not retweeted. */
+export async function xUnretweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
+  const res = await fetch(
+    `${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets/${encodeURIComponent(tweetId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
     },
-    body: JSON.stringify({ tweet_id: tweetId }),
-  });
+  );
   const raw = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(formatTweetCreateError(raw, res.status));

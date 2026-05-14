@@ -7,15 +7,20 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:ai-companion": "tsx scripts/ai-companion-scenarios.ts",
     "seed": "tsx scripts/seed.ts",
     "readme-screenshots": "tsx scripts/readme-screenshots.ts",
     "build:scimago": "node scripts/build-scimago-lookup.mjs",
-    "discovery:backfill": "tsx scripts/discovery-backfill.ts"
+    "discovery:backfill": "tsx scripts/discovery-backfill.ts",
+    "immunox:faculty-photos": "python3 scripts/scrape_immunox_faculty_photos.py",
+    "immunox:apply-headshots": "tsx scripts/apply-immunox-directory-headshots.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
+    "cfb": "^1.2.2",
     "cheerio": "^1.2.0",
+    "exceljs": "^4.4.0",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
     "next": "16.2.2",
@@ -29,6 +34,7 @@
     "sonner": "^2.0.7",
     "three": "^0.184.0",
     "three-spritetext": "^1.10.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {

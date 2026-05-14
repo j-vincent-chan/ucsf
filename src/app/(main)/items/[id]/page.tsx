@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/auth";
 import { ItemDetail } from "./item-detail";
-import type { SourceItem, Summary } from "@/types/database";
+import type { SourceItem } from "@/types/database";
 import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 
 export default async function ItemDetailPage({
@@ -39,12 +39,6 @@ export default async function ItemDetailPage({
 
   if (jErr) notFound();
 
-  const { data: summaries } = await supabase
-    .from("summaries")
-    .select("*")
-    .eq("source_item_id", id)
-    .order("created_at", { ascending: false });
-
   let duplicates: Pick<SourceItem, "id" | "title" | "status" | "duplicate_key">[] =
     [];
   if (item.duplicate_key) {
@@ -75,7 +69,6 @@ export default async function ItemDetailPage({
       key={id}
       item={rest as unknown as SourceItem}
       investigators={investigators}
-      summaries={(summaries ?? []) as Summary[]}
       duplicates={duplicates}
       duplicateOf={duplicateOf}
     />
