@@ -81,12 +81,13 @@ export function SocialComposerDrawer({
   open: boolean;
   onClose: () => void;
   initialPlatform?: PublishPlatform;
-  /** Connected X / Bluesky profile avatars (X wins when both platforms selected). */
+  /** Connected X / Bluesky profile avatars — composer shows X first for simplicity. */
   accounts?: WorkspaceAccountAvatars | null;
 }) {
   const [postToX, setPostToX] = useState(initialPlatform === "x");
   const [postToBluesky, setPostToBluesky] = useState(initialPlatform !== "x");
   const [text, setText] = useState("");
+  const [posting, setPosting] = useState(false);
 
   const effectivePostToX = postToX;
   const effectivePostToBluesky = postToBluesky;
@@ -103,7 +104,77 @@ export function SocialComposerDrawer({
     return `${text.length} / ${BLUESKY_CHAR_LIMIT}`;
   }, [text.length, postingToNone, postingToBoth, effectivePostToX, effectivePostToBluesky]);
 
-  const canPost = Boolean(text.trim()) && !overAny && !postingToNone;
+  const canPost = Boolean(text.trim()) && !overAny && !postingToNone && !posting;
+
+  async function submitPost(): Promise<void> {
+    const body = text.trim();
+    if (!body || overAny || postingToNone || posting) return;
+
+    setPosting(true);
+    type Done = { platform: "x" | "bluesky"; ok: boolean; url?: string; error?: string };
+    const done: Done[] = [];
+
+    const postJson = async (url: string, payload: Record<string, string>) => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+      return { ok: res.ok, url: typeof data.url === "string" ? data.url : undefined, error: data.error };
+    };
+
+    try {
+      if (effectivePostToX) {
+        const r = await postJson("/api/x/post", { text: body });
+        done.push({
+          platform: "x",
+          ok: Boolean(r.ok),
+          url: r.url,
+          error: !r.ok ? r.error ?? "X post failed" : undefined,
+        });
+      }
+      if (effectivePostToBluesky) {
+        const r = await postJson("/api/bsky/post", { text: body });
+        done.push({
+          platform: "bluesky",
+          ok: Boolean(r.ok),
+          url: r.url,
+          error: !r.ok ? r.error ?? "Bluesky post failed" : undefined,
+        });
+      }
+
+      const failed = done.filter((d) => !d.ok);
+      const succeeded = done.filter((d) => d.ok && d.url);
+
+      if (failed.length === 0 && succeeded.length > 0) {
+        const lines = succeeded.map((s) => (s.platform === "x" ? `X: ${s.url}` : `Bluesky: ${s.url}`)).join("\n");
+        toast.success(done.length > 1 ? "Posted everywhere." : "Posted.", {
+          description: lines,
+          duration: 6500,
+        });
+        setText("");
+        return;
+      }
+
+      if (succeeded.length > 0 && failed.length > 0) {
+        const okLines = succeeded.map((s) => (s.platform === "x" ? `X: ${s.url}` : `Bluesky: ${s.url}`)).join("\n");
+        const errLines = failed.map((f) => `${f.platform === "x" ? "X" : "Bluesky"}: ${f.error}`).join("\n");
+        toast.message("Posted to some platforms — check messages.", {
+          description: `${okLines}\n\n${errLines}`,
+          duration: 12_000,
+        });
+        return;
+      }
+
+      const errMsg = failed.map((f) => `${f.platform === "x" ? "X" : "Bluesky"}: ${f.error}`).join(" · ");
+      toast.error(errMsg || "Posting failed.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error while posting.");
+    } finally {
+      setPosting(false);
+    }
+  }
 
   if (!open) return null;
 
@@ -211,6 +282,7 @@ export function SocialComposerDrawer({
               postToX={effectivePostToX}
               postToBluesky={effectivePostToBluesky}
               accounts={accounts}
+              preferXCommunityAvatar
               size="lg"
             />
           </div>
@@ -257,16 +329,18 @@ export function SocialComposerDrawer({
             <button
               type="button"
               disabled={!canPost}
-              onClick={() => toast.message("Posting is not wired to the APIs yet — your text stays in this session only.")}
+              onClick={() => void submitPost()}
               className="rounded-full bg-sky-600 px-4 py-1.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:bg-[color:var(--muted)] disabled:text-[color:var(--muted-foreground)] disabled:opacity-80 dark:bg-sky-500"
             >
-              Post
+              {posting ? "Posting…" : "Post"}
             </button>
           </div>
         </div>
 
         <p className="border-t border-[color:var(--border)]/50 px-3 py-2.5 text-[10px] leading-snug text-[color:var(--muted-foreground)] sm:px-4">
-          Posting requires API wiring. Write above, check limits, then Post when connected.
+          Bluesky posts use your workspace&apos;s Bluesky credentials from Settings. X posting uses your personal account —
+          connect <span className="font-medium text-[color:var(--foreground)]">Post to X (OAuth)</span> under Settings first.
+          Text-only from this composer; digest attachments remain in Digest Studio.
         </p>
       </div>
     </div>

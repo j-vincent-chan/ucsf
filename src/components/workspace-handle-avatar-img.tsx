@@ -27,6 +27,7 @@ function IconUserSilhouette({ className }: { className?: string }) {
 
 /**
  * Connected workspace account avatar (X prioritized when both platforms apply).
+ * @param preferXCommunityAvatar When true, always use X first then Bluesky (e.g. Composer).
  */
 export function WorkspaceHandleAvatarImg({
   postToX,
@@ -36,6 +37,8 @@ export function WorkspaceHandleAvatarImg({
   className = "",
   /** When true, render nothing if no image URL resolves (for optional digest badges). */
   hideWhenEmpty = false,
+  /** Composer: show the community X avatar regardless of platform pills. */
+  preferXCommunityAvatar = false,
 }: {
   postToX: boolean;
   postToBluesky: boolean;
@@ -43,17 +46,27 @@ export function WorkspaceHandleAvatarImg({
   size?: "sm" | "md" | "lg";
   className?: string;
   hideWhenEmpty?: boolean;
+  preferXCommunityAvatar?: boolean;
 }) {
-  const src = useMemo(
-    () =>
-      workspaceHandleAvatarUrl(
-        postToX,
-        postToBluesky,
-        accounts?.xAvatarUrl,
-        accounts?.blueskyAvatarUrl,
-      ),
-    [postToX, postToBluesky, accounts?.xAvatarUrl, accounts?.blueskyAvatarUrl],
-  );
+  const src = useMemo(() => {
+    if (preferXCommunityAvatar) {
+      const x = accounts?.xAvatarUrl?.trim() || undefined;
+      const b = accounts?.blueskyAvatarUrl?.trim() || undefined;
+      return x ?? b;
+    }
+    return workspaceHandleAvatarUrl(
+      postToX,
+      postToBluesky,
+      accounts?.xAvatarUrl,
+      accounts?.blueskyAvatarUrl,
+    );
+  }, [
+    preferXCommunityAvatar,
+    postToX,
+    postToBluesky,
+    accounts?.xAvatarUrl,
+    accounts?.blueskyAvatarUrl,
+  ]);
 
   const dim = size === "lg" ? "h-10 w-10" : size === "sm" ? "h-7 w-7" : "h-9 w-9";
 
