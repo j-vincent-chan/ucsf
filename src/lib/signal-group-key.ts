@@ -2,11 +2,54 @@ import { createHash } from "node:crypto";
 import type { SourceType } from "@/types/database";
 import { canonicalNihProjectNumForDedup } from "@/lib/nih-project-num";
 
-/** Strip fragment + query; lowercase — must match Postgres normalize_source_url_for_dedup. */
+/**
+ * Canonical PubMed permalink for dedupe — stable across trailing slashes, legacy ncbi host, Europe PMC MED,
+ * query strings (pubmed.ncbi…/123?utm=…).
+ * Must align with Postgres public.normalize_source_url_for_dedup.
+ */
+export function canonicalPubMedArticleUrl(url: string): string | null {
+  const trimmed = url.trim().toLowerCase();
+  const med = trimmed.match(/^https?:\/\/europepmc\.org\/article\/med\/(\d{4,})\b/i);
+  if (med?.[1]) return `https://pubmed.ncbi.nlm.nih.gov/${med[1]}/`;
+
+  try {
+    const withProto = trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+    const u = new URL(withProto);
+    const host = u.hostname.replace(/^www\./, "");
+
+    const pathFirstSeg = (): string | null => {
+      const parts = u.pathname.split("/").filter(Boolean);
+      if (parts.length === 1 && /^\d{4,}$/.test(parts[0]!)) return parts[0]!;
+      return null;
+    };
+
+    if (host === "pubmed.ncbi.nlm.nih.gov") {
+      const id = pathFirstSeg();
+      if (id) return `https://pubmed.ncbi.nlm.nih.gov/${id}/`;
+      return null;
+    }
+
+    if (host.endsWith("ncbi.nlm.nih.gov")) {
+      const m = u.pathname.match(/^\/pubmed\/(\d{4,})(?:\/|$)/i);
+      if (m?.[1]) return `https://pubmed.ncbi.nlm.nih.gov/${m[1]}/`;
+    }
+  } catch {
+    /* non-absolute URL strings fall through */
+  }
+
+  const looseLegacy = trimmed.match(/^https?:\/\/[^/\s]+\.ncbi\.nlm\.nih\.gov\/pubmed\/(\d{4,})(?:\/|$|[?#])/i);
+  if (looseLegacy?.[1]) return `https://pubmed.ncbi.nlm.nih.gov/${looseLegacy[1]}/`;
+
+  return null;
+}
+
+/** Strip fragment + query; lowercase; PubMed PMID URLs collapse to canonical — must match Postgres. */
 export function normalizeSourceUrlForDedup(url: string): string | null {
   const t = url.trim().toLowerCase();
   if (t.length < 8) return null;
-  const noHash = t.replace(/[#].*$/, "");
+  const pubmedCanon = canonicalPubMedArticleUrl(t);
+  const base = pubmedCanon ?? t;
+  const noHash = base.replace(/[#].*$/, "");
   const noQuery = noHash.replace(/[?].*$/, "");
   return noQuery;
 }
