@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getProfile, getSessionUser } from "@/lib/auth";
 import { fetchSocialFeed } from "@/lib/social-signals/aggregate";
 import type { SocialFeedTab } from "@/lib/social-signals/types";
-import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
+import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } from "@/lib/workspace-social-settings";
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   try {
     const profile = await getProfile();
     const social = parseWorkspaceSocialSettings(profile?.community?.social_settings ?? null);
-    const workspaceCfg = socialFeedIngestFromWorkspace(social);
+    const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
 
     const data = await fetchSocialFeed(tab, workspaceCfg);
     return NextResponse.json(data);

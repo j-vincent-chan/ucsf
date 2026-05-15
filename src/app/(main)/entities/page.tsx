@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireWatchlistEditor } from "@/lib/auth";
 import { Card, CardTitle } from "@/components/ui/card";
 import { ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ export default async function EntitiesPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const { profile } = await requireAdmin();
+  const { profile } = await requireWatchlistEditor();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const showAll = sp.show_all === "1";
@@ -23,6 +23,7 @@ export default async function EntitiesPage({
   let query = supabase
     .from("tracked_entities")
     .select("*")
+    .eq("community_id", profile.community_id)
     .order("name", { ascending: true });
 
   if (q) {

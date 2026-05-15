@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
+import { getProfile, getSessionUser } from "@/lib/auth";
+import { parseWorkspaceSocialSettings, workspaceBlueskyAppCredentials } from "@/lib/workspace-social-settings";
 import {
   blueskyEngageLikeAllowDuplicate,
   blueskyEngageRepostAllowDuplicate,
@@ -312,15 +313,30 @@ export async function POST(req: Request) {
     }
   }
 
-  // Bluesky — workspace app password (same account that ingests the feed).
+  // Bluesky — per-workspace app password (Settings) or deployment env (same account that ingests the feed).
   let bsky: Awaited<ReturnType<typeof getBlueskyWorkspaceSession>>;
   try {
-    bsky = await getBlueskyWorkspaceSession();
+    const profile = await getProfile();
+    const social = parseWorkspaceSocialSettings(profile?.community?.social_settings ?? null);
+    const creds = workspaceBlueskyAppCredentials(social);
+    if (!creds) {
+      return NextResponse.json(
+        {
+          error:
+            "Bluesky is not configured for this workspace — save your Bluesky handle and app password under Settings → Social publishing.",
+        },
+        { status: 503 },
+      );
+    }
+    bsky = await getBlueskyWorkspaceSession(creds);
   } catch (e) {
     const name = e instanceof Error ? e.name : "";
     if (name === "BlueskyNotConfigured") {
       return NextResponse.json(
-        { error: "Bluesky is not configured for this workspace (server env credentials)." },
+        {
+          error:
+            "Bluesky is not configured for this workspace — save your Bluesky handle and app password under Settings → Social publishing.",
+        },
         { status: 503 },
       );
     }

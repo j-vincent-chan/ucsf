@@ -380,12 +380,15 @@ export type BlueskyWorkspaceSession = {
   handleLabel: string;
 };
 
-/** App-password session for the workspace Bluesky account (server env). */
-export async function getBlueskyWorkspaceSession(): Promise<BlueskyWorkspaceSession> {
-  const identifier = process.env.BSKY_IDENTIFIER?.trim();
-  const appPassword = process.env.BSKY_APP_PASSWORD?.trim();
+/** App-password session for this workspace’s Bluesky account (Settings → Social publishing only). */
+export async function getBlueskyWorkspaceSession(credentials: {
+  identifier: string;
+  appPassword: string;
+}): Promise<BlueskyWorkspaceSession> {
+  const identifier = credentials.identifier?.trim();
+  const appPassword = credentials.appPassword?.trim();
   if (!identifier || !appPassword) {
-    const err = new Error("Bluesky credentials not configured");
+    const err = new Error("Bluesky credentials not configured for this workspace");
     err.name = "BlueskyNotConfigured";
     throw err;
   }
@@ -827,25 +830,26 @@ async function uploadBlueskyImageBlob(
   return raw.blob;
 }
 
-/** Publish a text post as the configured Bluesky account (server env credentials). */
+/** Publish a text post as this workspace’s Bluesky account (Settings credentials required). */
 export async function publishBlueskyText(
   text: string,
-  options?: {
+  options: {
     image?: { buffer: Buffer; mime: string };
     /** External link card (mutually exclusive with image in practice). */
     linkPreview?: { uri: string; title: string; description: string };
     /** With {@link image}: append this URL to the caption when missing so readers can open the article. */
     articleUrl?: string;
+    blueskyCredentials: { identifier: string; appPassword: string };
   },
 ): Promise<{ uri: string; url: string; truncated?: boolean }> {
   const truncatedPack =
-    options?.articleUrl?.trim() && !options.linkPreview
+    options.articleUrl?.trim() && !options.linkPreview
       ? truncateBlueskyPostWithOptionalArticleUrl(text, options.articleUrl)
       : truncateForBlueskyPost(text);
   const { text: forPost, truncated } = truncatedPack;
   if (!forPost) throw new Error("Empty text");
 
-  const { accessJwt, repo, handleLabel } = await getBlueskyWorkspaceSession();
+  const { accessJwt, repo, handleLabel } = await getBlueskyWorkspaceSession(options.blueskyCredentials);
 
   let embed: Record<string, unknown> | undefined;
   const lp = options?.linkPreview;

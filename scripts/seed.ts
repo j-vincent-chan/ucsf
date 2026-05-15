@@ -2,7 +2,7 @@
  * Idempotent seed for local/staging.
  * Requires SUPABASE_SERVICE_ROLE_KEY and NEXT_PUBLIC_SUPABASE_URL in .env.local
  *
- * Creates two dev users (if missing) and placeholder OCR / ImmunoX content.
+ * Creates the dev platform admin (if missing), optional ImmunoX login user, and placeholder OCR / ImmunoX content.
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -26,7 +26,7 @@ const admin = createClient<Database>(url, serviceRole, {
 });
 
 const ADMIN_EMAIL = "admin@community-signal.local";
-const EDITOR_EMAIL = "editor@community-signal.local";
+const LEGACY_DEV_EDITOR_EMAIL = "editor@community-signal.local";
 const DEV_PASSWORD = "CommunitySignal!Dev123";
 /** Profile login_username + bcrypt hash (requires migration + SEED_IMMUNOX_PASSWORD). */
 const IMMUNOX_LOGIN = "ImmunoX@ucsf.edu";
@@ -83,27 +83,45 @@ function jsonBlurb(
   });
 }
 
-async function ensureUser(email: string, role: "admin" | "editor") {
+async function ensureDevAdminUser() {
   const { data: page } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  const found = page?.users?.find((u) => u.email === email);
+  const found = page?.users?.find((u) => u.email === ADMIN_EMAIL);
   if (found) {
-    console.log(`User exists: ${email}`);
+    console.log(`User exists: ${ADMIN_EMAIL}`);
     return found;
   }
   const { data, error } = await admin.auth.admin.createUser({
-    email,
+    email: ADMIN_EMAIL,
     password: DEV_PASSWORD,
     email_confirm: true,
     user_metadata: {
-      full_name: role === "admin" ? "Dev Admin" : "Dev Editor",
-      role,
+      full_name: "Dev Admin",
+      role: "admin",
     },
   });
   if (error || !data.user) {
-    throw new Error(`createUser ${email}: ${error?.message}`);
+    throw new Error(`createUser ${ADMIN_EMAIL}: ${error?.message}`);
   }
-  console.log(`Created user: ${email}`);
+  console.log(`Created user: ${ADMIN_EMAIL}`);
   return data.user;
+}
+
+async function deleteAuthUserByEmailIfPresent(email: string) {
+  for (let page = 1; page <= 5; page += 1) {
+    const { data: list, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) break;
+    const u = list?.users?.find((x) => x.email?.toLowerCase() === email.toLowerCase());
+    if (u) {
+      const { error: delErr } = await admin.auth.admin.deleteUser(u.id);
+      if (delErr) {
+        console.warn(`Could not delete legacy user ${email}:`, delErr.message);
+      } else {
+        console.log(`Removed legacy Auth user: ${email}`);
+      }
+      return;
+    }
+    if (!list?.users?.length || list.users.length < 200) break;
+  }
 }
 
 async function ensureImmunoxProfileLogin(plainPassword: string) {
@@ -154,8 +172,16 @@ async function main() {
   }
   const COMMUNITY_ID = immunoxCommunity.id;
 
-  const adminUser = await ensureUser(ADMIN_EMAIL, "admin");
-  const editorUser = await ensureUser(EDITOR_EMAIL, "editor");
+  await deleteAuthUserByEmailIfPresent(LEGACY_DEV_EDITOR_EMAIL);
+
+  const adminUser = await ensureDevAdminUser();
+  const { error: detachErr } = await admin
+    .from("profiles")
+    .update({ community_id: null })
+    .eq("id", adminUser.id);
+  if (detachErr) {
+    throw new Error(`Detach dev admin from workspace: ${detachErr.message}`);
+  }
   const immunoxPw = process.env.SEED_IMMUNOX_PASSWORD?.trim();
   if (immunoxPw) {
     await ensureImmunoxProfileLogin(immunoxPw);
@@ -534,7 +560,7 @@ async function main() {
       ),
       edited_text: null,
       final_text: null,
-      created_by: editorUser.id,
+      created_by: actor,
     },
     {
       id: IDS.b3,
@@ -575,7 +601,7 @@ async function main() {
         "Helps OCR clinicians calibrate expectations for IO–RT protocols.",
         "Based on summary lines only.",
       ),
-      created_by: editorUser.id,
+      created_by: actor,
     },
     {
       id: IDS.b6,
@@ -614,7 +640,7 @@ async function main() {
         "Bridges lab models to ongoing translational debates.",
         "Preclinical; not clinical advice.",
       ),
-      created_by: editorUser.id,
+      created_by: actor,
     },
     {
       id: IDS.b9,
@@ -640,7 +666,7 @@ async function main() {
         "Connects philanthropy to measurable translation paths.",
         "Award coverage; no private figures cited.",
       ),
-      created_by: editorUser.id,
+      created_by: actor,
     },
   ];
 
@@ -648,8 +674,7 @@ async function main() {
   if (summaryErr) throw summaryErr;
 
   console.log("\nSeed complete.");
-  console.log(`Admin login:    ${ADMIN_EMAIL} / ${DEV_PASSWORD}`);
-  console.log(`Editor login:   ${EDITOR_EMAIL} / ${DEV_PASSWORD}`);
+  console.log(`Platform admin: ${ADMIN_EMAIL} / ${DEV_PASSWORD} (no workspace; use Admin → Workspaces)`);
   if (immunoxPw) {
     console.log(
       `ImmunoX login:  ${IMMUNOX_LOGIN} (profile + auth; password from SEED_IMMUNOX_PASSWORD)`,

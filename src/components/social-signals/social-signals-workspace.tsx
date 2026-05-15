@@ -52,6 +52,7 @@ function navPill(active: boolean) {
 }
 
 export function SocialSignalsWorkspace({
+  liveFeedWorkspaceKey,
   initialLiveTab,
   livePosts,
   sourceMeta,
@@ -60,6 +61,8 @@ export function SocialSignalsWorkspace({
   initialSchedulerPosts,
   investigatorDirectory,
 }: {
+  /** Isolate Live listening localStorage cache per Supabase community (UUID). */
+  liveFeedWorkspaceKey: string;
   initialLiveTab: SocialFeedTab;
   livePosts: SocialPost[];
   sourceMeta: SourceMeta;
@@ -91,7 +94,7 @@ export function SocialSignalsWorkspace({
 
   useEffect(() => {
     queueMicrotask(() => {
-      const posts = finalizeTabPosts(initialLiveTab, livePosts);
+      const posts = finalizeTabPosts(liveFeedWorkspaceKey, initialLiveTab, livePosts);
       setLive((prev) => ({
         ...prev,
         posts,
@@ -101,12 +104,12 @@ export function SocialSignalsWorkspace({
         tab: initialLiveTab,
       }));
     });
-  }, [livePosts, sourceMeta, syncedAt, accounts, initialLiveTab]);
+  }, [livePosts, sourceMeta, syncedAt, accounts, initialLiveTab, liveFeedWorkspaceKey]);
 
   const handleLiveIngest = useCallback((feed: LiveFeedBundle) => {
-    const posts = finalizeTabPosts(feed.tab, feed.posts);
+    const posts = finalizeTabPosts(liveFeedWorkspaceKey, feed.tab, feed.posts);
     setLive({ ...feed, posts });
-  }, []);
+  }, [liveFeedWorkspaceKey]);
 
   const onFeedFocusConsumed = useCallback(() => setFeedFocusPostId(null), []);
 

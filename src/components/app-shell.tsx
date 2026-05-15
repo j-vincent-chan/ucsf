@@ -16,6 +16,7 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
 
   let role: ProfileRole | null = null;
   let communityDisplayName = defaultBrandName();
+  let platformAdmin = false;
   if (user) {
     const { data: prof } = await supabase
       .from("profiles")
@@ -23,7 +24,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
       .eq("id", user.id)
       .maybeSingle();
     role = prof?.role ?? null;
-    if (prof?.community_id) {
+    platformAdmin = role === "admin" && (prof?.community_id === null || prof?.community_id === undefined);
+    if (platformAdmin) {
+      communityDisplayName = "Platform admin";
+    } else if (prof?.community_id) {
       const { data: com } = await supabase
         .from("communities")
         .select("name")
@@ -39,6 +43,8 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AppShellClient
       role={role}
+      platformAdmin={platformAdmin}
+      homeHref={platformAdmin ? "/admin/workspaces" : "/dashboard"}
       digestMonths={digestMonths}
       communityDisplayName={communityDisplayName}
       userEmail={user?.email ?? null}

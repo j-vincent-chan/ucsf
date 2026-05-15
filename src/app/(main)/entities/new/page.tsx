@@ -1,9 +1,9 @@
-import { requireAdmin } from "@/lib/auth";
+import { requireWatchlistEditor } from "@/lib/auth";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EntityForm } from "../entity-form";
 
 export default async function NewEntityPage() {
-  const { profile } = await requireAdmin();
+  const { profile } = await requireWatchlistEditor();
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>

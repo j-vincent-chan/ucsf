@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireWatchlistEditor } from "@/lib/auth";
 import { Card, CardTitle } from "@/components/ui/card";
 import { EntityForm } from "../../entity-form";
 
@@ -9,13 +9,14 @@ export default async function EditEntityPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
+  const { profile } = await requireWatchlistEditor();
   const { id } = await params;
   const supabase = await createClient();
   const { data: entity, error } = await supabase
     .from("tracked_entities")
     .select("*")
     .eq("id", id)
+    .eq("community_id", profile.community_id)
     .maybeSingle();
 
   if (error || !entity) notFound();

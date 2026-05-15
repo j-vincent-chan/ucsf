@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { requireProfile } from "@/lib/auth";
-import { parseWorkspaceSocialSettings } from "@/lib/workspace-social-settings";
+import {
+  parseWorkspaceSocialSettings,
+  stripWorkspaceSocialSecretsForClient,
+} from "@/lib/workspace-social-settings";
 import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { SettingsForms } from "@/components/settings-forms";
 
@@ -13,7 +16,13 @@ type Search = Promise<{ x_oauth?: string; x_oauth_error?: string }>;
 export default async function SettingsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const { user, profile } = await requireProfile();
-  const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
+  const platformAdmin = profile.role === "admin" && !profile.community_id;
+  const fullSocial = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
+  const social = stripWorkspaceSocialSecretsForClient(fullSocial);
+  const socialSecretsPresent = {
+    xBearerToken: Boolean(fullSocial.xBearerToken?.trim()),
+    blueskyAppPassword: Boolean(fullSocial.blueskyAppPassword?.trim()),
+  };
 
   let xOAuthConnected = false;
   const admin = tryCreateAdminClient();
@@ -40,9 +49,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       fullName={profile.full_name ?? ""}
       loginUsername={profile.login_username}
       role={profile.role}
+      platformAdmin={platformAdmin}
       workspaceName={profile.community?.name ?? ""}
       workspaceSlug={profile.community?.slug ?? ""}
       social={social}
+      socialSecretsPresent={socialSecretsPresent}
       xOAuthConnected={xOAuthConnected}
       oauthFlash={oauthFlash}
     />

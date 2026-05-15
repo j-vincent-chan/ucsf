@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getSessionUser } from "@/lib/auth";
+import { getProfile, getSessionUser } from "@/lib/auth";
+import { parseWorkspaceSocialSettings, workspaceBlueskyAppCredentials } from "@/lib/workspace-social-settings";
 import { publishBlueskyText } from "@/lib/social-signals/bluesky";
 import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { fetchLinkPreviewMeta } from "@/lib/fetch-link-preview-meta";
@@ -76,11 +77,25 @@ export async function POST(req: Request) {
     }
   }
 
+  const profile = await getProfile();
+  const social = parseWorkspaceSocialSettings(profile?.community?.social_settings ?? null);
+  const blueskyCredentials = workspaceBlueskyAppCredentials(social);
+  if (!blueskyCredentials) {
+    return NextResponse.json(
+      {
+        error:
+          "Bluesky is not configured for this workspace — save your Bluesky handle and app password under Settings → Social publishing.",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const result = await publishBlueskyText(parsed.data.text, {
       ...(linkPreview ? { linkPreview } : {}),
       ...(image ? { image } : {}),
       ...(articleUrl ? { articleUrl } : {}),
+      blueskyCredentials,
     });
     return NextResponse.json(result);
   } catch (e) {
@@ -88,7 +103,10 @@ export async function POST(req: Request) {
     const msg = e instanceof Error ? e.message : "Post failed";
     if (name === "BlueskyNotConfigured") {
       return NextResponse.json(
-        { error: "Set BSKY_IDENTIFIER and BSKY_APP_PASSWORD on the server (workspace Bluesky account)." },
+        {
+          error:
+            "Bluesky is not configured for this workspace — save your Bluesky handle and app password under Settings → Social publishing.",
+        },
         { status: 503 },
       );
     }

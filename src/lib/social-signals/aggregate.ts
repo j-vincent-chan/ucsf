@@ -1,3 +1,4 @@
+import type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "./types";
 import { dedupeSocialPostsById } from "./dedupe-posts";
 import {
@@ -9,12 +10,7 @@ import {
 import { fetchXListTimeline, fetchXMentionSearch, fetchXTweetsByIds, fetchXUserByUsername } from "./x";
 import { missingXThreadRootTweetIds } from "./group-feed-rows";
 
-/** Workspace social ingest targets (Bearer / Bluesky app password stay in env only). */
-export type SocialFeedWorkspaceConfig = {
-  communityHandle?: string;
-  listId?: string;
-  blueskyListAtUri?: string;
-};
+export type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
 
 function sortPosts(posts: SocialPost[]): SocialPost[] {
   return [...posts].sort((a, b) => Date.parse(b.postedAt) - Date.parse(a.postedAt));
@@ -24,19 +20,15 @@ export async function fetchSocialFeed(
   tab: SocialFeedTab,
   workspaceCfg?: SocialFeedWorkspaceConfig | null,
 ): Promise<AggregatedFeed> {
-  const bearer = process.env.X_BEARER_TOKEN?.trim();
-  const listIdWs = workspaceCfg?.listId?.trim();
-  const handleWs = workspaceCfg?.communityHandle?.trim();
-  const listId = listIdWs || process.env.X_LIST_ID?.trim();
-  const envHandleRaw = process.env.X_COMMUNITY_HANDLE?.trim()?.replace(/^@+/, "") ?? "";
-  const xCommunityHandle = (handleWs || envHandleRaw).replace(/^@+/, "") || undefined;
+  const bearer = workspaceCfg?.xBearerToken?.trim();
+  const listId = workspaceCfg?.listId?.trim();
+  const xCommunityHandle =
+    workspaceCfg?.communityHandle?.trim().replace(/^@+/, "") || undefined;
 
-  const bskyId = process.env.BSKY_IDENTIFIER?.trim();
-  const bskyPw = process.env.BSKY_APP_PASSWORD?.trim();
-  const bskyMention =
-    process.env.BSKY_MENTION_HANDLE?.trim() || process.env.BSKY_IDENTIFIER?.trim();
-  const bskyListUri =
-    workspaceCfg?.blueskyListAtUri?.trim() || process.env.BSKY_LIST_AT_URI?.trim();
+  const bskyId = workspaceCfg?.blueskyIdentifier?.trim();
+  const bskyPw = workspaceCfg?.blueskyAppPassword?.trim();
+  const bskyMention = workspaceCfg?.blueskyIdentifier?.trim();
+  const bskyListUri = workspaceCfg?.blueskyListAtUri?.trim();
 
   const xConfiguredForTab = Boolean(
     bearer &&
@@ -120,8 +112,8 @@ export async function fetchSocialFeed(
       configured: false,
       detail:
         tab === "mentions"
-          ? "X Mentions: save your program X handle under Settings → Social publishing, or set X_COMMUNITY_HANDLE in server env."
-          : "X list: add the numeric List ID under Settings → Social publishing (investigator list), or set X_LIST_ID in server env.",
+          ? "X Mentions: save your program X handle under Settings → Social publishing."
+          : "X list: add the numeric List ID under Settings → Social publishing (investigator list).",
     };
   }
 
@@ -158,7 +150,7 @@ export async function fetchSocialFeed(
       sourceMeta.bluesky = {
         configured: false,
         detail:
-          "Bluesky Investigators tab: add an `at://…/app.bsky.graph.list/…` URI under Settings → Social publishing, or set BSKY_LIST_AT_URI in env.",
+          "Bluesky Investigators tab: add an `at://…/app.bsky.graph.list/…` URI under Settings → Social publishing.",
       };
     }
   }
@@ -185,18 +177,18 @@ export async function fetchSocialFeed(
     blueskyAvatarUrl,
   };
 
-  if (!process.env.X_BEARER_TOKEN?.trim()) {
+  if (!bearer) {
     sourceMeta.x = {
       configured: false,
       detail:
-        "Server needs X_BEARER_TOKEN (Twitter API v2 bearer). On Vercel, add it under Project → Settings → Environment Variables. List ID / handle: workspace Settings or X_LIST_ID / X_COMMUNITY_HANDLE.",
+        "X API: save this workspace’s Bearer token under Settings → Social publishing. List ID and program handle are configured on the same page.",
     };
   }
   if (!bskyId || !bskyPw) {
     sourceMeta.bluesky = {
       configured: false,
       detail:
-        "Add BSKY_IDENTIFIER and BSKY_APP_PASSWORD (Bluesky app password) to server env — for Vercel: Project → Settings → Environment Variables (Production).",
+        "Bluesky: save your workspace Bluesky handle and app password under Settings → Social publishing.",
     };
   }
 
@@ -212,13 +204,12 @@ export async function fetchSocialFeed(
 export async function fetchWorkspaceConnectedAccountAvatars(
   workspaceCfg?: SocialFeedWorkspaceConfig | null,
 ): Promise<{ xAvatarUrl?: string; blueskyAvatarUrl?: string }> {
-  const bearer = process.env.X_BEARER_TOKEN?.trim();
-  const handleWs = workspaceCfg?.communityHandle?.trim();
-  const envHandleRaw = process.env.X_COMMUNITY_HANDLE?.trim()?.replace(/^@+/, "") ?? "";
-  const xCommunityHandle = (handleWs || envHandleRaw).replace(/^@+/, "") || undefined;
+  const bearer = workspaceCfg?.xBearerToken?.trim();
+  const xCommunityHandle =
+    workspaceCfg?.communityHandle?.trim().replace(/^@+/, "") || undefined;
 
-  const bskyId = process.env.BSKY_IDENTIFIER?.trim();
-  const bskyPw = process.env.BSKY_APP_PASSWORD?.trim();
+  const bskyId = workspaceCfg?.blueskyIdentifier?.trim();
+  const bskyPw = workspaceCfg?.blueskyAppPassword?.trim();
 
   let xAvatarUrl: string | undefined;
   let blueskyAvatarUrl: string | undefined;

@@ -1,12 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { ResearchDashboard } from "@/components/research-dashboard";
 import { buildDashboardPayload, type RawEntity, type RawItem } from "@/lib/dashboard-aggregate";
 import { formatPostgrestError } from "@/lib/format-postgrest-error";
 import { fetchSocialSignalsDashboardSnapshot } from "@/lib/social-signals/dashboard-snapshot";
-import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
+import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } from "@/lib/workspace-social-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,9 @@ async function fetchAllCommunitySourceItemsForDashboard(
 
 export default async function DashboardPage() {
   const { profile } = await requireProfile();
+  if (profile.role === "admin" && !profile.community_id) {
+    redirect("/admin/workspaces");
+  }
   const communityId = profile.community_id;
   if (!communityId) {
     return (
@@ -77,7 +81,7 @@ export default async function DashboardPage() {
     (async () => {
       try {
         const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
-        const workspaceCfg = socialFeedIngestFromWorkspace(social);
+        const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
         const data = await fetchSocialSignalsDashboardSnapshot(workspaceCfg);
         return { ok: true as const, data };
       } catch (e) {

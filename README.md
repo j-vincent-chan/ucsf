@@ -61,7 +61,8 @@ npm run seed
 
 This creates:
 
-- Dev accounts: `admin@community-signal.local` and `editor@community-signal.local` (password printed in the script output)
+- Dev account: `admin@community-signal.local` (password printed in the script output) is a **platform administrator** with **no workspace** — use **Admin → Workspaces** to manage tenants and users. Seeded demo People and Signals live under the **ImmunoX** tenant; sign in as a user assigned to that workspace (e.g. after creating one with `SEED_IMMUNOX_PASSWORD`) to browse them.
+- Apply pending Supabase migrations (including `20260515180000_profiles_platform_admin_null_community.sql`, `20260515180500_protect_profile_community_allow_sql_superuser.sql`, and `20260515200000_detach_seeded_dev_admin_from_tenant.sql`) so the dev admin row is **not** left on ImmunoX from an older database; then re-run `npm run seed` or sign out and back in.
 - 8 tracked entities, 15 source items (including a duplicate fingerprint example), and 10 sample summaries
 
 ### 5. Install dependencies and run the app
@@ -75,10 +76,11 @@ Open [http://localhost:3000](http://localhost:3000). You will be redirected to `
 
 ## Roles
 
-- **Admin:** full access; can create/edit **tracked entities** (RLS-enforced).
-- **Editor:** can work with source items and summaries; **cannot** modify tracked entities.
+- **Admin (platform):** optional `profiles.community_id` **null** — only **Admin → Workspaces** and settings; no Signals/People until assigned to a tenant.
+- **Admin (tenant):** same as before for a workspace; can manage **People** and other admin tools for that community.
+- **Editor:** must belong to a workspace; can work with source items and summaries; **cannot** modify tracked entities without tenant admin policies.
 
-The first time a user signs up via Supabase Auth, the `handle_new_user` trigger creates a **profile**. You can pass `role` in user metadata (`admin` / `editor`) at creation time; the included seed script does this for the two dev users.
+The first time a user signs up via Supabase Auth, the `handle_new_user` trigger creates a **profile**. You can pass `role` in user metadata (`admin` / `editor`) at creation time; the seed script sets the dev admin as `admin` and clears `community_id` after creation.
 
 To promote an existing user to admin in SQL (run in Supabase SQL editor):
 
@@ -147,6 +149,15 @@ To run discovery at a different wall-clock (e.g. midnight **Pacific**), change t
 - **Deep history** (e.g. 2018–present): run locally so serverless timeouts do not apply:
   - `npm run discovery:backfill -- --days=2920 --max-per-source=400`
   - Requires `SUPABASE_SERVICE_ROLE_KEY` and `NEXT_PUBLIC_SUPABASE_URL` in `.env.local`.
+
+### Multi-workspace beta (communities / tenants)
+
+- **Provisioning (UI):** **Platform administrators** (admin with **no** `profiles.community_id`) can open **Admin → Workspaces** (`/admin/workspaces`) to create a community and assign users. Tenant/workspace admins do not see that page. Creating Auth users from the UI still needs `SUPABASE_SERVICE_ROLE_KEY` on the server.
+- **Provisioning (SQL):** Alternatively, add a row to `public.communities` and set `profiles.community_id` in the Supabase SQL Editor — see `supabase/beta_workspace_provisioning.example.sql`. New Auth users should include **`community_slug`** in user metadata so `handle_new_user` assigns the right tenant (otherwise the DB default is **`immunox`**).
+- **RLS:** Migration `20260514120000_profiles_select_same_community.sql` limits **`profiles` SELECT** to your own row and profiles in the **same** `community_id` (plus a small `SECURITY DEFINER` helper to avoid policy recursion). Service-role scripts still bypass RLS.
+- **Community reassignment:** Migration `20260514140000_protect_profile_community_service_role.sql` lets **`service_role`** updates change `profiles.community_id`. The Workspaces UI and `is_platform_admin()` RLS restrict live tenant moves to **platform** admins; tenant admins cannot reassign workspaces from the app or list all communities via PostgREST.
+- **AI companion feedback:** `20260514120100_ai_companion_feedback_insert_community.sql` requires `community_id` on insert to match the signed-in user’s workspace.
+- **Social Signals credentials:** Each workspace stores its own **X API Bearer**, **Bluesky app password**, handles, and list IDs under **Settings → Social publishing** (any member of that workspace). There is **no** shared fallback to deployment `X_BEARER_TOKEN` / `BSKY_*` for feed ingest or Bluesky posting — communities stay isolated. OpenAI and other keys may still be shared per deployment. Nightly discovery loops **all** communities sequentially—watch function duration as tenant count grows.
 
 ## Commands
 

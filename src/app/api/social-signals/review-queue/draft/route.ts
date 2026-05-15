@@ -33,7 +33,8 @@ export async function POST(req: Request) {
     .select("community_id")
     .eq("id", user.id)
     .maybeSingle();
-  if (profErr || !profile?.community_id) {
+  const communityId = profile?.community_id;
+  if (profErr || !communityId) {
     return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   }
 
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   const scheduledAtIso = body.scheduled_at?.trim() ? body.scheduled_at.trim() : null;
 
   const rows = body.platforms.map((platform) => ({
-    community_id: profile.community_id,
+    community_id: communityId,
     source_item_id: body.source_item_id ?? null,
     platform,
     status: "draft" as const,

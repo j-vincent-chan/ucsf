@@ -54,6 +54,17 @@ function WatchlistIcon({ className, strokeWidth = "1.65" }: { className: string;
   );
 }
 
+function WorkspacesAdminIcon({ className, strokeWidth = "1.65" }: { className: string; strokeWidth?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className}>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+    </svg>
+  );
+}
+
 function SocialSignalsIcon({ className, strokeWidth = "1.65" }: { className: string; strokeWidth?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className}>
@@ -96,11 +107,14 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function SidebarNav({
   role,
+  platformAdmin = false,
   digestMonths,
   workspaceLabel = "Monitor",
   collapsed = false,
 }: {
   role: ProfileRole | null;
+  /** Admin with no tenant — hide product nav; only Workspaces. */
+  platformAdmin?: boolean;
   digestMonths: { ym: string; label: string }[];
   workspaceLabel?: string;
   collapsed?: boolean;
@@ -136,111 +150,128 @@ export function SidebarNav({
 
   return (
     <nav className={`flex min-w-0 flex-1 flex-col ${collapsed ? "mt-3 min-h-0" : ""}`}>
-      {!collapsed ? <SectionLabel>{workspaceLabel}</SectionLabel> : null}
-      <div className={itemStack}>
-        <Link
-          href="/dashboard"
-          className={`${linkClass(collapsed, pathname === "/dashboard")}`}
-          title={collapsed ? "Dashboard" : undefined}
-          aria-label="Dashboard"
-        >
-          <DashboardIcon className={navIconClass} strokeWidth={navStroke} />
-          {!collapsed ? <span>Dashboard</span> : null}
-        </Link>
-        <Link
-          href="/items"
-          className={`${linkClass(collapsed, pathname.startsWith("/items"))}`}
-          title={collapsed ? "Signals" : undefined}
-          aria-label="Signals"
-        >
-          <QueueIcon className={navIconClass} strokeWidth={navStroke} />
-          {!collapsed ? <span>Signals</span> : null}
-        </Link>
-        <Link
-          href="/submit"
-          className={`${linkClass(collapsed, pathname === "/submit")}`}
-          title={collapsed ? "Add Signal" : undefined}
-          aria-label="Add Signal"
-        >
-          <SubmitIcon className={navIconClass} strokeWidth={navStroke} />
-          {!collapsed ? <span>Add Signal</span> : null}
-        </Link>
-      </div>
-
-      {!collapsed ? <SectionLabel>Social</SectionLabel> : null}
-      <div className={`${railSectionTop} ${itemStack}`.trim()}>
-        <Link
-          href="/social-signals"
-          className={`${linkClass(collapsed, pathname.startsWith("/social-signals"))}`}
-          title={collapsed ? "Social Signals" : undefined}
-          aria-label="Social Signals"
-        >
-          <SocialSignalsIcon className={navIconClass} strokeWidth={navStroke} />
-          {!collapsed ? <span>Social Signals</span> : null}
-        </Link>
-      </div>
-
-      {!collapsed ? <SectionLabel>Publish</SectionLabel> : null}
-      <div className={`${railSectionTop} ${itemStack}`.trim()}>
-        <button
-          type="button"
-          onClick={() => setDigestOpen((o) => !o)}
-          className={`${collapsed ? `${linkClass(true, inDigest)} w-full min-w-0` : `${itemClass(inDigest)} w-full`}`}
-          aria-expanded={digestOpen}
-          aria-controls="sidebar-digest-months"
-          id="sidebar-digest-trigger"
-          title={collapsed ? "Digests" : undefined}
-          aria-label="Digests"
-        >
-          <DigestIcon className={navIconClass} strokeWidth={navStroke} />
-          {!collapsed ? (
-            <>
-              <span className="min-w-0 flex-1 text-left">Digests</span>
-              <ChevronDownIcon open={digestOpen} />
-            </>
-          ) : null}
-        </button>
-        {digestOpen && !collapsed ? (
-          <div
-            id="sidebar-digest-months"
-            role="region"
-            aria-labelledby="sidebar-digest-trigger"
-            className="ml-5 space-y-1 border-l border-[color:var(--border)]/75 pl-3"
-          >
-            {digestMonths.map(({ ym, label }) => {
-              const href = `/digest/${ym}`;
-              const active = pathname === href;
-              return (
-                <Link
-                  key={ym}
-                  href={href}
-                  className={
-                    active
-                      ? "block rounded-xl bg-[color:var(--muted)]/80 px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
-                      : "block rounded-xl px-2.5 py-1.5 text-xs text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/50 hover:text-[color:var(--foreground)]"
-                  }
-                >
-                  {label}
-                </Link>
-              );
-            })}
+      {!platformAdmin ? (
+        <>
+          {!collapsed ? <SectionLabel>{workspaceLabel}</SectionLabel> : null}
+          <div className={itemStack}>
+            <Link
+              href="/dashboard"
+              className={`${linkClass(collapsed, pathname === "/dashboard")}`}
+              title={collapsed ? "Dashboard" : undefined}
+              aria-label="Dashboard"
+            >
+              <DashboardIcon className={navIconClass} strokeWidth={navStroke} />
+              {!collapsed ? <span>Dashboard</span> : null}
+            </Link>
+            <Link
+              href="/items"
+              className={`${linkClass(collapsed, pathname.startsWith("/items"))}`}
+              title={collapsed ? "Signals" : undefined}
+              aria-label="Signals"
+            >
+              <QueueIcon className={navIconClass} strokeWidth={navStroke} />
+              {!collapsed ? <span>Signals</span> : null}
+            </Link>
+            <Link
+              href="/submit"
+              className={`${linkClass(collapsed, pathname === "/submit")}`}
+              title={collapsed ? "Add Signal" : undefined}
+              aria-label="Add Signal"
+            >
+              <SubmitIcon className={navIconClass} strokeWidth={navStroke} />
+              {!collapsed ? <span>Add Signal</span> : null}
+            </Link>
           </div>
-        ) : null}
-      </div>
 
-      {role === "admin" ? (
+          {!collapsed ? <SectionLabel>Social</SectionLabel> : null}
+          <div className={`${railSectionTop} ${itemStack}`.trim()}>
+            <Link
+              href="/social-signals"
+              className={`${linkClass(collapsed, pathname.startsWith("/social-signals"))}`}
+              title={collapsed ? "Social Signals" : undefined}
+              aria-label="Social Signals"
+            >
+              <SocialSignalsIcon className={navIconClass} strokeWidth={navStroke} />
+              {!collapsed ? <span>Social Signals</span> : null}
+            </Link>
+          </div>
+
+          {!collapsed ? <SectionLabel>Publish</SectionLabel> : null}
+          <div className={`${railSectionTop} ${itemStack}`.trim()}>
+            <button
+              type="button"
+              onClick={() => setDigestOpen((o) => !o)}
+              className={`${collapsed ? `${linkClass(true, inDigest)} w-full min-w-0` : `${itemClass(inDigest)} w-full`}`}
+              aria-expanded={digestOpen}
+              aria-controls="sidebar-digest-months"
+              id="sidebar-digest-trigger"
+              title={collapsed ? "Digests" : undefined}
+              aria-label="Digests"
+            >
+              <DigestIcon className={navIconClass} strokeWidth={navStroke} />
+              {!collapsed ? (
+                <>
+                  <span className="min-w-0 flex-1 text-left">Digests</span>
+                  <ChevronDownIcon open={digestOpen} />
+                </>
+              ) : null}
+            </button>
+            {digestOpen && !collapsed ? (
+              <div
+                id="sidebar-digest-months"
+                role="region"
+                aria-labelledby="sidebar-digest-trigger"
+                className="ml-5 space-y-1 border-l border-[color:var(--border)]/75 pl-3"
+              >
+                {digestMonths.map(({ ym, label }) => {
+                  const href = `/digest/${ym}`;
+                  const active = pathname === href;
+                  return (
+                    <Link
+                      key={ym}
+                      href={href}
+                      className={
+                        active
+                          ? "block rounded-xl bg-[color:var(--muted)]/80 px-2.5 py-1.5 text-xs font-medium text-[color:var(--foreground)]"
+                          : "block rounded-xl px-2.5 py-1.5 text-xs text-[color:var(--muted-foreground)] transition-colors hover:bg-[color:var(--muted)]/50 hover:text-[color:var(--foreground)]"
+                      }
+                    >
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
+
+      {(role === "admin" && platformAdmin) || ((role === "admin" || role === "editor") && !platformAdmin) ? (
         <>
           {!collapsed ? <SectionLabel>Admin</SectionLabel> : null}
           <div className={`${railSectionTop} ${itemStack}`.trim()}>
-            <Link
-              href="/entities"
-              className={`${linkClass(collapsed, pathname.startsWith("/entities"))}`}
-              title={collapsed ? "People" : undefined}
-              aria-label="People"
-            >
-              <WatchlistIcon className={navIconClass} strokeWidth={navStroke} />
-              {!collapsed ? <span>People</span> : null}
-            </Link>
+            {(role === "admin" || role === "editor") && !platformAdmin ? (
+              <Link
+                href="/entities"
+                className={`${linkClass(collapsed, pathname.startsWith("/entities"))}`}
+                title={collapsed ? "People" : undefined}
+                aria-label="People"
+              >
+                <WatchlistIcon className={navIconClass} strokeWidth={navStroke} />
+                {!collapsed ? <span>People</span> : null}
+              </Link>
+            ) : null}
+            {role === "admin" && platformAdmin ? (
+              <Link
+                href="/admin/workspaces"
+                className={`${linkClass(collapsed, pathname.startsWith("/admin/workspaces"))}`}
+                title={collapsed ? "Workspaces" : undefined}
+                aria-label="Workspaces"
+              >
+                <WorkspacesAdminIcon className={navIconClass} strokeWidth={navStroke} />
+                {!collapsed ? <span>Workspaces</span> : null}
+              </Link>
+            ) : null}
           </div>
         </>
       ) : null}

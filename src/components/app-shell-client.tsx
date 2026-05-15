@@ -35,12 +35,17 @@ function CollapseIcon({ collapsed }: { collapsed: boolean }) {
 export function AppShellClient({
   children,
   role,
+  platformAdmin = false,
+  homeHref = "/dashboard",
   digestMonths,
   communityDisplayName,
   userEmail,
 }: {
   children: React.ReactNode;
   role: ProfileRole | null;
+  /** Admin with no workspace — minimal nav (Workspaces only). */
+  platformAdmin?: boolean;
+  homeHref?: string;
   digestMonths: { ym: string; label: string }[];
   communityDisplayName: string;
   userEmail: string | null;
@@ -135,13 +140,13 @@ export function AppShellClient({
               <CollapseIcon collapsed={collapsed} />
             </button>
             <Link
-              href="/dashboard"
+              href={homeHref}
               className={`block min-w-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${
                 collapsed
                   ? "surface-card mx-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl p-0"
                   : "min-w-0 flex-1 rounded-xl py-2 ps-0 pe-1 transition-colors hover:bg-[color:var(--muted)]/25"
               }`}
-              aria-label="Go to dashboard"
+              aria-label={homeHref === "/admin/workspaces" ? "Go to workspaces" : "Go to dashboard"}
             >
               {collapsed ? <SignalLogo variant="mark" /> : <SignalLogo showSubtitle />}
             </Link>
@@ -151,7 +156,9 @@ export function AppShellClient({
             href="/settings"
             className={`surface-subtle mb-4 mt-6 block rounded-[1.25rem] px-3 py-2.5 transition-colors hover:bg-[color:var(--muted)]/35 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ring)] ${collapsed ? "hidden" : ""}`}
           >
-            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">Workspace</p>
+            <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
+              {platformAdmin ? "Access" : "Workspace"}
+            </p>
             <p className="mt-0.5 truncate text-sm font-medium text-[color:var(--foreground)]">
               {communityDisplayName}
             </p>
@@ -160,6 +167,7 @@ export function AppShellClient({
 
           <SidebarNav
             role={role}
+            platformAdmin={platformAdmin}
             digestMonths={digestMonths}
             workspaceLabel="Monitor"
             collapsed={collapsed}

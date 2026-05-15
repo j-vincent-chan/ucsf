@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/auth";
 import {
   normalizedXCommunityHandleForApi,
+  parseWorkspaceSocialSettings,
   sanitizeWorkspaceSocialSettings,
   socialSettingsToJson,
   type WorkspaceSocialSettings,
@@ -66,12 +67,16 @@ export async function updateWorkspaceAction(
 
   const profile = await getProfile();
   if (!profile) return { ok: false, message: "Profile not found." };
+  if (!profile.community_id) {
+    return { ok: false, message: "No workspace assigned. Open Admin → Workspaces to join a tenant first." };
+  }
+  const communityId = profile.community_id;
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("communities")
     .update({ name })
-    .eq("id", profile.community_id);
+    .eq("id", communityId);
 
   if (error) return { ok: false, message: error.message };
 
@@ -86,6 +91,10 @@ export async function updateSocialSettingsAction(
 ): Promise<ActionResult> {
   const profile = await getProfile();
   if (!profile) return { ok: false, message: "Profile not found." };
+  if (!profile.community_id) {
+    return { ok: false, message: "No workspace assigned. Open Admin → Workspaces to join a tenant first." };
+  }
+  const communityId = profile.community_id;
 
   const xHandleRaw = ((formData.get("xHandle") as string) ?? "").trim();
   const xTwitterListIdRaw = ((formData.get("xTwitterListId") as string) ?? "").trim();
@@ -112,6 +121,14 @@ export async function updateSocialSettingsAction(
     };
   }
 
+  const supabase = await createClient();
+  const { data: comRow } = await supabase
+    .from("communities")
+    .select("social_settings")
+    .eq("id", communityId)
+    .maybeSingle();
+  const current = parseWorkspaceSocialSettings(comRow?.social_settings ?? null);
+
   const raw: WorkspaceSocialSettings = {
     xHandle: (formData.get("xHandle") as string) ?? "",
     xTwitterListId: (formData.get("xTwitterListId") as string) ?? "",
@@ -121,13 +138,36 @@ export async function updateSocialSettingsAction(
     linkedinUrl: (formData.get("linkedinUrl") as string) ?? "",
     notes: (formData.get("socialNotes") as string) ?? "",
   };
-  const social_settings = socialSettingsToJson(sanitizeWorkspaceSocialSettings(raw));
+  const merged: WorkspaceSocialSettings = { ...sanitizeWorkspaceSocialSettings(raw) };
 
-  const supabase = await createClient();
+  if (formData.get("clearXBearerToken") === "on") {
+    delete merged.xBearerToken;
+  } else {
+    const inc = ((formData.get("xBearerToken") as string) ?? "").trim();
+    if (inc.length > 0) merged.xBearerToken = inc.slice(0, 4096);
+    else if (current.xBearerToken) merged.xBearerToken = current.xBearerToken;
+  }
+  if (formData.get("clearBlueskyAppPassword") === "on") {
+    delete merged.blueskyAppPassword;
+  } else {
+    const inc = ((formData.get("blueskyAppPassword") as string) ?? "").trim();
+    if (inc.length > 0) merged.blueskyAppPassword = inc.slice(0, 512);
+    else if (current.blueskyAppPassword) merged.blueskyAppPassword = current.blueskyAppPassword;
+  }
+
+  if (merged.blueskyAppPassword && !merged.blueskyHandle?.trim()) {
+    return {
+      ok: false,
+      message: "Add a Bluesky handle before saving an app password (the handle is the login identifier).",
+    };
+  }
+
+  const social_settings = socialSettingsToJson(merged);
+
   const { error } = await supabase
     .from("communities")
     .update({ social_settings })
-    .eq("id", profile.community_id);
+    .eq("id", communityId);
 
   if (error) return { ok: false, message: error.message };
 

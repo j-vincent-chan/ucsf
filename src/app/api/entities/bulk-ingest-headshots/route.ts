@@ -21,6 +21,12 @@ export async function POST(req: Request) {
   if (!profile || profile.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (!profile.community_id) {
+    return NextResponse.json(
+      { error: "No workspace on your profile. Assign yourself to a tenant from Admin → Workspaces." },
+      { status: 400 },
+    );
+  }
 
   let body: unknown;
   try {

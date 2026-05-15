@@ -1,5 +1,6 @@
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "./types";
-import { fetchSocialFeed, type SocialFeedWorkspaceConfig } from "./aggregate";
+import type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
+import { fetchSocialFeed } from "./aggregate";
 import { groupPostsForFeedDisplay } from "./group-feed-rows";
 
 export type SocialTabMetrics = {

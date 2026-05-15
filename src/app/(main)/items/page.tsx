@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/auth";
+import { requireTenantCommunity } from "@/lib/auth";
 import { ItemsQueue } from "./items-queue";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 import { redirect } from "next/navigation";
@@ -76,7 +76,7 @@ type Params = Promise<{
 }>;
 
 export default async function ItemsPage({ searchParams }: { searchParams: Params }) {
-  const { profile } = await requireProfile();
+  const { profile, communityId } = await requireTenantCommunity();
   const sp = await searchParams;
 
   /** Default queue: status New + published this calendar month (same range as “This month” preset). */
@@ -104,8 +104,6 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
   const to = sp.to?.trim() || undefined;
 
   const supabase = await createClient();
-
-  const communityId = profile.community_id;
 
   const [entitiesRes, itemsRes] = await Promise.all([
     supabase

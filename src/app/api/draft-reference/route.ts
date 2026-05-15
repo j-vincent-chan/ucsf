@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { reporterFirstFactAfterAwardClass } from "@/lib/reporter-raw-summary-facts";
 
 const bodySchema = z.object({
   source_item_id: z.string().uuid(),
@@ -10,12 +11,7 @@ const bodySchema = z.object({
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
 function extractReporterIcFromRawSummary(rawSummary: string | null): string | null {
-  if (!rawSummary) return null;
-  const first = rawSummary
-    .split(" · ")
-    .map((x) => x.trim())
-    .find(Boolean);
-  return first || null;
+  return reporterFirstFactAfterAwardClass(rawSummary);
 }
 
 function extractPubmedPmidFromUrl(url: string | null): string | null {

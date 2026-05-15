@@ -60,6 +60,7 @@ import {
   sumMonthlyKpis,
   topEntitiesInRange,
 } from "@/lib/dashboard-aggregate";
+import { reporterFirstFactAfterAwardClass } from "@/lib/reporter-raw-summary-facts";
 
 const RANGES: { id: ChartRange; label: string }[] = [
   { id: "ytd", label: "YTD" },
@@ -135,7 +136,7 @@ function extractJournalLabel(item: DashboardPayload["itemsForVolume"][number]): 
 }
 
 function extractGrantAgency(item: DashboardPayload["itemsForVolume"][number]): string {
-  const first = (item.raw_summary ?? "").split(" · ")[0]?.trim();
+  const first = reporterFirstFactAfterAwardClass(item.raw_summary ?? null);
   if (first) return first;
   if (item.source_domain === "reporter.nih.gov") return "NIH (unknown institute)";
   return item.source_domain?.replace(/^www\./, "") ?? "Unknown agency";

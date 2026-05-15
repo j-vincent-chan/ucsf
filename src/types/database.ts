@@ -79,8 +79,8 @@ export interface Database {
           id: string;
           full_name: string | null;
           role: ProfileRole;
-          /** Tenant: watchlist + items scoped to this community. */
-          community_id: string;
+          /** Tenant: watchlist + items scoped to this community. Null for platform admins (no workspace). */
+          community_id: string | null;
           created_at: string;
           updated_at: string;
           /** App login handle (email-style); password is stored as bcrypt in password_hash (server-only column). */
@@ -92,7 +92,7 @@ export interface Database {
           id: string;
           full_name?: string | null;
           role?: ProfileRole;
-          community_id: string;
+          community_id?: string | null;
           created_at?: string;
           updated_at?: string;
           x_oauth?: Json | null;
@@ -100,7 +100,7 @@ export interface Database {
         Update: {
           full_name?: string | null;
           role?: ProfileRole;
-          community_id?: string;
+          community_id?: string | null;
           updated_at?: string;
           x_oauth?: Json | null;
         };
@@ -470,6 +470,7 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       is_admin: { Args: Record<string, never>; Returns: boolean };
+      is_platform_admin: { Args: Record<string, never>; Returns: boolean };
       compute_duplicate_key: {
         Args: {
           p_title: string;

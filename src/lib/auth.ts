@@ -86,20 +86,24 @@ export async function getProfile(): Promise<ProfileWithCommunity | null> {
     }
   }
   if (!row) return null;
-  let { data: com } = await supabase
-    .from("communities")
-    .select("name, slug, social_settings")
-    .eq("id", row.community_id)
-    .maybeSingle();
-  if (!com) {
-    const admin = tryCreateAdminClient();
-    if (admin) {
-      const c = await admin
-        .from("communities")
-        .select("name, slug, social_settings")
-        .eq("id", row.community_id)
-        .maybeSingle();
-      com = c.data ?? null;
+  let com: ProfileWithCommunity["community"] = null;
+  if (row.community_id) {
+    let { data: c } = await supabase
+      .from("communities")
+      .select("name, slug, social_settings")
+      .eq("id", row.community_id)
+      .maybeSingle();
+    com = c ?? null;
+    if (!com) {
+      const admin = tryCreateAdminClient();
+      if (admin) {
+        const r = await admin
+          .from("communities")
+          .select("name, slug, social_settings")
+          .eq("id", row.community_id)
+          .maybeSingle();
+        com = r.data ?? null;
+      }
     }
   }
   return { ...row, community: com };
@@ -118,10 +122,48 @@ export async function requireProfile() {
   return { user, profile };
 }
 
+/**
+ * User must belong to a workspace. Platform admins without a tenant are sent to Workspaces.
+ */
+export async function requireTenantCommunity() {
+  const ctx = await requireProfile();
+  const cid = ctx.profile.community_id;
+  if (!cid) {
+    if (ctx.profile.role === "admin") redirect("/admin/workspaces");
+    redirect("/dashboard");
+  }
+  return { user: ctx.user, profile: ctx.profile, communityId: cid };
+}
+
 export async function requireAdmin() {
   const ctx = await requireProfile();
   if (ctx.profile.role !== "admin") {
     redirect("/dashboard");
   }
   return ctx;
+}
+
+/** Admin with no workspace — platform operators only (not tenant/workspace admins). */
+export async function requirePlatformAdmin() {
+  const ctx = await requireProfile();
+  if (ctx.profile.role !== "admin" || ctx.profile.community_id) {
+    redirect("/dashboard");
+  }
+  return ctx;
+}
+
+/** Watchlist (People) — editors and tenant-scoped admins only (not platform admins). */
+export async function requireWatchlistEditor() {
+  const ctx = await requireProfile();
+  if (ctx.profile.role !== "admin" && ctx.profile.role !== "editor") {
+    redirect("/dashboard");
+  }
+  if (ctx.profile.role === "admin" && !ctx.profile.community_id) {
+    redirect("/admin/workspaces");
+  }
+  const cid = ctx.profile.community_id;
+  if (!cid) {
+    redirect("/dashboard");
+  }
+  return { user: ctx.user, profile: { ...ctx.profile, community_id: cid } };
 }

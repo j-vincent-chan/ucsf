@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireProfile } from "@/lib/auth";
+import { requireTenantCommunity } from "@/lib/auth";
 import { MonthlyDigestView, type DigestItemPayload } from "@/components/monthly-digest";
 import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 import {
@@ -15,7 +15,7 @@ import {
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
 import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
-import { parseWorkspaceSocialSettings, socialFeedIngestFromWorkspace } from "@/lib/workspace-social-settings";
+import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } from "@/lib/workspace-social-settings";
 import { fetchWorkspaceConnectedAccountAvatars } from "@/lib/social-signals/aggregate";
 
 export const dynamic = "force-dynamic";
@@ -298,8 +298,7 @@ export default async function DigestMonthPage({
 }: {
   params: Promise<{ month: string }>;
 }) {
-  const { profile } = await requireProfile();
-  const communityId = profile.community_id;
+  const { profile, communityId } = await requireTenantCommunity();
   const { month: monthParam } = await params;
   const parsed = parseYearMonth(monthParam);
   if (!parsed) {
@@ -547,7 +546,7 @@ export default async function DigestMonthPage({
   }
 
   const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
-  const workspaceCfg = socialFeedIngestFromWorkspace(social);
+  const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
   const handleAvatars = await fetchWorkspaceConnectedAccountAvatars(workspaceCfg);
 
   return (
