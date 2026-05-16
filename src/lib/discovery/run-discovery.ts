@@ -21,7 +21,7 @@ import {
   normalizeNihProjectNum,
 } from "./nih-reporter";
 import type { DiscoveryCandidate } from "./types";
-import { computeSignalGroupKey } from "@/lib/signal-group-key";
+import { computeSignalGroupKey, pubMedPmidDedupKey } from "@/lib/signal-group-key";
 
 export type DiscoveryRunResult = {
   inserted: number;
@@ -107,6 +107,135 @@ function bucketFromDomain(sourceDomain: string | null): string {
 }
 
 const MAX_FACULTY = 200;
+
+/** PostgREST returns at most ~1000 rows per request unless paginated — missing rows breaks digest/signal dedupe. */
+const DISCOVERY_DB_PAGE = 1000;
+const DISCOVERY_DB_HARD_CAP = 100_000;
+const DISCOVERY_IN_CHUNK = 200;
+
+async function fetchPaginatedDuplicateKeys(
+  supabase: SupabaseClient<Database>,
+  facultyIds: string[],
+  errors: DiscoveryRunResult["errors"],
+): Promise<{ duplicate_key: string | null }[]> {
+  if (facultyIds.length === 0) return [];
+  const out: { duplicate_key: string | null }[] = [];
+  for (let offset = 0; offset < DISCOVERY_DB_HARD_CAP; offset += DISCOVERY_DB_PAGE) {
+    const { data, error } = await supabase
+      .from("source_items")
+      .select("duplicate_key")
+      .in("tracked_entity_id", facultyIds)
+      .order("id", { ascending: true })
+      .range(offset, offset + DISCOVERY_DB_PAGE - 1);
+    if (error) {
+      errors.push({
+        source: "database",
+        entityId: "-",
+        message: `duplicate_key prefetch: ${error.message}`,
+      });
+      break;
+    }
+    const chunk = data ?? [];
+    out.push(...chunk);
+    if (chunk.length < DISCOVERY_DB_PAGE) break;
+  }
+  return out;
+}
+
+async function fetchPaginatedEntityLinks(
+  supabase: SupabaseClient<Database>,
+  facultyIds: string[],
+  errors: DiscoveryRunResult["errors"],
+): Promise<{ tracked_entity_id: string; source_item_id: string }[]> {
+  if (facultyIds.length === 0) return [];
+  const out: { tracked_entity_id: string; source_item_id: string }[] = [];
+  for (let offset = 0; offset < DISCOVERY_DB_HARD_CAP; offset += DISCOVERY_DB_PAGE) {
+    const { data, error } = await supabase
+      .from("source_item_tracked_entities")
+      .select("tracked_entity_id, source_item_id")
+      .in("tracked_entity_id", facultyIds)
+      .order("source_item_id", { ascending: true })
+      .order("tracked_entity_id", { ascending: true })
+      .range(offset, offset + DISCOVERY_DB_PAGE - 1);
+    if (error) {
+      errors.push({
+        source: "database",
+        entityId: "-",
+        message: `source_item_tracked_entities prefetch: ${error.message}`,
+      });
+      break;
+    }
+    const chunk = data ?? [];
+    out.push(...chunk);
+    if (chunk.length < DISCOVERY_DB_PAGE) break;
+  }
+  return out;
+}
+
+async function fetchSourceItemsByIdsChunked(
+  supabase: SupabaseClient<Database>,
+  ids: string[],
+  errors: DiscoveryRunResult["errors"],
+): Promise<{ id: string; title: string; published_at: string | null }[]> {
+  if (ids.length === 0) return [];
+  const out: { id: string; title: string; published_at: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += DISCOVERY_IN_CHUNK) {
+    const chunk = ids.slice(i, i + DISCOVERY_IN_CHUNK);
+    const { data, error } = await supabase
+      .from("source_items")
+      .select("id, title, published_at")
+      .in("id", chunk);
+    if (error) {
+      errors.push({
+        source: "database",
+        entityId: "-",
+        message: `source_items by id (junction): ${error.message}`,
+      });
+      break;
+    }
+    if (data?.length) out.push(...data);
+  }
+  return out;
+}
+
+type SignalGroupPrefetchRow = {
+  id: string;
+  signal_group_key: string | null;
+  community_id: string;
+  source_url: string | null;
+  source_type: Database["public"]["Tables"]["source_items"]["Row"]["source_type"];
+  nih_project_num: string | null;
+};
+
+async function fetchPaginatedSignalGroupRows(
+  supabase: SupabaseClient<Database>,
+  communityIds: string[],
+  errors: DiscoveryRunResult["errors"],
+): Promise<SignalGroupPrefetchRow[]> {
+  if (communityIds.length === 0) return [];
+  const out: SignalGroupPrefetchRow[] = [];
+  for (let offset = 0; offset < DISCOVERY_DB_HARD_CAP; offset += DISCOVERY_DB_PAGE) {
+    const { data, error } = await supabase
+      .from("source_items")
+      .select("id, signal_group_key, community_id, source_url, source_type, nih_project_num")
+      .in("community_id", communityIds)
+      .or("signal_group_key.not.is.null,nih_project_num.not.is.null")
+      .order("id", { ascending: true })
+      .range(offset, offset + DISCOVERY_DB_PAGE - 1);
+    if (error) {
+      errors.push({
+        source: "database",
+        entityId: "-",
+        message: `signal_group_key prefetch: ${error.message}`,
+      });
+      break;
+    }
+    const chunk = (data ?? []) as SignalGroupPrefetchRow[];
+    out.push(...chunk);
+    if (chunk.length < DISCOVERY_DB_PAGE) break;
+  }
+  return out;
+}
 
 export async function runDiscovery(
   supabase: SupabaseClient<Database>,
@@ -197,36 +326,26 @@ export async function runDiscovery(
     : 0;
 
   const facultyIds = rows.map((r) => r.id);
-  const { data: existRows } = await supabase
-    .from("source_items")
-    .select("duplicate_key")
-    .in("tracked_entity_id", facultyIds);
+  const existRows = await fetchPaginatedDuplicateKeys(supabase, facultyIds, errors);
 
   const seen = new Set(
-    (existRows ?? [])
-      .map((r) => r.duplicate_key)
-      .filter((k): k is string => Boolean(k)),
+    existRows.map((r) => r.duplicate_key).filter((k): k is string => Boolean(k)),
   );
 
-  const { data: linkRows } = await supabase
-    .from("source_item_tracked_entities")
-    .select("tracked_entity_id, source_item_id")
-    .in("tracked_entity_id", facultyIds);
+  const linkRows = await fetchPaginatedEntityLinks(supabase, facultyIds, errors);
 
-  const linkItemIds = [...new Set((linkRows ?? []).map((r) => r.source_item_id))];
-  const { data: itemsForLinks } =
-    linkItemIds.length > 0
-      ? await supabase
-          .from("source_items")
-          .select("id, title, published_at")
-          .in("id", linkItemIds)
-      : { data: [] as { id: string; title: string; published_at: string | null }[] };
+  const linkItemIds = [...new Set(linkRows.map((r) => r.source_item_id))];
+  const itemsForLinks = await fetchSourceItemsByIdsChunked(
+    supabase,
+    linkItemIds,
+    errors,
+  );
 
   const itemById = new Map(
-    (itemsForLinks ?? []).map((r) => [r.id, r] as const),
+    itemsForLinks.map((r) => [r.id, r] as const),
   );
 
-  for (const lr of linkRows ?? []) {
+  for (const lr of linkRows) {
     const row = itemById.get(lr.source_item_id);
     if (!row?.title) continue;
     seen.add(
@@ -236,15 +355,20 @@ export async function runDiscovery(
 
   const communityIds = [...new Set(rows.map((r) => r.community_id))];
   const sgkToItemId = new Map<string, string>();
+  const pmidToItemId = new Map<string, string>();
   if (communityIds.length > 0) {
-    const { data: sgRows } = await supabase
-      .from("source_items")
-      .select("id, signal_group_key, community_id, source_type, nih_project_num")
-      .in("community_id", communityIds)
-      .or("signal_group_key.not.is.null,nih_project_num.not.is.null");
-    for (const r of sgRows ?? []) {
+    const sgRows = await fetchPaginatedSignalGroupRows(
+      supabase,
+      communityIds,
+      errors,
+    );
+    for (const r of sgRows) {
       if (r.signal_group_key && !sgkToItemId.has(r.signal_group_key)) {
         sgkToItemId.set(r.signal_group_key, r.id);
+      }
+      const pmidKey = pubMedPmidDedupKey(r.community_id, r.source_url);
+      if (pmidKey && !pmidToItemId.has(pmidKey)) {
+        pmidToItemId.set(pmidKey, r.id);
       }
       if (
         r.source_type === "reporter" &&
@@ -431,8 +555,17 @@ export async function runDiscovery(
         c.source_type,
         c.nih_project_num,
       );
-      const existingItemId = sgkToItemId.get(sgk);
+      const pmidKey = pubMedPmidDedupKey(ent.community_id, c.source_url);
+      let existingItemId =
+        sgkToItemId.get(sgk) ??
+        (pmidKey ? pmidToItemId.get(pmidKey) : undefined);
       if (existingItemId) {
+        if (!sgkToItemId.has(sgk)) {
+          sgkToItemId.set(sgk, existingItemId);
+        }
+        if (pmidKey && !pmidToItemId.has(pmidKey)) {
+          pmidToItemId.set(pmidKey, existingItemId);
+        }
         let primaryId = primaryEntityByItemId.get(existingItemId);
         if (primaryId === undefined) {
           const { data: canon } = await supabase
@@ -539,7 +672,7 @@ export async function runDiscovery(
     const { data: insertedRows, error: insErr } = await supabase
       .from("source_items")
       .insert(batch.map((x) => x.row))
-      .select("id, signal_group_key");
+      .select("id, signal_group_key, source_url");
 
     if (insErr) {
       errors.push({
@@ -560,6 +693,13 @@ export async function runDiscovery(
       if (ins?.id) {
         if (ins.signal_group_key) {
           sgkToItemId.set(ins.signal_group_key, ins.id);
+        }
+        const insertedPmidKey = pubMedPmidDedupKey(
+          row.community_id ?? "",
+          ins.source_url ?? row.source_url,
+        );
+        if (insertedPmidKey && !pmidToItemId.has(insertedPmidKey)) {
+          pmidToItemId.set(insertedPmidKey, ins.id);
         }
         if (
           row.source_type === "reporter" &&

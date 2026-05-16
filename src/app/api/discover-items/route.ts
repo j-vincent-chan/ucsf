@@ -131,6 +131,9 @@ export async function POST(req: Request) {
   }
 
   const supabase = await createClient();
-  const result = await runDiscovery(supabase, parsed.data);
+  const result = await runDiscovery(supabase, {
+    ...parsed.data,
+    ...(profile.community_id ? { communityId: profile.community_id } : {}),
+  });
   return NextResponse.json(result);
 }

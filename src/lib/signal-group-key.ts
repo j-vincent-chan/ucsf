@@ -43,6 +43,24 @@ export function canonicalPubMedArticleUrl(url: string): string | null {
   return null;
 }
 
+/**
+ * Per-workspace dedupe key when `source_url` resolves to a PubMed article PMID.
+ * Pairs with `signal_group_key`: older rows may use title|day keys while discovery uses `url:<md5>`;
+ * both still share the same PMID.
+ */
+export function pubMedPmidDedupKey(
+  communityId: string,
+  sourceUrl: string | null | undefined,
+): string | null {
+  if (!communityId || !sourceUrl?.trim()) return null;
+  const canon = canonicalPubMedArticleUrl(sourceUrl);
+  if (!canon) return null;
+  const m = canon.match(/\/(\d{4,})\/?$/);
+  const pmid = m?.[1];
+  if (!pmid) return null;
+  return `${communityId}|pmid:${pmid}`;
+}
+
 /** Strip fragment + query; lowercase; PubMed PMID URLs collapse to canonical — must match Postgres. */
 export function normalizeSourceUrlForDedup(url: string): string | null {
   const t = url.trim().toLowerCase();
