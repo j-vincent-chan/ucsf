@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getProfile, getSessionUser } from "@/lib/auth";
 import { runDiscovery } from "@/lib/discovery/run-discovery";
+import { runPublishScheduledQueuePosts } from "@/lib/social-signals/publish-scheduled-queue";
 
 /** Long runs: deep backfills should use `scripts/discovery-backfill.ts` locally (no serverless cap). */
 export const maxDuration = 300;
@@ -91,6 +92,14 @@ export async function GET(req: Request) {
     note = result.note;
   }
 
+  let scheduledPublish: Awaited<ReturnType<typeof runPublishScheduledQueuePosts>> | null = null;
+  let scheduledPublishError: string | null = null;
+  try {
+    scheduledPublish = await runPublishScheduledQueuePosts(supabase);
+  } catch (e) {
+    scheduledPublishError = e instanceof Error ? e.message : "Scheduled publish failed";
+  }
+
   return NextResponse.json({
     inserted,
     skippedDuplicates,
@@ -104,6 +113,8 @@ export async function GET(req: Request) {
     /** Echo so scheduled runs can confirm the rolling window in Vercel logs. */
     cronConfig: { daysBack: dBack, maxPerSource: mps },
     communities: communitiesOut,
+    scheduledPublish,
+    scheduledPublishError,
   });
 }
 
