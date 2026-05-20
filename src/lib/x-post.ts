@@ -6,6 +6,7 @@ import {
   accessTokenLikelyExpired,
   bundleFromStored,
   refreshAccessToken,
+  xOAuthCredentialsConfigured,
   type XOAuthTokenBundle,
 } from "@/lib/x-oauth";
 
@@ -73,6 +74,12 @@ export async function ensureFreshUserAccessToken(
   if (!bundle.refresh_token) {
     const err = new Error("TOKEN_EXPIRED_RECONNECT");
     err.name = "XOauthExpiredNoRefresh";
+    throw err;
+  }
+
+  if (!xOAuthCredentialsConfigured()) {
+    const err = new Error("X_OAUTH_SERVER_MISCONFIGURED");
+    err.name = "XOauthServerMisconfigured";
     throw err;
   }
 

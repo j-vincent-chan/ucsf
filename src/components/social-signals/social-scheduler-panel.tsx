@@ -1228,7 +1228,7 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-        Posts you <span className="font-medium text-[color:var(--foreground)]">Schedule</span> from Digest (Social preview) arrive as drafts below. In <span className="font-medium text-[color:var(--foreground)]">Week</span> view, <span className="font-medium text-[color:var(--foreground)]">+ Add draft</span> on a day creates a Bluesky draft at 10:00 local on that date. Use <span className="font-medium text-[color:var(--foreground)]">List</span> or <span className="font-medium text-[color:var(--foreground)]">Month</span> as needed — open any card to edit and reschedule.
+        Posts you <span className="font-medium text-[color:var(--foreground)]">Schedule</span> from Digest (Social preview) arrive as drafts below. In <span className="font-medium text-[color:var(--foreground)]">Week</span> view, <span className="font-medium text-[color:var(--foreground)]">+ Add draft</span> on a day creates a Bluesky draft at 10:00 local on that date. Use <span className="font-medium text-[color:var(--foreground)]">List</span> or <span className="font-medium text-[color:var(--foreground)]">Month</span> as needed — open any card to edit and reschedule. When the scheduled time passes, the server publishes to X and Bluesky automatically (about every 5 minutes) if credentials are configured in Settings.
       </p>
 
       <div className="grid min-h-[min(82vh,52rem)] gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,8fr)] lg:items-stretch">

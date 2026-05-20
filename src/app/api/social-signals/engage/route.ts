@@ -244,6 +244,15 @@ export async function POST(req: Request) {
       if (name === "XOauthExpiredNoRefresh") {
         return NextResponse.json({ error: "X session expired. Reconnect in Settings." }, { status: 403 });
       }
+      if (name === "XOauthServerMisconfigured") {
+        return NextResponse.json(
+          {
+            error:
+              "X reposts are unavailable: server OAuth credentials (X_OAUTH_CLIENT_ID and X_OAUTH_CLIENT_SECRET) are not configured for this deployment. Ask your admin to add them, then reconnect X in Settings.",
+          },
+          { status: 503 },
+        );
+      }
       return NextResponse.json(
         { error: e instanceof Error ? e.message : "OAuth error" },
         { status: 502 },

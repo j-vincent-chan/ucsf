@@ -40,6 +40,12 @@ export function generatePkce(): { codeVerifier: string; codeChallenge: string } 
   return { codeVerifier, codeChallenge };
 }
 
+export function xOAuthCredentialsConfigured(): boolean {
+  const clientId = process.env.X_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = process.env.X_OAUTH_CLIENT_SECRET?.trim();
+  return Boolean(clientId && clientSecret);
+}
+
 export function getXOAuthRedirectUri(): string {
   const explicit = process.env.X_OAUTH_REDIRECT_URI?.trim();
   if (explicit) return explicit.replace(/\/$/, "");

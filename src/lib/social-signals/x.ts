@@ -126,7 +126,8 @@ function mapXTweetsResponse(raw: {
         const mediaUrls = mediaUrlsFromTweet(orig.attachments?.media_keys, mediaIncludes);
         const conv = orig.conversation_id ?? t.conversation_id;
         return {
-          id: `x:${t.id}`,
+          // Engage (repost/like/reply) must target the original tweet, not the retweet wrapper.
+          id: `x:${orig.id}`,
           platform: "x" as const,
           authorName: origAuthor?.name ?? handle,
           authorHandle: `@${handle}`,
