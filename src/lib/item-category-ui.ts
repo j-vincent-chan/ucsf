@@ -12,7 +12,14 @@ export const SELECTABLE_ITEM_CATEGORIES = [
 export type SelectableItemCategory = (typeof SELECTABLE_ITEM_CATEGORIES)[number];
 
 /** Digest / queue chips: `news` is stored as `media` in the database. */
-export type DigestCategoryFilterChip = "all" | "paper" | "award" | "funding" | "news" | "other";
+export type DigestCategoryFilterChip =
+  | "all"
+  | "paper"
+  | "award"
+  | "funding"
+  | "news"
+  | "other"
+  | "completed";
 
 export const DIGEST_CATEGORY_FILTER_CHIPS: readonly DigestCategoryFilterChip[] = [
   "all",
@@ -21,6 +28,7 @@ export const DIGEST_CATEGORY_FILTER_CHIPS: readonly DigestCategoryFilterChip[] =
   "award",
   "news",
   "other",
+  "completed",
 ];
 
 /** URL + filter dropdowns for `/items` — same as selectable, order fixed for UX. */
@@ -85,15 +93,22 @@ export function digestCategoryChipLabel(chip: DigestCategoryFilterChip): string 
       return "News";
     case "other":
       return "Other";
+    case "completed":
+      return "Completed";
     default:
       return chip;
   }
+}
+
+export function isDigestCompletedFilterChip(chip: DigestCategoryFilterChip): boolean {
+  return chip === "completed";
 }
 
 export function matchesDigestCategoryChip(
   category: ItemCategory | null,
   chip: DigestCategoryFilterChip,
 ): boolean {
+  if (chip === "completed") return false;
   if (chip === "all") return true;
   if (chip === "news") return category === "media";
   if (chip === "other") return isCategoryOtherBucket(category);

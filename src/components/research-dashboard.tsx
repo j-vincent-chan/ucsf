@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RenderingStatus } from "@/components/rendering-indicator";
 
 const CollaborationLandscape = dynamic(
   () =>
@@ -28,8 +29,14 @@ const CollaborationLandscape = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-4 text-sm text-[color:var(--muted-foreground)]">
-        Loading collaboration landscape…
+      <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-4">
+        <RenderingStatus
+          variant="compact"
+          size="md"
+          label="Rendering collaboration landscape…"
+          description={null}
+          className="min-h-0 py-0"
+        />
       </div>
     ),
   },

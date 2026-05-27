@@ -159,7 +159,8 @@ export type SocialWorkspaceSection =
   | "scheduler"
   | "campaigns"
   | "analytics"
-  | "bookmarks";
+  | "bookmarks"
+  | "activity";
 
 /** Rows from `social_review_queue_posts` surfaced in Scheduler (digest “Schedule”, etc.). */
 export type WorkspaceSchedulerPost = {
@@ -171,6 +172,8 @@ export type WorkspaceSchedulerPost = {
   source_url: string | null;
   created_at: string;
   scheduled_at: string | null;
+  published_at?: string | null;
+  publish_error?: string | null;
   sourceSignalTitle: string;
   /** From linked source item → tracked entities (queue cards). */
   investigatorsSummary: string | null;

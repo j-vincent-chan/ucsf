@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import type { InvestigatorMentionOption } from "@/lib/investigator-mentions";
 import { resolveInsertHandle } from "@/lib/investigator-mentions";
+import { RenderingIndicator } from "@/components/rendering-indicator";
 import { Textarea } from "@/components/ui/textarea";
 
 export type InvestigatorMentionTextareaProps = Omit<
@@ -178,7 +179,10 @@ export const InvestigatorMentionTextarea = forwardRef<HTMLTextAreaElement, Inves
           </div>
           <div className="max-h-[min(14rem,40vh)] overflow-y-auto py-1">
             {loading ? (
-              <p className="px-3 py-2 text-xs text-[color:var(--muted-foreground)]">Loading…</p>
+              <div className="flex items-center gap-2 px-3 py-2" role="status" aria-live="polite" aria-busy="true">
+                <RenderingIndicator size="sm" />
+                <span className="text-xs text-[color:var(--muted-foreground)]">Loading faculty…</span>
+              </div>
             ) : list.length === 0 ? (
               <p className="px-3 py-2 text-xs text-[color:var(--muted-foreground)]">
                 No matches — try another search or add handles on Entities.

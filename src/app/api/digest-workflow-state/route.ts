@@ -51,7 +51,8 @@ const bodySchema = z
   .object({
     source_item_id: uuidText.optional(),
     source_item_ids: z.array(uuidText).min(1).max(MAX_BATCH).optional(),
-    complete: z.preprocess(normalizeComplete, z.boolean()),
+    complete: z.preprocess(normalizeComplete, z.boolean()).optional(),
+    return_to_approval: z.preprocess(normalizeComplete, z.boolean()).optional(),
   })
   .superRefine((val, ctx) => {
     const hasSingle = val.source_item_id != null;
@@ -61,6 +62,22 @@ const bodySchema = z
         code: "custom",
         message: "Provide exactly one of source_item_id or source_item_ids",
         path: [],
+      });
+    }
+    const returning = val.return_to_approval === true;
+    const hasComplete = val.complete !== undefined;
+    if (returning && hasComplete) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide return_to_approval or complete, not both",
+        path: [],
+      });
+    }
+    if (!returning && val.complete === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message: "complete is required unless return_to_approval is true",
+        path: ["complete"],
       });
     }
   });
@@ -102,7 +119,8 @@ export async function POST(req: Request) {
 
   if (parsed.data.source_item_id != null) {
     const sourceItemId = parsed.data.source_item_id;
-    const complete = parsed.data.complete;
+    const returnToApproval = parsed.data.return_to_approval === true;
+    const complete = parsed.data.complete === true;
 
     const { data: row, error: rowErr } = await supabase
       .from("source_items")
@@ -119,9 +137,11 @@ export async function POST(req: Request) {
 
     const { error: updateErr } = await supabase
       .from("source_items")
-      .update({
-        digest_marked_complete_at: complete ? new Date().toISOString() : null,
-      })
+      .update(
+        returnToApproval
+          ? { status: "reviewed", digest_marked_complete_at: null }
+          : { digest_marked_complete_at: complete ? new Date().toISOString() : null },
+      )
       .eq("id", sourceItemId);
 
     if (updateErr) {
@@ -145,7 +165,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "source_item_ids required" }, { status: 400 });
   }
   const uniqueIds = [...new Set(batchIds)];
-  const complete = parsed.data.complete;
+  const returnToApproval = parsed.data.return_to_approval === true;
+  const complete = parsed.data.complete === true;
 
   const { data: rows, error: rowsErr } = await supabase
     .from("source_items")
@@ -172,9 +193,11 @@ export async function POST(req: Request) {
 
   const { error: updateErr } = await supabase
     .from("source_items")
-    .update({
-      digest_marked_complete_at: complete ? new Date().toISOString() : null,
-    })
+    .update(
+      returnToApproval
+        ? { status: "reviewed", digest_marked_complete_at: null }
+        : { digest_marked_complete_at: complete ? new Date().toISOString() : null },
+    )
     .in("id", uniqueIds);
 
   if (updateErr) {

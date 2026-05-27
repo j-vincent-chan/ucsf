@@ -2,7 +2,8 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { sealXOAuthPending } from "@/lib/oauth-seal";
-import { buildAuthorizeUrl, generatePkce, getXOAuthRedirectUri } from "@/lib/x-oauth";
+import { stashXOAuthPendingByNonce } from "@/lib/x-oauth-pending-store";
+import { buildAuthorizeUrl, generatePkce, resolveXOAuthRedirectUri } from "@/lib/x-oauth";
 
 const COOKIE = "x_oauth_pending";
 
@@ -12,32 +13,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.nextUrl.origin));
   }
 
-  try {
-    getXOAuthRedirectUri();
-  } catch {
-    return NextResponse.json(
-      { error: "Set X_OAUTH_REDIRECT_URI or NEXT_PUBLIC_SITE_URL so the callback URL matches the X Developer Portal." },
-      { status: 500 },
-    );
-  }
+  const redirectUri = resolveXOAuthRedirectUri(request.nextUrl.origin);
 
-  const state = base64Url(randomBytes(24));
+  const nonce = base64Url(randomBytes(24));
   const { codeVerifier, codeChallenge } = generatePkce();
 
+  /** Short `state` for X (500 char max); full payload in httpOnly cookie + dev memory stash. */
   let sealed: string;
   try {
-    sealed = sealXOAuthPending({ userId: user.id, codeVerifier, state });
+    sealed = sealXOAuthPending({ userId: user.id, codeVerifier, nonce, redirectUri });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "OAuth seal failed";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 
-  const url = buildAuthorizeUrl({ state, codeChallenge });
+  stashXOAuthPendingByNonce(nonce, sealed);
+
+  const url = buildAuthorizeUrl({ state: nonce, codeChallenge, redirectUri });
 
   const res = NextResponse.redirect(url);
   res.cookies.set(COOKIE, sealed, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: request.nextUrl.protocol === "https:",
     sameSite: "lax",
     path: "/",
     maxAge: 15 * 60,

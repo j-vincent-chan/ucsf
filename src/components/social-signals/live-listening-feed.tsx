@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { dedupeSocialPostsById } from "@/lib/social-signals/dedupe-posts";
 import { groupPostsForFeedDisplay, type FeedDisplayRow } from "@/lib/social-signals/group-feed-rows";
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "@/lib/social-signals/types";
+import { RenderingIndicator } from "@/components/rendering-indicator";
 import { LinkifiedText } from "./linkified-text";
 import { PlatformBadge } from "./platform-badge";
 import { PostEngagementBar } from "./post-engagement-bar";
@@ -767,7 +768,13 @@ export function LiveListeningFeed({
                 className="flex list-none justify-center py-3"
                 aria-hidden
               >
-                <span className="text-[11px] font-medium text-[color:var(--muted-foreground)]">
+                <span
+                  className="flex items-center gap-2 text-[11px] font-medium text-[color:var(--muted-foreground)]"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <RenderingIndicator size="sm" />
                   Loading more…
                 </span>
               </li>

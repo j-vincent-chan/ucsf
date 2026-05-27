@@ -1,11 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PublishPlatform } from "@/lib/social-signals/workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
 import { WorkspaceHandleAvatarImg, type WorkspaceAccountAvatars } from "@/components/workspace-handle-avatar-img";
+import { EmojiTabPicker } from "./emoji-tab-picker";
+import { GiphyReplyPicker } from "./giphy-reply-picker";
 import { PlatformBadge } from "./platform-badge";
+
+const COMPOSER_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+const COMPOSER_MEDIA_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
 const composerToolbarIcon =
   "rounded-full p-2 text-sky-600 transition-colors hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-400";
@@ -24,16 +29,6 @@ function IconMedia({ className = "" }: { className?: string }) {
       <rect x="3" y="5" width="18" height="14" rx="2" />
       <circle cx="8.5" cy="11" r="1.5" fill="currentColor" stroke="none" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L9 17" />
-    </svg>
-  );
-}
-
-function IconGif({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path strokeLinecap="round" d="M7 10h4M7 14h6" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l3 3-3 3" />
     </svg>
   );
 }
@@ -77,54 +72,180 @@ export function SocialComposerDrawer({
   onClose,
   initialPlatform = "bluesky",
   accounts,
+  onOpenDrafts,
 }: {
   open: boolean;
   onClose: () => void;
   initialPlatform?: PublishPlatform;
   /** Connected X / Bluesky profile avatars — composer shows X first for simplicity. */
   accounts?: WorkspaceAccountAvatars | null;
+  /** Jump to Scheduler queue (drafts). */
+  onOpenDrafts?: () => void;
 }) {
   const [postToX, setPostToX] = useState(initialPlatform === "x");
   const [postToBluesky, setPostToBluesky] = useState(initialPlatform !== "x");
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [gifUrl, setGifUrl] = useState<string | null>(null);
+  const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiWrapRef = useRef<HTMLDivElement>(null);
 
   const effectivePostToX = postToX;
   const effectivePostToBluesky = postToBluesky;
   const postingToBoth = effectivePostToX && effectivePostToBluesky;
   const postingToNone = !effectivePostToX && !effectivePostToBluesky;
+  const hasAttachment = Boolean(mediaFile || gifUrl);
   const overX = effectivePostToX ? text.length > X_CHAR_LIMIT : false;
   const overBluesky = effectivePostToBluesky ? text.length > BLUESKY_CHAR_LIMIT : false;
   const overAny = overX || overBluesky;
+
+  const charLimit = useMemo(() => {
+    if (postingToNone) return X_CHAR_LIMIT;
+    if (postingToBoth) return Math.min(X_CHAR_LIMIT, BLUESKY_CHAR_LIMIT);
+    return effectivePostToX ? X_CHAR_LIMIT : BLUESKY_CHAR_LIMIT;
+  }, [postingToNone, postingToBoth, effectivePostToX]);
+
+  const mediaPreviewUrl = useMemo(() => (mediaFile ? URL.createObjectURL(mediaFile) : null), [mediaFile]);
+  const attachmentPreviewSrc = gifPreviewUrl ?? mediaPreviewUrl;
+
+  useEffect(() => {
+    return () => {
+      if (mediaPreviewUrl) URL.revokeObjectURL(mediaPreviewUrl);
+    };
+  }, [mediaPreviewUrl]);
+
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = emojiWrapRef.current;
+      if (el && !el.contains(e.target as Node)) setEmojiOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [emojiOpen]);
+
+  const clearAttachments = useCallback(() => {
+    setMediaFile(null);
+    setGifUrl(null);
+    setGifPreviewUrl(null);
+  }, []);
+
+  const insertEmoji = useCallback(
+    (emoji: string) => {
+      const el = textareaRef.current;
+      if (!el) {
+        setText((t) => (t + emoji).slice(0, charLimit));
+        return;
+      }
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      setText((t) => {
+        const next = t.slice(0, start) + emoji + t.slice(end);
+        return next.slice(0, charLimit);
+      });
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + emoji.length;
+        el.setSelectionRange(pos, pos);
+      });
+      setEmojiOpen(false);
+    },
+    [charLimit],
+  );
+
+  const pickImage = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const onFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose an image or GIF file.");
+      return;
+    }
+    if (file.size > COMPOSER_MEDIA_MAX_BYTES) {
+      toast.error("File must be 5 MB or smaller.");
+      return;
+    }
+    setGifUrl(null);
+    setGifPreviewUrl(null);
+    setMediaFile(file);
+  }, []);
 
   const charSummary = useMemo(() => {
     if (postingToNone) return "Choose a platform";
     if (postingToBoth) return `${text.length} / ${X_CHAR_LIMIT} (X) · ${text.length} / ${BLUESKY_CHAR_LIMIT} (Bluesky)`;
     if (effectivePostToX) return `${text.length} / ${X_CHAR_LIMIT}`;
     return `${text.length} / ${BLUESKY_CHAR_LIMIT}`;
-  }, [text.length, postingToNone, postingToBoth, effectivePostToX, effectivePostToBluesky]);
+  }, [text.length, postingToNone, postingToBoth, effectivePostToX]);
 
-  const canPost = Boolean(text.trim()) && !overAny && !postingToNone && !posting;
+  const canPost =
+    (Boolean(text.trim()) || hasAttachment) && !overAny && !postingToNone && !posting && !scheduling;
 
   async function submitPost(): Promise<void> {
     const body = text.trim();
-    if (!body || overAny || postingToNone || posting) return;
+    if ((!body && !hasAttachment) || overAny || postingToNone || posting) return;
 
     setPosting(true);
     type Done = { platform: "x" | "bluesky"; ok: boolean; url?: string; error?: string };
-    const done: Done[] = [];
-
-    const postJson = async (url: string, payload: Record<string, string>) => {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
-      return { ok: res.ok, url: typeof data.url === "string" ? data.url : undefined, error: data.error };
-    };
 
     try {
+      if (hasAttachment) {
+        const fd = new FormData();
+        fd.append("text", body);
+        if (effectivePostToX) fd.append("postToX", "1");
+        if (effectivePostToBluesky) fd.append("postToBluesky", "1");
+        if (mediaFile) fd.append("media", mediaFile);
+        else if (gifUrl) fd.append("gifUrl", gifUrl);
+
+        const res = await fetch("/api/social-signals/composer-post", {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          partial?: boolean;
+          error?: string;
+          urls?: { platform: string; url: string }[];
+        };
+
+        if (!res.ok || !data.ok) {
+          toast.error(typeof data.error === "string" ? data.error : "Posting failed.");
+          return;
+        }
+
+        const lines =
+          data.urls?.map((u) => `${u.platform === "x" ? "X" : "Bluesky"}: ${u.url}`).join("\n") ?? "";
+        toast.success(data.partial ? "Posted to some platforms." : "Posted.", {
+          description: lines || undefined,
+          duration: 6500,
+        });
+        setText("");
+        clearAttachments();
+        return;
+      }
+
+      const done: Done[] = [];
+      const postJson = async (url: string, payload: Record<string, string>) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string; url?: string };
+        return { ok: res.ok, url: typeof data.url === "string" ? data.url : undefined, error: data.error };
+      };
+
       if (effectivePostToX) {
         const r = await postJson("/api/x/post", { text: body });
         done.push({
@@ -176,6 +297,46 @@ export function SocialComposerDrawer({
     }
   }
 
+  async function saveAsSchedulerDraft(): Promise<void> {
+    const body = text.trim();
+    if (!body) {
+      toast.error("Add text before saving a draft.");
+      return;
+    }
+    if (postingToNone) {
+      toast.error("Choose a platform.");
+      return;
+    }
+
+    const platforms: ("x" | "bluesky")[] = [
+      ...(effectivePostToX ? (["x"] as const) : []),
+      ...(effectivePostToBluesky ? (["bluesky"] as const) : []),
+    ];
+
+    setScheduling(true);
+    try {
+      const res = await fetch("/api/social-signals/review-queue/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: body, platforms }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; created?: number };
+      if (!res.ok) throw new Error(data.error ?? "Could not save draft");
+      toast.success(
+        `Draft${data.created === 1 ? "" : "s"} saved to Scheduler`,
+        onOpenDrafts
+          ? {
+              action: { label: "Open Scheduler", onClick: onOpenDrafts },
+            }
+          : undefined,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save draft");
+    } finally {
+      setScheduling(false);
+    }
+  }
+
   if (!open) return null;
 
   return (
@@ -187,11 +348,14 @@ export function SocialComposerDrawer({
     >
       <button
         type="button"
-        className="absolute inset-0 cursor-default"
+        className="absolute inset-0 z-0 cursor-default"
         aria-label="Close composer"
         onClick={onClose}
       />
-      <div className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-[0_30px_120px_-65px_rgba(0,0,0,0.75)]">
+      <div
+        className="relative z-10 flex w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[color:var(--border)]/80 bg-[color:var(--background)] shadow-[0_30px_120px_-65px_rgba(0,0,0,0.75)]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between gap-3 border-b border-[color:var(--border)]/55 px-3 py-2.5 sm:px-4">
           <button
             type="button"
@@ -207,7 +371,14 @@ export function SocialComposerDrawer({
           <button
             type="button"
             className="rounded-full px-3 py-1.5 text-sm font-semibold text-sky-600 hover:bg-sky-500/10 dark:text-sky-400"
-            onClick={() => toast.message("Drafts list is not connected yet.")}
+            onClick={() => {
+              if (onOpenDrafts) {
+                onClose();
+                onOpenDrafts();
+              } else {
+                toast.message("Open the Scheduler tab to manage drafts.");
+              }
+            }}
           >
             Drafts
           </button>
@@ -286,36 +457,110 @@ export function SocialComposerDrawer({
               size="lg"
             />
           </div>
-          <label className="min-w-0 flex-1">
-            <span className="sr-only">Post text</span>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={5}
-              placeholder="What would you like to share?"
-              className="w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-relaxed text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]/75 focus:outline-none focus:ring-0 sm:text-[1.05rem]"
-            />
-          </label>
+          <div className="min-w-0 flex-1">
+            <label className="block">
+              <span className="sr-only">Post text</span>
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                rows={5}
+                placeholder="What would you like to share?"
+                className="w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-relaxed text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]/75 focus:outline-none focus:ring-0 sm:text-[1.05rem]"
+              />
+            </label>
+            {attachmentPreviewSrc ? (
+              <div className="relative mt-2 inline-block max-w-full overflow-hidden rounded-xl border border-[color:var(--border)]/55">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={attachmentPreviewSrc} alt="" className="max-h-40 max-w-full object-cover" />
+                <button
+                  type="button"
+                  className="absolute right-1.5 top-1.5 rounded-full bg-black/55 p-1.5 text-white hover:bg-black/70"
+                  aria-label="Remove attachment"
+                  onClick={clearAttachments}
+                >
+                  <IconClose className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={COMPOSER_MEDIA_ACCEPT}
+          className="sr-only"
+          tabIndex={-1}
+          onChange={onFileChange}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[color:var(--border)]/45 px-2 py-1.5 sm:px-3">
           <div className="flex flex-wrap items-center gap-0.5">
-            <button type="button" disabled className={composerToolbarIcon} title="Add media (coming soon)" aria-label="Add media">
+            <button
+              type="button"
+              disabled={posting || scheduling}
+              className={composerToolbarIcon}
+              title="Add image"
+              aria-label="Add image"
+              onClick={pickImage}
+            >
               <IconMedia className="h-5 w-5" />
             </button>
-            <button type="button" disabled className={composerToolbarIcon} title="GIF (coming soon)" aria-label="GIF">
-              <IconGif className="h-5 w-5" />
+            <button
+              type="button"
+              disabled={posting || scheduling}
+              className={`${composerToolbarIcon} font-bold`}
+              title="Search GIFs (Klipy)"
+              aria-label="Search GIFs"
+              onClick={() => setGifPickerOpen(true)}
+            >
+              <span className="flex h-6 min-w-[2rem] items-center justify-center rounded border border-current px-1 text-[10px] leading-none">
+                GIF
+              </span>
             </button>
-            <button type="button" disabled className={composerToolbarIcon} title="Poll (coming soon)" aria-label="Poll">
+            <button
+              type="button"
+              disabled={posting || scheduling}
+              className={composerToolbarIcon}
+              title="Polls not supported yet"
+              aria-label="Poll"
+              onClick={() => toast.message("Polls aren’t supported in the composer yet.")}
+            >
               <IconPoll className="h-5 w-5" />
             </button>
-            <button type="button" disabled className={composerToolbarIcon} title="List (coming soon)" aria-label="List">
+            <button
+              type="button"
+              disabled={posting || scheduling}
+              className={composerToolbarIcon}
+              title="Lists not supported yet"
+              aria-label="List"
+              onClick={() => toast.message("Lists aren’t supported in the composer yet.")}
+            >
               <IconList className="h-5 w-5" />
             </button>
-            <button type="button" disabled className={composerToolbarIcon} title="Emoji (coming soon)" aria-label="Emoji">
-              <IconEmoji className="h-5 w-5" />
-            </button>
-            <button type="button" disabled className={composerToolbarIcon} title="Schedule (coming soon)" aria-label="Schedule">
+            <div className="relative" ref={emojiWrapRef}>
+              <button
+                type="button"
+                disabled={posting || scheduling}
+                className={composerToolbarIcon}
+                title="Emoji"
+                aria-label="Emoji"
+                aria-expanded={emojiOpen}
+                onClick={() => setEmojiOpen((o) => !o)}
+              >
+                <IconEmoji className="h-5 w-5" />
+              </button>
+              {emojiOpen ? <EmojiTabPicker open={emojiOpen} onPick={insertEmoji} /> : null}
+            </div>
+            <button
+              type="button"
+              disabled={posting || scheduling || !text.trim() || postingToNone}
+              className={composerToolbarIcon}
+              title="Save to Scheduler queue"
+              aria-label="Schedule as draft"
+              onClick={() => void saveAsSchedulerDraft()}
+            >
               <IconSchedule className="h-5 w-5" />
             </button>
           </div>
@@ -340,9 +585,19 @@ export function SocialComposerDrawer({
         <p className="border-t border-[color:var(--border)]/50 px-3 py-2.5 text-[10px] leading-snug text-[color:var(--muted-foreground)] sm:px-4">
           Bluesky posts use your workspace&apos;s Bluesky credentials from Settings. X posting uses your personal account —
           connect <span className="font-medium text-[color:var(--foreground)]">Post to X (OAuth)</span> under Settings first.
-          Text-only from this composer; digest attachments remain in Digest Studio.
+          Images and Klipy GIFs post via the composer; digest hero images remain in Digest Studio. Use Schedule to save unscheduled drafts.
         </p>
       </div>
+
+      <GiphyReplyPicker
+        open={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onPick={({ gifUrl: pickedGifUrl, previewUrl }) => {
+          setMediaFile(null);
+          setGifUrl(pickedGifUrl);
+          setGifPreviewUrl(previewUrl);
+        }}
+      />
     </div>
   );
 }

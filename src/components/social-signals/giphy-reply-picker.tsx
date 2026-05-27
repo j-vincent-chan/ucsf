@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RenderingStatus } from "@/components/rendering-indicator";
 
 export type GiphyPick = { gifUrl: string; previewUrl: string };
 
@@ -113,7 +114,12 @@ export function GiphyReplyPicker({
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
             {loading ? (
               <div className="flex min-h-[280px] items-center justify-center">
-                <p className="text-sm text-[color:var(--muted-foreground)]">Loading…</p>
+                <RenderingStatus
+                  variant="compact"
+                  label="Loading GIFs…"
+                  description={null}
+                  className="min-h-0 py-0"
+                />
               </div>
             ) : error ? (
               <div className="flex min-h-[280px] items-center justify-center px-2">

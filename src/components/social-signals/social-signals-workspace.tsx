@@ -16,6 +16,8 @@ import { SocialBookmarksProvider } from "./social-bookmarks-context";
 import { SocialSchedulerPanel } from "./social-scheduler-panel";
 import { SocialComposerDrawer } from "./social-composer-drawer";
 import { AICompanionPanel } from "./ai-companion-panel";
+import { SystemMessagesActivity } from "@/components/system-messages-activity";
+import { useSystemMessages } from "@/components/system-messages-context";
 
 function IconPlus({ className }: { className?: string }) {
   return (
@@ -43,6 +45,7 @@ const NAV: { id: SocialWorkspaceSection; label: string }[] = [
   { id: "scheduler", label: "Scheduler" },
   { id: "analytics", label: "Analytics" },
   { id: "bookmarks", label: "Bookmarks" },
+  { id: "activity", label: "Activity" },
 ];
 
 function navPill(active: boolean) {
@@ -118,6 +121,8 @@ export function SocialSignalsWorkspace({
     setCompanionOpen(false);
   }, []);
 
+  const { unreadCount: activityUnread } = useSystemMessages();
+
   return (
     <SocialBookmarksProvider>
     <div className="social-signals-scope min-h-[calc(100vh-8rem)] w-full min-w-0 max-w-full overflow-x-hidden pb-16">
@@ -137,9 +142,14 @@ export function SocialSignalsWorkspace({
                   setSection(n.id);
                   if (n.id === "composer") setComposerOpen(true);
                 }}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${navPill(section === n.id)}`}
+                className={`relative rounded-full px-4 py-2 text-sm font-semibold transition-colors ${navPill(section === n.id)}`}
               >
                 {n.label}
+                {n.id === "activity" && activityUnread > 0 ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[color:var(--accent)] px-1 text-[10px] font-bold text-[color:var(--accent-foreground)]">
+                    {activityUnread > 9 ? "9+" : activityUnread}
+                  </span>
+                ) : null}
               </button>
             ))}
           </nav>
@@ -217,11 +227,16 @@ export function SocialSignalsWorkspace({
         {section === "scheduler" ? <SocialSchedulerPanel initialPosts={initialSchedulerPosts} /> : null}
         {section === "analytics" ? <SocialAnalyticsPanel data={INITIAL_ANALYTICS} /> : null}
         {section === "bookmarks" ? <SocialBookmarksPanel /> : null}
+        {section === "activity" ? <SystemMessagesActivity /> : null}
       </div>
 
       <SocialComposerDrawer
         open={composerOpen}
         onClose={() => setComposerOpen(false)}
+        onOpenDrafts={() => {
+          setComposerOpen(false);
+          setSection("scheduler");
+        }}
         accounts={{
           xAvatarUrl: live.accounts.xAvatarUrl,
           blueskyAvatarUrl: live.accounts.blueskyAvatarUrl,

@@ -7,6 +7,7 @@ import { ResearchDashboard } from "@/components/research-dashboard";
 import { buildDashboardPayload, type RawEntity, type RawItem } from "@/lib/dashboard-aggregate";
 import { formatPostgrestError } from "@/lib/format-postgrest-error";
 import { fetchSocialSignalsDashboardSnapshot } from "@/lib/social-signals/dashboard-snapshot";
+import { fetchInvestigatorSocialDirectoryForCommunity } from "@/lib/social-signals/fetch-investigator-social-directory";
 import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } from "@/lib/workspace-social-settings";
 
 export const dynamic = "force-dynamic";
@@ -82,7 +83,10 @@ export default async function DashboardPage() {
       try {
         const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
         const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
-        const data = await fetchSocialSignalsDashboardSnapshot(workspaceCfg);
+        const investigatorDirectory = await fetchInvestigatorSocialDirectoryForCommunity(communityId);
+        const data = await fetchSocialSignalsDashboardSnapshot(workspaceCfg, {
+          investigatorDirectory,
+        });
         return { ok: true as const, data };
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);

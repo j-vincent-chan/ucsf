@@ -7,7 +7,7 @@ import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } f
 import type { PostStatus, PublishPlatform, WorkspaceSchedulerPost } from "@/lib/social-signals/workspace-types";
 import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 import { createClient } from "@/lib/supabase/server";
-import { buildInvestigatorSocialDirectory } from "@/lib/social-signals/ai-companion/investigator-directory";
+import { fetchInvestigatorSocialDirectoryForCommunity } from "@/lib/social-signals/fetch-investigator-social-directory";
 
 const JUNCTION_CHUNK = 120;
 
@@ -34,11 +34,18 @@ export default async function SocialSignalsPage({ searchParams }: { searchParams
           : "lists";
   const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
   const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
-  const { posts, sourceMeta, syncedAt, accounts } = await fetchSocialFeed(tab, workspaceCfg);
+  const investigatorDirectory = profile.community_id
+    ? await fetchInvestigatorSocialDirectoryForCommunity(profile.community_id)
+    : undefined;
+  const { posts, sourceMeta, syncedAt, accounts } = await fetchSocialFeed(tab, workspaceCfg, {
+    investigatorDirectory,
+  });
 
   const { data: drafts } = await supabase
     .from("social_review_queue_posts")
-    .select("id, source_item_id, platform, status, text, image_url, source_url, created_at, updated_at, scheduled_at")
+    .select(
+      "id, source_item_id, platform, status, text, image_url, source_url, created_at, updated_at, scheduled_at, published_at, publish_error",
+    )
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -107,9 +114,7 @@ export default async function SocialSignalsPage({ searchParams }: { searchParams
 
   const bySourceId = new Map((sourceRows ?? []).map((r) => [r.id, r]));
 
-  const initialSchedulerPosts: WorkspaceSchedulerPost[] = (drafts ?? [])
-    .filter((d) => d.status !== "published")
-    .map((d) => {
+  const initialSchedulerPosts: WorkspaceSchedulerPost[] = (drafts ?? []).map((d) => {
     const src = d.source_item_id ? bySourceId.get(d.source_item_id) : undefined;
     return {
       id: d.id,
@@ -120,22 +125,12 @@ export default async function SocialSignalsPage({ searchParams }: { searchParams
       source_url: d.source_url ?? null,
       created_at: d.created_at,
       scheduled_at: d.scheduled_at ?? null,
+      published_at: (d as { published_at?: string | null }).published_at ?? null,
+      publish_error: (d as { publish_error?: string | null }).publish_error ?? null,
       sourceSignalTitle: src?.title ?? "Signal",
       investigatorsSummary: investigatorsSummaryForSource(d.source_item_id),
     };
   });
-
-  let investigatorDirectory = undefined as ReturnType<typeof buildInvestigatorSocialDirectory> | undefined;
-  if (profile.community_id) {
-    const { data: invRows } = await supabase
-      .from("tracked_entities")
-      .select("x_handle, bluesky_handle, last_name")
-      .eq("community_id", profile.community_id)
-      .eq("active", true);
-    if (invRows?.length) {
-      investigatorDirectory = buildInvestigatorSocialDirectory(invRows);
-    }
-  }
 
   return (
     <SocialSignalsWorkspace

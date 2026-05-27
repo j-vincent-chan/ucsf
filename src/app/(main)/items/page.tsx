@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTenantCommunity } from "@/lib/auth";
+import { isNihNewFundingForSignalsQueue } from "@/lib/nih-project-num";
 import { ItemsQueue } from "./items-queue";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 import { redirect } from "next/navigation";
@@ -123,6 +124,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
         status,
         category,
         source_type,
+        nih_project_num,
         published_at,
         found_at,
         duplicate_key,
@@ -214,7 +216,16 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
   const rawItems = itemsRes.data;
   const itemsErr = itemsRes.error;
 
-  const items: ItemRow[] = (rawItems ?? []).map((r) => {
+  const signalsQueueItems = (rawItems ?? []).filter((r) =>
+    isNihNewFundingForSignalsQueue({
+      category: r.category,
+      source_type: r.source_type,
+      nih_project_num: r.nih_project_num,
+      title: r.title,
+    }),
+  );
+
+  const items: ItemRow[] = signalsQueueItems.map((r) => {
     const te = r.tracked_entities;
     const ent =
       te && typeof te === "object"
@@ -261,7 +272,8 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
         <h1 className="text-3xl font-semibold tracking-tight">Signals</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted-foreground)]">
           The approval center for newly surfaced signals, where items are reviewed for relevance,
-          identity accuracy, and inclusion before entering the broader record.
+          identity accuracy, and inclusion before entering the broader record. NIH funding here is
+          limited to new awards (support year 1); continuing grants are handled in Digest.
         </p>
       </div>
       {itemsErr ? (

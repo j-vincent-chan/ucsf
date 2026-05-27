@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { PublishPlatform, WorkspaceSchedulerPost } from "@/lib/social-signals/workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
+import {
+  schedulerPublishUi,
+  type SchedulerPublishUiKind,
+} from "@/lib/social-signals/scheduler-post-status";
 import { InvestigatorMentionTextarea } from "@/components/investigator-mention-textarea";
 import { LinkifiedText } from "./linkified-text";
 import { PlatformBadge } from "./platform-badge";
@@ -249,17 +253,66 @@ function draftCardPreview(text: string): { headline: string; detail: string } {
   return { headline: t, detail: "" };
 }
 
-function QueueDraftCard({ post, onOpen }: { post: WorkspaceSchedulerPost; onOpen: () => void }) {
+function QueueTrashIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
+    </svg>
+  );
+}
+
+function QueueDraftCard({
+  post,
+  onOpen,
+  onRemove,
+  removing,
+}: {
+  post: WorkspaceSchedulerPost;
+  onOpen: () => void;
+  onRemove: (id: string) => void;
+  removing: boolean;
+}) {
   const { headline, detail } = draftCardPreview(post.text);
   const queuedLabel = formatDraftQueuedDate(post.created_at);
   const investigatorLasts = formatInvestigatorLastNamesComma(queueInvestigatorsLine(post));
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group w-full rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--background)]/95 px-2.5 py-2.5 text-left shadow-[0_10px_28px_-22px_rgba(52,38,30,0.28)] transition-[border-color,box-shadow] hover:border-[color:var(--accent)]/45 hover:shadow-[0_14px_36px_-28px_rgba(52,38,30,0.32)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]/45"
-    >
+    <div className="group relative w-full rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--background)]/95 shadow-[0_10px_28px_-22px_rgba(52,38,30,0.28)] transition-[border-color,box-shadow] hover:border-[color:var(--accent)]/45 hover:shadow-[0_14px_36px_-28px_rgba(52,38,30,0.32)]">
+      <button
+        type="button"
+        disabled={removing}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(post.id);
+        }}
+        aria-label={`Remove draft: ${post.sourceSignalTitle}`}
+        title="Remove from queue"
+        className="absolute right-1.5 top-1.5 z-10 rounded-lg p-1.5 text-[color:var(--muted-foreground)] opacity-70 transition-[opacity,color,background] hover:bg-[#f4dfd9] hover:text-[#8f4d45] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--accent)]/45 sm:opacity-0 sm:group-hover:opacity-100 disabled:pointer-events-none disabled:opacity-40"
+      >
+        <QueueTrashIcon />
+      </button>
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={removing}
+        className="w-full rounded-xl px-2.5 py-2.5 pr-9 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]/45 disabled:opacity-60"
+      >
       <div className="flex gap-2">
         <div className="shrink-0 pt-0.5">
           <PlatformBadge platform={post.platform} size="xs" />
@@ -290,8 +343,65 @@ function QueueDraftCard({ post, onOpen }: { post: WorkspaceSchedulerPost; onOpen
           </div>
         </div>
       </div>
-    </button>
+      </button>
+    </div>
   );
+}
+
+function publishBadgeClass(kind: SchedulerPublishUiKind): string {
+  switch (kind) {
+    case "published":
+      return "border-emerald-600/35 bg-emerald-500/12 text-emerald-900 dark:text-emerald-200";
+    case "due":
+      return "border-amber-600/40 bg-amber-500/12 text-amber-950 dark:text-amber-100";
+    case "failed":
+      return "border-red-600/35 bg-red-500/10 text-red-900 dark:text-red-200";
+    case "scheduled":
+      return "border-sky-600/30 bg-sky-500/10 text-sky-950 dark:text-sky-100";
+    default:
+      return "border-[color:var(--border)]/60 bg-[color:var(--muted)]/25 text-[color:var(--muted-foreground)]";
+  }
+}
+
+function SchedulerPublishBadge({ post, compact }: { post: WorkspaceSchedulerPost; compact?: boolean }) {
+  const ui = schedulerPublishUi(post);
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 font-semibold leading-none ${publishBadgeClass(ui.kind)} ${compact ? "text-[9px]" : "text-[10px]"}`}
+      title={ui.detail}
+    >
+      {ui.kind === "published" ? (
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20 6L9 17l-5-5" />
+        </svg>
+      ) : null}
+      <span className="truncate">{ui.label}</span>
+    </span>
+  );
+}
+
+async function flushDueSchedulerPosts(): Promise<{
+  published: number;
+  failed: number;
+  errors: { id: string; message: string }[];
+} | null> {
+  try {
+    const res = await fetch("/api/social-signals/publish-due", { method: "POST" });
+    const data = (await res.json()) as {
+      error?: string;
+      published?: number;
+      failed?: number;
+      errors?: { id: string; message: string }[];
+    };
+    if (!res.ok) return null;
+    return {
+      published: data.published ?? 0,
+      failed: data.failed ?? 0,
+      errors: (data.errors ?? []).map((e) => ({ id: e.id, message: e.message })),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function SchedulerPostCard({
@@ -308,9 +418,12 @@ function SchedulerPostCard({
   /** Tighter body (one line) for month cells sized to ~2 cards visible. */
   monthDense?: boolean;
 }) {
-  const timeStr = post.scheduled_at
-    ? new Date(post.scheduled_at).toLocaleTimeString(undefined, { timeStyle: "short" })
-    : "Draft";
+  const ui = schedulerPublishUi(post);
+  const timeStr = post.published_at
+    ? new Date(post.published_at).toLocaleTimeString(undefined, { timeStyle: "short" })
+    : post.scheduled_at
+      ? new Date(post.scheduled_at).toLocaleTimeString(undefined, { timeStyle: "short" })
+      : "Draft";
 
   return (
     <button
@@ -320,13 +433,20 @@ function SchedulerPostCard({
       className={`group w-full rounded-xl border text-left transition-[box-shadow,border-color] ${
         selected
           ? "border-[color:var(--accent)]/60 bg-[color:var(--accent)]/[0.10] shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent)_28%,transparent)]"
-          : "border-[color:var(--border)]/65 bg-[color:var(--card)]/95 shadow-[var(--shadow-soft)] hover:border-[color:var(--accent)]/40"
+          : ui.kind === "published"
+            ? "border-emerald-600/35 bg-emerald-500/[0.06] shadow-[var(--shadow-soft)] hover:border-emerald-600/50"
+            : ui.kind === "failed"
+              ? "border-red-600/30 bg-red-500/[0.04] shadow-[var(--shadow-soft)] hover:border-red-600/45"
+              : "border-[color:var(--border)]/65 bg-[color:var(--card)]/95 shadow-[var(--shadow-soft)] hover:border-[color:var(--accent)]/40"
       } ${compact ? "p-1.5" : "p-2"}`}
     >
       <div className="flex items-start justify-between gap-1.5">
         <PlatformBadge platform={post.platform} size="xs" />
-        <span className="shrink-0 text-[10px] font-semibold tabular-nums text-[color:var(--muted-foreground)]">{timeStr}</span>
+        <SchedulerPublishBadge post={post} compact={compact} />
       </div>
+      <p className={`mt-1 tabular-nums text-[color:var(--muted-foreground)] ${compact ? "text-[9px]" : "text-[10px]"}`}>
+        {timeStr}
+      </p>
       <p
         className={`mt-1.5 font-semibold leading-snug text-[color:var(--foreground)] ${compact ? "text-[10px] line-clamp-1" : "text-xs line-clamp-1"}`}
       >
@@ -390,13 +510,23 @@ type DialogProps = {
   calendarPosts: WorkspaceSchedulerPost[];
   onClose: () => void;
   onSaved: () => void;
+  onRemoveFromQueue?: (id: string) => Promise<void>;
 };
 
-function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, onSaved }: DialogProps) {
+function SchedulerPostDialog({
+  post,
+  weekStartMonday,
+  calendarPosts,
+  onClose,
+  onSaved,
+  onRemoveFromQueue,
+}: DialogProps) {
   const router = useRouter();
   const [text, setText] = useState(post?.text ?? "");
   const [slotLocal, setSlotLocal] = useState("");
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     if (!post) return;
@@ -414,6 +544,7 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
 
   if (!post) return null;
 
+  const publishUi = schedulerPublishUi(post);
   const investigatorLastsDialog = formatInvestigatorLastNamesComma(queueInvestigatorsLine(post));
 
   const limit = charLimit(post.platform);
@@ -451,6 +582,17 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
       } else {
         toast.success(clearSlot ? "Returned to queue" : "Scheduled");
       }
+      if (!clearSlot && scheduled_at && Date.parse(scheduled_at) <= Date.now()) {
+        const flush = await flushDueSchedulerPosts();
+        if (flush?.published) {
+          toast.success(
+            flush.published === 1 ? "Published to platform" : `Published ${flush.published} posts`,
+          );
+        } else if (flush?.failed) {
+          const err = flush.errors[0]?.message ?? "Publish failed";
+          toast.error(err);
+        }
+      }
       onSaved();
       router.refresh();
       onClose();
@@ -460,6 +602,61 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
       setSaving(false);
     }
   };
+
+  const postNow = async () => {
+    if (post.status === "published") return;
+    setPublishing(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const res = await fetch(`/api/social-signals/review-queue/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text.trim(),
+          status: "scheduled",
+          scheduled_at: nowIso,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not queue publish");
+      const flush = await flushDueSchedulerPosts();
+      if (flush?.published) {
+        toast.success("Published to platform");
+        onSaved();
+        router.refresh();
+        onClose();
+        return;
+      }
+      if (flush?.failed) {
+        throw new Error(flush.errors[0]?.message ?? "Publish failed");
+      }
+      toast.message("Saved — will publish on the next check.");
+      onSaved();
+      router.refresh();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Publish failed");
+      router.refresh();
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const removeFromQueue = async () => {
+    if (!post || !onRemoveFromQueue) return;
+    setRemoving(true);
+    try {
+      await onRemoveFromQueue(post.id);
+      onClose();
+    } catch {
+      /* toast handled by parent */
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const dialogBusy = saving || removing || publishing;
+  const isPublished = post.status === "published";
 
   return (
     <div
@@ -485,8 +682,22 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <PlatformBadge platform={post.platform} size="xs" />
+            <SchedulerPublishBadge post={post} />
             <span className="text-[color:var(--muted-foreground)]">Signal: {post.sourceSignalTitle}</span>
           </div>
+          {publishUi.detail ? (
+            <p
+              className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                publishUi.kind === "published"
+                  ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100"
+                  : publishUi.kind === "failed"
+                    ? "border-red-600/30 bg-red-500/10 text-red-900 dark:text-red-200"
+                    : "border-[color:var(--border)]/55 bg-[color:var(--muted)]/15 text-[color:var(--muted-foreground)]"
+              }`}
+            >
+              {publishUi.detail}
+            </p>
+          ) : null}
           {investigatorLastsDialog ? (
             <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">{investigatorLastsDialog}</p>
           ) : null}
@@ -498,7 +709,8 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
               value={text}
               onChange={(v) => setText(v)}
               rows={10}
-              className="mt-1.5 min-h-[220px] resize-y border-[color:var(--border)]/80 bg-[color:var(--card)]/90 px-3 py-2.5 text-sm leading-relaxed text-[color:var(--foreground)]"
+              disabled={isPublished}
+              className="mt-1.5 min-h-[220px] resize-y border-[color:var(--border)]/80 bg-[color:var(--card)]/90 px-3 py-2.5 text-sm leading-relaxed text-[color:var(--foreground)] disabled:opacity-70"
             />
             <span
               className={`mt-1 block text-[11px] tabular-nums ${over ? "text-red-700 dark:text-red-300" : "text-[color:var(--muted-foreground)]"}`}
@@ -520,27 +732,49 @@ function SchedulerPostDialog({ post, weekStartMonday, calendarPosts, onClose, on
               type="datetime-local"
               value={slotLocal}
               onChange={(e) => setSlotLocal(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm"
+              disabled={isPublished}
+              className="mt-1.5 w-full rounded-xl border border-[color:var(--border)]/80 bg-[color:var(--card)]/95 px-3 py-2 text-sm disabled:opacity-70"
             />
           </label>
 
-          <div className="mt-auto flex flex-wrap gap-2 border-t border-[color:var(--border)]/40 pt-4">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void save(false)}
-              className="rounded-xl bg-[color:var(--foreground)] px-4 py-2.5 text-sm font-semibold text-[color:var(--background)] disabled:opacity-50"
-            >
-              {saving ? "Saving…" : post.scheduled_at ? "Update schedule" : "Save to calendar"}
-            </button>
-            {post.scheduled_at ? (
+          <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[color:var(--border)]/40 pt-4">
+            {!isPublished ? (
+              <>
+                <button
+                  type="button"
+                  disabled={dialogBusy}
+                  onClick={() => void save(false)}
+                  className="rounded-xl bg-[color:var(--foreground)] px-4 py-2.5 text-sm font-semibold text-[color:var(--background)] disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : post.scheduled_at ? "Update schedule" : "Save to calendar"}
+                </button>
+                <button
+                  type="button"
+                  disabled={dialogBusy}
+                  onClick={() => void postNow()}
+                  className="rounded-xl border border-[color:var(--accent)]/50 bg-[color:var(--accent)]/12 px-4 py-2.5 text-sm font-semibold text-[color:var(--foreground)] disabled:opacity-50"
+                >
+                  {publishing ? "Publishing…" : "Post now"}
+                </button>
+              </>
+            ) : null}
+            {post.scheduled_at && !isPublished ? (
               <button
                 type="button"
-                disabled={saving}
+                disabled={dialogBusy}
                 onClick={() => void save(true)}
                 className="rounded-xl border border-[color:var(--border)]/80 px-4 py-2.5 text-sm font-semibold text-[color:var(--foreground)]"
               >
                 Clear slot · keep draft
+              </button>
+            ) : onRemoveFromQueue && !isPublished ? (
+              <button
+                type="button"
+                disabled={dialogBusy}
+                onClick={() => void removeFromQueue()}
+                className="rounded-xl border border-[color:var(--border)]/80 px-4 py-2.5 text-sm font-semibold text-[#8f4d45] hover:bg-[#f4dfd9]/80 disabled:opacity-50"
+              >
+                {removing ? "Removing…" : "Remove from queue"}
               </button>
             ) : null}
           </div>
@@ -834,13 +1068,18 @@ function SchedulerWeekGlanceGrid({
                   const wPct = 100 / laneCount;
                   const leftPct = lane * wPct;
                   const hi = gp.id === highlightedId;
+                  const gpUi = schedulerPublishUi(gp);
                   return (
                     <div
                       key={gp.id}
                       className={`pointer-events-auto absolute z-[5] overflow-hidden rounded border px-0.5 py-px text-left shadow-sm ${
                         hi
                           ? "border-[color:var(--accent)]/70 bg-[color:var(--accent)]/15 ring-1 ring-[color:var(--accent)]/35"
-                          : "border-[color:var(--border)]/65 bg-[color:var(--card)]/95"
+                          : gpUi.kind === "published"
+                            ? "border-emerald-600/40 bg-emerald-500/12"
+                            : gpUi.kind === "due"
+                              ? "border-amber-600/40 bg-amber-500/10"
+                              : "border-[color:var(--border)]/65 bg-[color:var(--card)]/95"
                       }`}
                       style={{
                         top: topPx + 2,
@@ -983,26 +1222,46 @@ function SchedulerWeekColumns({
 
 function SchedulerListView({
   scheduled,
+  published,
   onPickPost,
 }: {
   scheduled: WorkspaceSchedulerPost[];
+  published: WorkspaceSchedulerPost[];
   onPickPost: (p: WorkspaceSchedulerPost) => void;
 }) {
   return (
     <div className="p-3">
       <p className="mb-4 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-        Chronological list of scheduled posts. Unscheduled drafts stay in the queue column.
+        Scheduled and published posts. Unscheduled drafts stay in the queue column.
       </p>
-      {scheduled.length === 0 ? (
+      {scheduled.length === 0 && published.length === 0 ? (
         <p className="py-10 text-center text-sm text-[color:var(--muted-foreground)]">No scheduled posts yet.</p>
       ) : (
-        <ul className="space-y-2.5">
-          {scheduled.map((p) => (
-            <li key={p.id}>
-              <SchedulerPostCard post={p} onClick={() => onPickPost(p)} />
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-6">
+          {scheduled.length > 0 ? (
+            <ul className="space-y-2.5">
+              {scheduled.map((p) => (
+                <li key={p.id}>
+                  <SchedulerPostCard post={p} onClick={() => onPickPost(p)} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {published.length > 0 ? (
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                Published
+              </p>
+              <ul className="space-y-2.5">
+                {published.map((p) => (
+                  <li key={p.id}>
+                    <SchedulerPostCard post={p} onClick={() => onPickPost(p)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );
@@ -1115,10 +1374,41 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
   const [monthCursor, setMonthCursor] = useState(() => startOfMonth(new Date()));
   const [dialogPost, setDialogPost] = useState<WorkspaceSchedulerPost | null>(null);
   const [addDraftPendingColumn, setAddDraftPendingColumn] = useState<number | null>(null);
+  const [removingQueueId, setRemovingQueueId] = useState<string | null>(null);
 
   useEffect(() => {
     setPosts(initialPosts);
   }, [initialPosts]);
+
+  const refreshAfterPublish = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const flush = await flushDueSchedulerPosts();
+      if (cancelled || !flush) return;
+      if (flush.published > 0 || flush.failed > 0) {
+        refreshAfterPublish();
+        if (flush.published > 0) {
+          toast.success(flush.published === 1 ? "Published 1 scheduled post" : `Published ${flush.published} scheduled posts`);
+        }
+        if (flush.failed > 0) {
+          toast.error(flush.errors[0]?.message ?? `Failed to publish ${flush.failed} post(s)`);
+        }
+      }
+    })();
+    const interval = window.setInterval(() => {
+      void flushDueSchedulerPosts().then((flush) => {
+        if (flush && (flush.published > 0 || flush.failed > 0)) refreshAfterPublish();
+      });
+    }, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [refreshAfterPublish]);
 
   useEffect(() => {
     const root = calendarPaneRef.current;
@@ -1136,7 +1426,23 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
   );
 
   const scheduled = useMemo(
-    () => posts.filter((p) => Boolean(p.scheduled_at)).sort((a, b) => Date.parse(a.scheduled_at!) - Date.parse(b.scheduled_at!)),
+    () =>
+      posts
+        .filter((p) => Boolean(p.scheduled_at) && p.status !== "published")
+        .sort((a, b) => Date.parse(a.scheduled_at!) - Date.parse(b.scheduled_at!)),
+    [posts],
+  );
+
+  const publishedPosts = useMemo(
+    () =>
+      posts
+        .filter((p) => p.status === "published")
+        .sort((a, b) => Date.parse(b.published_at ?? b.scheduled_at ?? b.created_at) - Date.parse(a.published_at ?? a.scheduled_at ?? a.created_at)),
+    [posts],
+  );
+
+  const calendarPosts = useMemo(
+    () => posts.filter((p) => Boolean(p.scheduled_at)),
     [posts],
   );
 
@@ -1194,6 +1500,27 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
 
   const refreshLocal = () => router.refresh();
 
+  const handleRemoveFromQueue = useCallback(
+    async (id: string) => {
+      setRemovingQueueId(id);
+      try {
+        const res = await fetch(`/api/social-signals/review-queue/${id}`, { method: "DELETE" });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(data.error ?? "Could not remove draft");
+        setPosts((prev) => prev.filter((p) => p.id !== id));
+        setDialogPost((current) => (current?.id === id ? null : current));
+        toast.success("Removed from queue");
+        router.refresh();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not remove draft");
+        throw e;
+      } finally {
+        setRemovingQueueId(null);
+      }
+    },
+    [router],
+  );
+
   const handleAddDraftForDay = useCallback(
     async (dayColumnIndex: number) => {
       const slotDay = new Date(weekStartMonday);
@@ -1228,7 +1555,7 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-        Posts you <span className="font-medium text-[color:var(--foreground)]">Schedule</span> from Digest (Social preview) arrive as drafts below. In <span className="font-medium text-[color:var(--foreground)]">Week</span> view, <span className="font-medium text-[color:var(--foreground)]">+ Add draft</span> on a day creates a Bluesky draft at 10:00 local on that date. Use <span className="font-medium text-[color:var(--foreground)]">List</span> or <span className="font-medium text-[color:var(--foreground)]">Month</span> as needed — open any card to edit and reschedule. Due posts publish on the daily midnight UTC job (with discovery) or when ops hits <span className="font-mono text-[11px]">/api/social-signals/publish-scheduled</span> with <span className="font-mono text-[11px]">CRON_SECRET</span>.
+        Posts you <span className="font-medium text-[color:var(--foreground)]">Schedule</span> from Digest (Social preview) arrive as drafts below. Due slots publish automatically about every 5 minutes (and when you open Scheduler). Use <span className="font-medium text-[color:var(--foreground)]">Post now</span> in the editor to publish immediately. Published posts show a green <span className="font-medium text-[color:var(--foreground)]">Published</span> badge with the time they went live. Connect X in Settings before scheduling X posts.
       </p>
 
       <div className="grid min-h-[min(82vh,52rem)] gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,8fr)] lg:items-stretch">
@@ -1248,7 +1575,12 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
             <ul className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {queued.map((p) => (
                 <li key={p.id}>
-                  <QueueDraftCard post={p} onOpen={() => setDialogPost(p)} />
+                  <QueueDraftCard
+                    post={p}
+                    onOpen={() => setDialogPost(p)}
+                    onRemove={(id) => void handleRemoveFromQueue(id)}
+                    removing={removingQueueId === p.id}
+                  />
                 </li>
               ))}
             </ul>
@@ -1349,7 +1681,7 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
               </span>
             </div>
           </header>
-          {calendarView === "week" ? <WeekVolumeStrip weekStartMonday={weekStartMonday} posts={scheduled} /> : null}
+          {calendarView === "week" ? <WeekVolumeStrip weekStartMonday={weekStartMonday} posts={calendarPosts} /> : null}
           <div
             ref={calendarPaneRef}
             className={
@@ -1361,12 +1693,16 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
             }
           >
             {calendarView === "list" ? (
-              <SchedulerListView scheduled={scheduled} onPickPost={(p) => setDialogPost(p)} />
+              <SchedulerListView
+                scheduled={scheduled}
+                published={publishedPosts}
+                onPickPost={(p) => setDialogPost(p)}
+              />
             ) : calendarView === "week" ? (
               <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2">
                 <SchedulerWeekColumns
                   weekStartMonday={weekStartMonday}
-                  posts={scheduled}
+                  posts={calendarPosts}
                   onPickPost={(p) => setDialogPost(p)}
                   showAddDraft
                   onAddDraft={handleAddDraftForDay}
@@ -1374,7 +1710,7 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
                 />
               </div>
             ) : (
-              <SchedulerMonthGrid monthStart={monthCursor} posts={scheduled} onPickPost={(p) => setDialogPost(p)} />
+              <SchedulerMonthGrid monthStart={monthCursor} posts={calendarPosts} onPickPost={(p) => setDialogPost(p)} />
             )}
           </div>
         </section>
@@ -1387,9 +1723,12 @@ export function SocialSchedulerPanel({ initialPosts }: { initialPosts: Workspace
             ? startOfWorkWeek(new Date(dialogPost.scheduled_at))
             : weekStartMonday
         }
-        calendarPosts={scheduled}
+        calendarPosts={calendarPosts}
         onClose={() => setDialogPost(null)}
         onSaved={refreshLocal}
+        onRemoveFromQueue={
+          dialogPost && !dialogPost.scheduled_at ? handleRemoveFromQueue : undefined
+        }
       />
     </div>
   );

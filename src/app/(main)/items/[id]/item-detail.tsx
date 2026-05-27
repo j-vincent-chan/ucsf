@@ -28,6 +28,7 @@ import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import type { InvestigatorChip } from "@/lib/source-item-investigators";
+import { digestDisplayInvestigators } from "@/lib/social-signals/resolve-investigators-for-post";
 import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 
 export function ItemDetail({
@@ -42,6 +43,13 @@ export function ItemDetail({
   duplicateOf: Pick<SourceItem, "id" | "title"> | null;
 }) {
   const router = useRouter();
+  const displayInvestigators = digestDisplayInvestigators({
+    category: item.category,
+    title: item.title,
+    raw_summary: item.raw_summary,
+    investigators,
+    primary_tracked_entity_id: item.tracked_entity_id,
+  });
   const [status, setStatus] = useState(item.status);
   const [archiveReason, setArchiveReason] = useState<string>(
     item.archive_reason ?? "",
@@ -203,10 +211,10 @@ export function ItemDetail({
             </p>
             <h1 className="mt-2 text-2xl font-semibold leading-snug">{item.title}</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              {investigators.length === 0 ? (
+              {displayInvestigators.length === 0 ? (
                 <>Unassigned</>
               ) : (
-                investigators.map((inv, i) => {
+                displayInvestigators.map((inv, i) => {
                   const profileUrl = ucsfProfilesUrl(inv.first_name, inv.last_name);
                   return (
                     <Fragment key={inv.id}>

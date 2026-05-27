@@ -3,6 +3,10 @@
     {
       "path": "/api/discover-items",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/social-signals/publish-scheduled",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

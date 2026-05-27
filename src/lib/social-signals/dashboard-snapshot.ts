@@ -1,6 +1,6 @@
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "./types";
 import type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
-import { fetchSocialFeed } from "./aggregate";
+import { fetchSocialFeed, type FetchSocialFeedOptions } from "./aggregate";
 import { groupPostsForFeedDisplay } from "./group-feed-rows";
 
 export type SocialTabMetrics = {
@@ -63,9 +63,12 @@ function dayShortLabel(day: string): string {
 /** Fetches all three Social Signals tabs in parallel for dashboard KPIs (same ingest as Live listening). */
 export async function fetchSocialSignalsDashboardSnapshot(
   workspaceCfg?: SocialFeedWorkspaceConfig | null,
+  feedOptions?: FetchSocialFeedOptions,
 ): Promise<SocialSignalsDashboardSnapshot> {
   const tabOrder: SocialFeedTab[] = ["lists", "mentions", "following"];
-  const results = await Promise.all(tabOrder.map((t) => fetchSocialFeed(t, workspaceCfg)));
+  const results = await Promise.all(
+    tabOrder.map((t) => fetchSocialFeed(t, workspaceCfg, feedOptions)),
+  );
 
   const syncedAt = results.reduce(
     (latest, r) => (r.syncedAt > latest ? r.syncedAt : latest),

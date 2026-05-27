@@ -3,13 +3,16 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { XOAuthSetupDiagnostics } from "@/lib/x-oauth";
 
 export function XOAuthSettings({
   connected,
   flash,
+  diagnostics,
 }: {
   connected: boolean;
   flash?: { ok: boolean; message: string };
+  diagnostics: XOAuthSetupDiagnostics;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -50,6 +53,30 @@ export function XOAuthSettings({
         user-context token. Ensure deployment env <span className="font-mono text-[11px]">X_OAUTH_CLIENT_ID</span> matches
         that same app.
       </p>
+      <div className="mt-4 rounded-xl border border-[color:var(--border)]/60 bg-[color:var(--muted)]/20 px-3 py-3 text-xs text-[color:var(--muted-foreground)]">
+        <p className="font-semibold text-[color:var(--foreground)]/90">OAuth setup check</p>
+        <ul className="mt-2 space-y-1.5">
+          <li>Client ID: {diagnostics.clientIdConfigured ? "set" : "missing"}</li>
+          <li>Client secret: {diagnostics.clientSecretConfigured ? "set" : "missing (OK for public PKCE apps)"}</li>
+          <li>State secret: {diagnostics.stateSecretConfigured ? "set" : "missing"}</li>
+          <li>
+            Callback (env):{" "}
+            <code className="font-mono text-[11px]">{diagnostics.configuredRedirectUri}</code>
+          </li>
+          <li>
+            Callback (this session):{" "}
+            <code className="font-mono text-[11px]">{diagnostics.effectiveRedirectUri}</code>
+          </li>
+        </ul>
+        {diagnostics.redirectUriMismatch ? (
+          <p className="mt-2 text-amber-800 dark:text-amber-200">
+            You are on a different host than <code className="font-mono">X_OAUTH_REDIRECT_URI</code>. Local dev will use
+            the session callback above — add that exact URL in the X Developer Portal. To use production only, open
+            Settings on <code className="font-mono">{diagnostics.configuredRedirectUri.replace(/\/api\/auth\/x\/callback$/, "")}</code>{" "}
+            and connect there (with the new client ID/secret on Vercel too).
+          </p>
+        ) : null}
+      </div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {connected ? (
           <>

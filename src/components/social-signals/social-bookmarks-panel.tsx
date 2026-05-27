@@ -1,5 +1,6 @@
 "use client";
 
+import { RenderingStatus } from "@/components/rendering-indicator";
 import { LinkifiedText } from "@/components/social-signals/linkified-text";
 import { PlatformBadge } from "@/components/social-signals/platform-badge";
 import { PostEngagementBar } from "@/components/social-signals/post-engagement-bar";
@@ -51,7 +52,7 @@ export function SocialBookmarksPanel() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-[color:var(--muted-foreground)]">Loading…</p>
+        <RenderingStatus variant="inline" label="Loading bookmarks…" description={null} />
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[color:var(--border)]/80 bg-[color:var(--card)]/60 px-6 py-12 text-center">
           <p className="text-sm font-medium text-[color:var(--foreground)]">Nothing saved yet</p>

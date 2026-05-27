@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { RenderingStatus } from "@/components/rendering-indicator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -845,7 +846,12 @@ export function DigestImageEditorModal({
           <div className="flex min-h-0 min-w-0 flex-[0.7] flex-col border-b border-[color:var(--border)]/40 bg-[color:var(--muted)]/8 p-3 sm:p-4 lg:border-b-0 lg:border-r">
             <div ref={wrapRef} className="relative flex min-h-[275px] flex-1 items-center justify-center rounded-xl border border-[color:var(--border)]/45 bg-[#faf6ef] p-2">
               {loadState === "loading" || loadState === "idle" ? (
-                <p className="text-sm text-[color:var(--muted-foreground)]">Loading image…</p>
+                <RenderingStatus
+                  variant="compact"
+                  label="Loading image…"
+                  description={null}
+                  className="min-h-0 py-0"
+                />
               ) : null}
               {loadState === "error" ? (
                 <div className="max-w-sm space-y-3 px-4 text-center text-sm text-[color:var(--muted-foreground)]">

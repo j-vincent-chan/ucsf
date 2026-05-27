@@ -15,9 +15,6 @@ import {
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
 import { userFacingDbStatementTimeoutMessage } from "@/lib/db-timeout-message";
-import { parseWorkspaceSocialSettings, socialFeedWorkspaceConfigFromSettings } from "@/lib/workspace-social-settings";
-import { fetchWorkspaceConnectedAccountAvatars } from "@/lib/social-signals/aggregate";
-
 export const dynamic = "force-dynamic";
 
 /**
@@ -34,6 +31,7 @@ const ITEM_SELECT_BASE = `
   tracked_entity_id,
   source_type,
   source_url,
+  nih_project_num,
   raw_summary,
   digest_cover_has_asset,
   digest_lp_only:digest_cover->>linkPreviewOnly
@@ -243,6 +241,7 @@ function mapRow(
     tracked_entity_id: string | null;
     source_type: DigestItemPayload["source_type"];
     source_url: string | null;
+    nih_project_num: string | null;
     raw_summary: string | null;
     digest_cover_has_asset: boolean | null;
     digest_lp_only: boolean | string | null;
@@ -272,6 +271,7 @@ function mapRow(
     category: r.category,
     source_type: r.source_type,
     source_url: r.source_url,
+    nih_project_num: r.nih_project_num,
     raw_summary: r.raw_summary,
     primary_tracked_entity_id: r.tracked_entity_id,
     penultimate_author_name: r.category === "paper" ? parsePubmedPenultimateFromRawSummary(r.raw_summary) : null,
@@ -545,10 +545,6 @@ export default async function DigestMonthPage({
     );
   }
 
-  const social = parseWorkspaceSocialSettings(profile.community?.social_settings ?? null);
-  const workspaceCfg = socialFeedWorkspaceConfigFromSettings(social);
-  const handleAvatars = await fetchWorkspaceConnectedAccountAvatars(workspaceCfg);
-
   return (
     <MonthlyDigestView
       monthLabel={heading}
@@ -556,10 +552,6 @@ export default async function DigestMonthPage({
       selectedMonth={`${year}-${String(month).padStart(2, "0")}`}
       minMonth={minMonth}
       maxMonth={maxMonth}
-      workspaceAccounts={{
-        xAvatarUrl: handleAvatars.xAvatarUrl ?? null,
-        blueskyAvatarUrl: handleAvatars.blueskyAvatarUrl ?? null,
-      }}
     />
   );
 }

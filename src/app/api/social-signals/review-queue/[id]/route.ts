@@ -36,6 +36,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.text !== undefined) patch.text = body.text;
   if (body.status !== undefined) patch.status = body.status;
   if (body.scheduled_at !== undefined) patch.scheduled_at = body.scheduled_at;
+  if (body.status === "scheduled") patch.publish_error = null;
   if (body.image_url !== undefined) patch.image_url = body.image_url;
   if (body.source_url !== undefined) patch.source_url = body.source_url;
 
@@ -52,4 +53,31 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({ ok: true, id: updated.id });
+}
+
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id } = await params;
+  if (!id || typeof id !== "string") {
+    return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
+
+  const { data: deleted, error } = await supabase
+    .from("social_review_queue_posts")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message ?? "Delete failed" }, { status: 500 });
+  }
+  if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  return NextResponse.json({ ok: true, id: deleted.id });
 }

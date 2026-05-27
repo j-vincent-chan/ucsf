@@ -20,6 +20,7 @@ import type {
 } from "@/lib/social-signals/ai-companion/types";
 import type { ConfidenceLabel } from "@/lib/social-signals/ai-companion/scoring-explanation-types";
 import { PlatformBadge } from "./platform-badge";
+import { useSystemMessagesOptional } from "@/components/system-messages-context";
 import { useSocialBookmarksOptional } from "./social-bookmarks-context";
 
 function oneLineSnippet(s: string, max = 120) {
@@ -662,6 +663,7 @@ export function AICompanionPanel({
   onNavigateToFeedPost?: (postId: string) => void;
   onClose?: () => void;
 }) {
+  const systemMessages = useSystemMessagesOptional();
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
@@ -734,12 +736,19 @@ export function AICompanionPanel({
       savePreferenceProfile(next);
       return next;
     });
-    if (useful) {
-      toast.success("Thanks — we’ll favor suggestions like this over time.");
+    const title = useful
+      ? "Thanks — we’ll favor suggestions like this over time."
+      : "Thanks — we’ll show fewer suggestions like this over time.";
+    if (systemMessages) {
+      systemMessages.notify({
+        title,
+        kind: useful ? "success" : "info",
+        source: "AI Companion",
+      });
     } else {
-      toast.message("Thanks — we’ll show fewer suggestions like this over time.");
+      toast.success(title, { duration: 18_000, closeButton: true });
     }
-  }, []);
+  }, [systemMessages]);
 
   const postById = useMemo(() => new Map((posts ?? []).map((p) => [p.id, p])), [posts]);
 
@@ -908,7 +917,11 @@ export function AICompanionPanel({
         return;
       }
       const label = data.digestMonthLabel ?? data.digestMonth ?? "digest";
-      toast.success(data.duplicate ? `Already in ${label}` : `Added to ${label} digest`, {
+      toast.success(
+        data.duplicate
+          ? `Already in ${label} digest (approved)`
+          : `Added to ${label} digest — no approval needed`,
+        {
         action:
           data.digestMonth != null && data.digestMonth.length > 0
             ? {

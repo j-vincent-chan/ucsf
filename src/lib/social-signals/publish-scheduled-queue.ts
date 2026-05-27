@@ -213,9 +213,10 @@ async function publishRowToBluesky(
  */
 export async function runPublishScheduledQueuePosts(
   admin: SupabaseClient<Database>,
+  opts?: { communityId?: string },
 ): Promise<PublishScheduledResult> {
   const nowIso = new Date().toISOString();
-  const { data: due, error } = await admin
+  let q = admin
     .from("social_review_queue_posts")
     .select("id, community_id, source_item_id, platform, text, image_url, source_url, scheduled_at")
     .eq("status", "scheduled")
@@ -223,6 +224,10 @@ export async function runPublishScheduledQueuePosts(
     .lte("scheduled_at", nowIso)
     .order("scheduled_at", { ascending: true })
     .limit(MAX_PER_RUN);
+  if (opts?.communityId) {
+    q = q.eq("community_id", opts.communityId);
+  }
+  const { data: due, error } = await q;
 
   if (error) {
     throw new Error(error.message ?? "Could not load scheduled posts");
@@ -293,9 +298,10 @@ export async function runPublishScheduledQueuePosts(
         throw new Error(`Unsupported platform: ${row.platform}`);
       }
 
+      const publishedAt = new Date().toISOString();
       const { error: updErr } = await admin
         .from("social_review_queue_posts")
-        .update({ status: "published" } as never)
+        .update({ status: "published", published_at: publishedAt, publish_error: null } as never)
         .eq("id", row.id)
         .eq("status", "scheduled");
 
@@ -308,7 +314,7 @@ export async function runPublishScheduledQueuePosts(
 
       await admin
         .from("social_review_queue_posts")
-        .update({ status: "needs_review" } as never)
+        .update({ status: "needs_review", publish_error: message.slice(0, 2000) } as never)
         .eq("id", row.id)
         .eq("status", "scheduled");
     }

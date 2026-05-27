@@ -15,11 +15,11 @@ import {
 import { fetchLabWebsiteHtmlCandidates } from "./lab-website-html";
 import {
   fetchNihReporterFundingCandidates,
-  isNihReporterSubprojectOrCoreTitle,
   isValidNihProfileId,
   NIH_REPORTER_THROTTLE_MS,
   normalizeNihProjectNum,
 } from "./nih-reporter";
+import { refreshReporterFundingItemIfNewer } from "./reporter-funding-refresh";
 import type { DiscoveryCandidate } from "./types";
 import { computeSignalGroupKey, pubMedPmidDedupKey } from "@/lib/signal-group-key";
 
@@ -577,6 +577,9 @@ export async function runDiscovery(
           primaryEntityByItemId.set(existingItemId, primaryId);
         }
         if (primaryId === ent.id) {
+          if (c.source_type === "reporter" && c.nih_project_num?.trim()) {
+            await refreshReporterFundingItemIfNewer(supabase, existingItemId, c);
+          }
           skippedDuplicates += 1;
           continue;
         }
@@ -600,26 +603,8 @@ export async function runDiscovery(
         } else {
           linkedInvestigators += 1;
           seen.add(dk);
-          if (
-            c.source_type === "reporter" &&
-            c.nih_project_num?.trim()
-          ) {
-            const { data: cur } = await supabase
-              .from("source_items")
-              .select("title")
-              .eq("id", existingItemId)
-              .maybeSingle();
-            const curTitle = cur?.title ?? "";
-            if (
-              curTitle &&
-              isNihReporterSubprojectOrCoreTitle(curTitle) &&
-              !isNihReporterSubprojectOrCoreTitle(c.title)
-            ) {
-              await supabase
-                .from("source_items")
-                .update({ title: c.title })
-                .eq("id", existingItemId);
-            }
+          if (c.source_type === "reporter" && c.nih_project_num?.trim()) {
+            await refreshReporterFundingItemIfNewer(supabase, existingItemId, c);
           }
           const b =
             c.source_type === "lab_website"

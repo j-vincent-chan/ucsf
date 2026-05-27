@@ -294,6 +294,8 @@ export interface Database {
           created_at: string;
           updated_at: string;
           scheduled_at: string | null;
+          published_at: string | null;
+          publish_error: string | null;
         };
         Insert: {
           id?: string;
@@ -307,6 +309,8 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
           scheduled_at?: string | null;
+          published_at?: string | null;
+          publish_error?: string | null;
         };
         Update: {
           community_id?: string;
@@ -318,6 +322,8 @@ export interface Database {
           source_url?: string | null;
           updated_at?: string;
           scheduled_at?: string | null;
+          published_at?: string | null;
+          publish_error?: string | null;
         };
         Relationships: [];
       };

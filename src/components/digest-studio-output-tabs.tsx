@@ -72,16 +72,22 @@ export function DigestStudioOutputTabs({
   disabled,
   variant = "default",
   omitNavChrome = false,
+  lockEmptyChannels = true,
 }: {
   tabs: DigestStudioOutputTab[];
   activeStyle: SummaryStyle | null;
   onSelectStyle: (style: SummaryStyle) => void;
-  /** Global disable (e.g. archiving); individual tabs are also disabled until text exists. */
+  /** Global disable (e.g. archiving). */
   disabled?: boolean;
   /** Warm cream card + terracotta active accent (digest output preview). */
   variant?: "default" | "warm";
   /** No outer tab-strip border — use when a parent card already provides edges (avoids double lines). */
   omitNavChrome?: boolean;
+  /**
+   * When true (collapsed output preview), tabs without generated text stay disabled.
+   * When false (Content studio channel row), every channel is selectable so you can generate copy.
+   */
+  lockEmptyChannels?: boolean;
 }) {
   const warm = variant === "warm";
   const flatChrome = !warm && omitNavChrome;
@@ -100,9 +106,15 @@ export function DigestStudioOutputTabs({
     >
       {tabs.map((tab) => {
         const isCurrent = activeStyle != null && activeStyle === tab.style;
-        /** Can switch to this channel only once text exists; current channel stays focusable so you’re not stuck. */
-        const canSwitchHere = tab.selectable || isCurrent;
+        const hasContent = tab.selectable;
+        const canSwitchHere = lockEmptyChannels ? hasContent || isCurrent : true;
         const tabDisabled = Boolean(disabled || !canSwitchHere);
+        const emptyChannelHint =
+          !hasContent && !isCurrent
+            ? lockEmptyChannels
+              ? "Generate this output before you can open it here"
+              : "Switch to this channel to generate copy"
+            : undefined;
 
         const labelWrap = (
           <span className="inline-flex items-center gap-2">
@@ -120,9 +132,7 @@ export function DigestStudioOutputTabs({
               aria-selected={isCurrent}
               aria-disabled={tabDisabled}
               disabled={tabDisabled}
-              title={
-                !tab.selectable && !isCurrent ? "Generate this output before you can open it here" : undefined
-              }
+              title={emptyChannelHint}
               onClick={() => {
                 if (!tabDisabled) onSelectStyle(tab.style);
               }}
@@ -131,7 +141,9 @@ export function DigestStudioOutputTabs({
                   ? "cursor-not-allowed border-[#e5e1de]/80 text-[#7c6f64] opacity-45"
                   : isCurrent
                     ? "border border-[#e5e1de] bg-white text-[#3c3836] ring-1 ring-[color:var(--accent)]/20"
-                    : "border-[#e5e1de] bg-transparent text-[#7c6f64] hover:border-[#d5cfc9] hover:bg-white/70 hover:text-[#3c3836]"
+                    : !hasContent
+                      ? "border-dashed border-[#e5e1de] bg-transparent text-[#7c6f64] opacity-80 hover:border-[#d5cfc9] hover:bg-white/70 hover:text-[#3c3836] hover:opacity-100"
+                      : "border-[#e5e1de] bg-transparent text-[#7c6f64] hover:border-[#d5cfc9] hover:bg-white/70 hover:text-[#3c3836]"
               } `}
             >
               {labelWrap}
@@ -147,9 +159,7 @@ export function DigestStudioOutputTabs({
             aria-selected={isCurrent}
             aria-disabled={tabDisabled}
             disabled={tabDisabled}
-            title={
-              !tab.selectable && !isCurrent ? "Generate this output before you can open it here" : undefined
-            }
+            title={emptyChannelHint}
             onClick={() => {
               if (!tabDisabled) onSelectStyle(tab.style);
             }}
@@ -160,7 +170,9 @@ export function DigestStudioOutputTabs({
                   ? flatChrome
                     ? "relative z-[1] mb-[-1px] border border-[color:var(--border)]/40 border-b-0 bg-[color:var(--card)] text-[color:var(--foreground)]"
                     : "relative z-[1] mb-[-1px] border border-[color:var(--border)]/70 border-b-0 bg-[color:var(--card)] text-[color:var(--foreground)] shadow-[0_-2px_12px_-4px_rgba(55,42,36,0.12)]"
-                  : "mb-[-1px] border border-transparent text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/45 hover:bg-[color:var(--card)]/40 hover:text-[color:var(--foreground)]"
+                  : !hasContent
+                    ? "mb-[-1px] border border-dashed border-transparent text-[color:var(--muted-foreground)] opacity-75 hover:border-[color:var(--border)]/45 hover:bg-[color:var(--card)]/40 hover:text-[color:var(--foreground)] hover:opacity-100"
+                    : "mb-[-1px] border border-transparent text-[color:var(--muted-foreground)] hover:border-[color:var(--border)]/45 hover:bg-[color:var(--card)]/40 hover:text-[color:var(--foreground)]"
             } `}
           >
             {tab.leading ? labelWrap : <span className="leading-none">{tab.label}</span>}

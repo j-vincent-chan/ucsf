@@ -7,6 +7,12 @@ import {
   fetchPubmedLastAuthorFullNameByPmid,
   isPubmedStyleAbbrevAuthor,
 } from "@/lib/discovery/pubmed-last-author-full";
+import {
+  nihFundingSupportYearLabel,
+  parseNihSupportYearFromProjectNum,
+  resolveNihProjectNumForItem,
+} from "@/lib/nih-project-num";
+import { digestDisplayInvestigators } from "@/lib/social-signals/resolve-investigators-for-post";
 import type { SummaryStyle } from "@/types/database";
 import { blurbCharRangeForStyle } from "@/lib/blurb-length-range";
 import {
@@ -274,7 +280,7 @@ export async function POST(req: Request) {
   const { data: item, error: itemErr } = await supabase
     .from("source_items")
     .select(
-      "id, community_id, title, raw_text, raw_summary, source_url, source_type, published_at, tracked_entity_id, signal_group_key, tracked_entities!tracked_entity_id ( name )",
+      "id, community_id, title, raw_text, raw_summary, source_url, source_type, category, nih_project_num, published_at, tracked_entity_id, signal_group_key, tracked_entities!tracked_entity_id ( name )",
     )
     .eq("id", source_item_id)
     .maybeSingle();
@@ -332,16 +338,25 @@ export async function POST(req: Request) {
   const { data: linkedInvestigators } = investigatorIds.size
     ? await supabase
         .from("tracked_entities")
-        .select("name")
+        .select("id, name, first_name, last_name")
         .in("id", [...investigatorIds])
-    : { data: [] as { name: string }[] };
+    : { data: [] as { id: string; name: string; first_name: string; last_name: string }[] };
 
-  const linkedInvestigatorNames = [
-    ...(entityName ? [entityName] : []),
-    ...((linkedInvestigators ?? [])
-      .map((r) => r.name?.trim() ?? "")
-      .filter(Boolean) as string[]),
-  ].filter((v, i, arr) => arr.indexOf(v) === i);
+  const displayLinked =
+    item.category === "award"
+      ? digestDisplayInvestigators({
+          category: item.category,
+          title: item.title,
+          raw_summary: item.raw_summary,
+          investigators: linkedInvestigators ?? [],
+          primary_tracked_entity_id: item.tracked_entity_id,
+        })
+      : linkedInvestigators ?? [];
+
+  const linkedInvestigatorNames = displayLinked
+    .map((r) => r.name?.trim() ?? "")
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.indexOf(v) === i);
 
   const pmid =
     item.source_type === "pubmed" ? extractPubmedPmidFromUrl(item.source_url ?? null) : null;
@@ -367,8 +382,32 @@ export async function POST(req: Request) {
     Boolean(trackedName && publicationLastAuthor) &&
     publicationLeadOnPeopleList(publicationLastAuthor as string, [trackedName]);
 
+  const nihProj =
+    item.category === "funding"
+      ? resolveNihProjectNumForItem({
+          nih_project_num: item.nih_project_num,
+          title: item.title,
+        })
+      : null;
+  const nihSupportYear = nihProj ? parseNihSupportYearFromProjectNum(nihProj) : null;
+  const nihFundingLine =
+    nihProj && item.category === "funding"
+      ? [
+          `NIH project number: ${nihProj}`,
+          nihFundingSupportYearLabel(nihProj) ?? "",
+          nihSupportYear != null && nihSupportYear >= 2
+            ? "This is continuing/renewed funding for an ongoing award (support year 2+). Do not describe it as a newly awarded grant or first-year award."
+            : nihSupportYear === 1
+              ? "This is the first support year of the award (new grant)."
+              : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+
   const userContent = [
     `Title: ${item.title}`,
+    nihFundingLine,
     publicationLastAuthor
       ? `Publication last author (biblio-position anchor; treat as correspondent/senior lead when excerpts do not explicitly name differing corresponding author(s)): ${publicationLastAuthor}. On People/watchlist (name match): ${leadOnPeopleList ? "yes" : "no"}. Crediting prose: correspondent(s) from excerpts **if labeled**; otherwise this anchor alone + **and colleagues** (or analogous)—**not** a roll call of linked investigators when only metadata links exist.`
       : "",

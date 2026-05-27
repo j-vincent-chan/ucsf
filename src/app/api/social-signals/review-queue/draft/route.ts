@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     community_id: communityId,
     source_item_id: body.source_item_id ?? null,
     platform,
-    status: "draft" as const,
+    status: scheduledAtIso ? ("scheduled" as const) : ("draft" as const),
     text: body.text,
     image_url,
     source_url,
@@ -57,7 +57,9 @@ export async function POST(req: Request) {
   const { data: inserted, error: insErr } = await supabase
     .from("social_review_queue_posts")
     .insert(rows)
-    .select("id, platform, status, text, image_url, source_url, created_at, scheduled_at, source_item_id");
+    .select(
+      "id, platform, status, text, image_url, source_url, created_at, scheduled_at, published_at, publish_error, source_item_id",
+    );
 
   if (insErr) {
     return NextResponse.json({ error: insErr.message ?? "Could not create drafts" }, { status: 500 });
@@ -81,6 +83,8 @@ export async function POST(req: Request) {
     source_url: r.source_url,
     created_at: r.created_at,
     scheduled_at: r.scheduled_at,
+    published_at: (r as { published_at?: string | null }).published_at ?? null,
+    publish_error: (r as { publish_error?: string | null }).publish_error ?? null,
     sourceSignalTitle: (r.source_item_id && titleBySourceId.get(r.source_item_id)) || "New draft",
     investigatorsSummary: null,
   }));

@@ -6,6 +6,8 @@ import {
 } from "@/lib/workspace-social-settings";
 import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { SettingsForms } from "@/components/settings-forms";
+import { xOAuthSetupDiagnostics } from "@/lib/x-oauth";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -43,6 +45,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
     oauthFlash = { ok: false, message: decodeURIComponent(oauthErr) };
   }
 
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const requestOrigin = host ? `${proto}://${host}` : undefined;
+  const xOAuthDiagnostics = xOAuthSetupDiagnostics(requestOrigin);
+
   return (
     <SettingsForms
       email={user.email ?? ""}
@@ -56,6 +64,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       socialSecretsPresent={socialSecretsPresent}
       xOAuthConnected={xOAuthConnected}
       oauthFlash={oauthFlash}
+      xOAuthDiagnostics={xOAuthDiagnostics}
     />
   );
 }

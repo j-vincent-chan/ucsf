@@ -578,7 +578,9 @@ export function SummaryEditor({
           </p>
           {digestWorkflow ? (
             <p className="text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-              Review the saved text for this channel.
+              {isDigestStudioPlaceholderSummary(summary)
+                ? "No copy for this channel yet — use Generate text below."
+                : "Review the saved text for this channel."}
             </p>
           ) : null}
         </div>

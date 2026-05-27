@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BookmarkIcon } from "@/components/icons/bookmark";
 import { SparklesIcon } from "@/components/icons/sparkles";
+import { RenderingStatus } from "@/components/rendering-indicator";
 import { Button } from "@/components/ui/button";
 import { DigestImageEditorModal, type EditorToolTab } from "@/components/digest-image-editor-modal";
 import type { DigestIllustrationTextLayer, DigestVisualEditMetadata } from "@/lib/digest-visual-types";
@@ -1040,10 +1041,12 @@ export function DigestVisualPanel({
         {hasDigestHeroImage && activeSrc ? (
           <div className="relative mt-4 w-full min-w-0 rounded-2xl border border-[#e8e2dc]/90 bg-[#faf6ef] p-3 shadow-[0_14px_44px_-30px_rgba(58,44,34,0.22)] ring-1 ring-[#ebe6df]/45 sm:p-4">
             <div className="flex w-full min-h-0 justify-center overflow-auto">
-              <div className="relative mx-auto max-w-full inline-block align-top">
+              <div
+                key={active?.id ?? "hero"}
+                className="relative mx-auto max-w-full inline-block align-top"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  key={active?.id ?? "hero"}
                   src={activeSrc}
                   alt={active?.caption?.trim() ? active.caption.trim().slice(0, 220) : ""}
                   className="box-border h-auto max-h-[min(42rem,80vh)] w-auto max-w-full rounded-xl object-contain object-center shadow-[0_8px_32px_-16px_rgba(48,36,28,0.35)] ring-1 ring-black/[0.07]"
@@ -1057,7 +1060,6 @@ export function DigestVisualPanel({
                 />
                 {active?.type === "schematic" ? (
                   <DigestIllustrationOverlays
-                    key={active.id}
                     layers={active.illustrationTextLayers ?? []}
                     naturalSize={selectedAssetOverlayLayout.naturalSize}
                     cropNatural={selectedAssetOverlayLayout.cropNatural}
@@ -1078,9 +1080,14 @@ export function DigestVisualPanel({
                   this signal to load the preview image platforms may use for the link card.
                 </p>
               ) : linkPreviewFetchStatus === "loading" ? (
-                <p className="px-2 py-16 text-center text-sm text-[color:var(--muted-foreground)]">
-                  Loading link preview…
-                </p>
+                <div className="flex justify-center px-2 py-16">
+                  <RenderingStatus
+                    variant="compact"
+                    label="Loading link preview…"
+                    description={null}
+                    className="min-h-0 py-0"
+                  />
+                </div>
               ) : linkPreviewFetchStatus === "error" ? (
                 <p className="max-w-md px-2 py-8 text-center text-sm text-[color:var(--muted-foreground)]">
                   Couldn&apos;t fetch link preview metadata. Check the article URL or try again later.

@@ -25,6 +25,7 @@ type ReporterProjectRow = {
   project_title?: string;
   award_notice_date?: string | null;
   project_start_date?: string | null;
+  budget_start?: string | null;
   date_added?: string | null;
   project_detail_url?: string | null;
   abstract_text?: string | null;
@@ -45,6 +46,34 @@ function reporterApplTypeCode(
   if (at == null) return null;
   const s = String(at).trim();
   return s || null;
+}
+
+/** NIH support year from ProjectNum (e.g. `…-04` → 4). */
+export function reporterSupportYear(row: ReporterProjectRow): number | null {
+  const syRaw = (row.project_num_split?.support_year ?? "").trim();
+  if (!syRaw || !/^\d+$/.test(syRaw)) return null;
+  return Number.parseInt(syRaw, 10);
+}
+
+/**
+ * New funding: application type 1 (new) and support year 1.
+ */
+export function isNihReporterNewFundingAward(row: ReporterProjectRow): boolean {
+  if (reporterApplTypeCode(row) !== "1") return false;
+  const sy = reporterSupportYear(row);
+  if (sy != null && sy !== 1) return false;
+  return true;
+}
+
+/**
+ * Digest funding signals: new awards (type 1, yr 1) and annual non-competing continuances (type 5, yr 2+).
+ */
+export function isNihReporterDigestFundingAward(row: ReporterProjectRow): boolean {
+  const code = reporterApplTypeCode(row);
+  const sy = reporterSupportYear(row);
+  if (code === "1") return sy == null || sy === 1;
+  if (code === "5") return sy != null && sy >= 2;
+  return false;
 }
 
 /**
@@ -90,12 +119,16 @@ export function reporterAwardClassSummary(row: ReporterProjectRow): string | nul
   }
 }
 
+export type NihReporterFundingFetchMode = "signals_new_only" | "digest_including_continuing";
+
 export type NihReporterFetchOptions = {
   profileId: string;
   trackedEntityId: string;
   maxResults: number;
   mindate: Date;
   maxdate: Date;
+  /** Signals discovery uses new year-1 only; digest can include type-5 continuances. */
+  mode?: NihReporterFundingFetchMode;
 };
 
 function sleep(ms: number) {
@@ -155,17 +188,161 @@ function parseApiDate(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function effectiveActivityDate(row: ReporterProjectRow): Date | null {
+function formatReporterApiDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * RePORTER `project_start_date` filter — widen so year-2+ continuances (project began years ago,
+ * award notice / budget in the discovery window) are still returned from the API.
+ */
+function reporterProjectStartFromDate(mindate: Date): Date {
+  const d = new Date(mindate);
+  d.setUTCFullYear(d.getUTCFullYear() - 12);
+  return d;
+}
+
+/** New awards: project start. Continuing (type 5, yr 2+): award notice / budget period start. */
+function fundingActivityDate(row: ReporterProjectRow): Date | null {
+  const code = reporterApplTypeCode(row);
+  const sy = reporterSupportYear(row);
+  if (code === "5" && sy != null && sy >= 2) {
+    return (
+      parseApiDate(row.award_notice_date ?? undefined) ??
+      parseApiDate(row.budget_start ?? undefined) ??
+      parseApiDate(row.project_start_date ?? undefined) ??
+      parseApiDate(row.date_added ?? undefined)
+    );
+  }
   return (
-    parseApiDate(row.award_notice_date ?? undefined) ??
     parseApiDate(row.project_start_date ?? undefined) ??
     parseApiDate(row.date_added ?? undefined)
   );
 }
 
 function publishedAt(row: ReporterProjectRow): string | null {
-  const d = effectiveActivityDate(row);
+  const d = fundingActivityDate(row);
   return d ? d.toISOString() : null;
+}
+
+const REPORTER_FUNDING_INCLUDE_FIELDS = [
+  "ApplId",
+  "ProjectNum",
+  "ProjectTitle",
+  "ProjectStartDate",
+  "AwardNoticeDate",
+  "BudgetStart",
+  "DateAdded",
+  "ProjectDetailUrl",
+  "AbstractText",
+  "Organization",
+  "AwardAmount",
+  "AgencyIcAdmin",
+  "AwardType",
+  "ProjectNumSplit",
+] as const;
+
+/** Build a discovery candidate from one RePORTER project row (null if not digest funding). */
+export function reporterRowToDiscoveryCandidate(
+  row: ReporterProjectRow,
+  trackedEntityId: string,
+): DiscoveryCandidate | null {
+  if (!isNihReporterDigestFundingAward(row)) return null;
+
+  const titleBase = (row.project_title ?? "").trim();
+  const proj = (row.project_num ?? "").trim();
+  const title =
+    titleBase && proj
+      ? `${titleBase} (${proj})`
+      : titleBase || proj || `NIH award ${row.appl_id ?? ""}`.trim();
+
+  const url =
+    (row.project_detail_url ?? "").trim() ||
+    (row.appl_id != null ? `https://reporter.nih.gov/project-details/${row.appl_id}` : null);
+
+  const org = row.organization?.org_name?.trim();
+  const ic = row.agency_ic_admin?.abbreviation ?? row.agency_ic_admin?.name;
+  const amount =
+    row.award_amount != null && row.award_amount > 0
+      ? `Award: $${row.award_amount.toLocaleString("en-US")}`
+      : null;
+  const abstract = row.abstract_text
+    ? row.abstract_text.replace(/\s+/g, " ").trim().slice(0, 420)
+    : null;
+  const awardClass = reporterAwardClassSummary(row);
+  const raw_summary =
+    [awardClass, ic, org, amount, abstract].filter(Boolean).join(" · ").slice(0, 2000) || null;
+
+  return {
+    tracked_entity_id: trackedEntityId,
+    title,
+    source_url: url,
+    source_domain: "reporter.nih.gov",
+    published_at: publishedAt(row),
+    raw_summary,
+    source_type: "reporter",
+    category: "funding",
+    nih_project_num: proj || undefined,
+  };
+}
+
+/** Latest RePORTER row for a ProjectNum (e.g. refresh year-7 continuation on an older signal). */
+export async function fetchReporterFundingCandidateByProjectNum(
+  projectNum: string,
+  trackedEntityId: string,
+): Promise<DiscoveryCandidate | null> {
+  const stored = formatNihProjectNumStored(projectNum);
+  if (!stored) return null;
+
+  await sleep(NIH_REPORTER_THROTTLE_MS);
+  const res = await fetch(API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "CommunitySignalDigest/1.0 (faculty-discovery)",
+    },
+    body: JSON.stringify({
+      criteria: { project_nums: [stored] },
+      include_fields: [...REPORTER_FUNDING_INCLUDE_FIELDS],
+      offset: 0,
+      limit: 25,
+    }),
+  });
+  if (!res.ok) return null;
+
+  const json = (await res.json()) as { results?: ReporterProjectRow[] };
+  const rows = json.results ?? [];
+  if (rows.length === 0) return null;
+
+  let best: ReporterProjectRow | null = null;
+  let bestSy = -1;
+  for (const row of rows) {
+    if (!isNihReporterDigestFundingAward(row)) continue;
+    const pn = formatNihProjectNumStored(row.project_num ?? "");
+    if (pn === stored) {
+      best = row;
+      break;
+    }
+    const sy = reporterSupportYear(row) ?? 0;
+    if (sy > bestSy) {
+      bestSy = sy;
+      best = row;
+    }
+  }
+  if (!best) return null;
+
+  let candidate = reporterRowToDiscoveryCandidate(best, trackedEntityId);
+  if (!candidate) return null;
+
+  const parentTitles = await fetchParentProgramTitlesByProjectNums([stored]);
+  const base = parentTitles.get(canonicalNihProjectNumForDedup(stored));
+  if (base && candidate.nih_project_num) {
+    candidate = {
+      ...candidate,
+      title: `${base} (${formatNihProjectNumStored(candidate.nih_project_num)})`,
+    };
+  }
+  return candidate;
 }
 
 export function isValidNihProfileId(raw: string | null | undefined): boolean {
@@ -248,6 +425,7 @@ function dedupeNihReporterOverallGrants(
 export async function fetchNihReporterFundingCandidates(
   opts: NihReporterFetchOptions,
 ): Promise<{ candidates: DiscoveryCandidate[]; error?: string }> {
+  const mode = opts.mode ?? "signals_new_only";
   const candidates: DiscoveryCandidate[] = [];
   const id = opts.profileId.trim();
   if (!isValidNihProfileId(id)) return { candidates };
@@ -257,6 +435,7 @@ export async function fetchNihReporterFundingCandidates(
     return { candidates, error: "NIH profile ID out of range" };
   }
 
+  const digestMode = mode === "digest_including_continuing";
   const pageLimit = 500;
   /** Pull multiple pages until empty or deep enough for mindate filtering + maxResults cap. */
   const offsetHardStop = 5000;
@@ -269,23 +448,23 @@ export async function fetchNihReporterFundingCandidates(
       const payload = {
         criteria: {
           pi_profile_ids: [numericId],
+          award_types: digestMode ? [1, 5] : [1],
+          project_start_date: {
+            from_date: formatReporterApiDate(
+              digestMode ? reporterProjectStartFromDate(opts.mindate) : opts.mindate,
+            ),
+            to_date: formatReporterApiDate(opts.maxdate),
+          },
+          ...(digestMode
+            ? {}
+            : {
+                project_num_split: {
+                  support_year: "01",
+                },
+              }),
         },
-        include_fields: [
-          "ApplId",
-          "ProjectNum",
-          "ProjectTitle",
-          "AwardNoticeDate",
-          "ProjectStartDate",
-          "DateAdded",
-          "ProjectDetailUrl",
-          "AbstractText",
-          "Organization",
-          "AwardAmount",
-          "AgencyIcAdmin",
-          "AwardType",
-          "ProjectNumSplit",
-        ],
-        sort_field: "award_notice_date",
+        include_fields: [...REPORTER_FUNDING_INCLUDE_FIELDS],
+        sort_field: "project_start_date",
         sort_order: "desc",
         offset,
         limit: pageLimit,
@@ -312,7 +491,15 @@ export async function fetchNihReporterFundingCandidates(
       if (rows.length === 0) break;
 
       for (const row of rows) {
-        const activity = effectiveActivityDate(row);
+        const awardOk = digestMode
+          ? isNihReporterDigestFundingAward(row)
+          : isNihReporterNewFundingAward(row);
+        if (!awardOk) continue;
+
+        const activity = digestMode
+          ? fundingActivityDate(row)
+          : (parseApiDate(row.project_start_date ?? undefined) ??
+            parseApiDate(row.date_added ?? undefined));
         if (
           !activity ||
           activity < opts.mindate ||
@@ -321,46 +508,8 @@ export async function fetchNihReporterFundingCandidates(
           continue;
         }
 
-        const titleBase = (row.project_title ?? "").trim();
-        const proj = (row.project_num ?? "").trim();
-        const title =
-          titleBase && proj
-            ? `${titleBase} (${proj})`
-            : titleBase || proj || `NIH award ${row.appl_id ?? ""}`.trim();
-
-        const url =
-          (row.project_detail_url ?? "").trim() ||
-          (row.appl_id != null
-            ? `https://reporter.nih.gov/project-details/${row.appl_id}`
-            : null);
-
-        const org = row.organization?.org_name?.trim();
-        const ic = row.agency_ic_admin?.abbreviation ?? row.agency_ic_admin?.name;
-        const amount =
-          row.award_amount != null && row.award_amount > 0
-            ? `Award: $${row.award_amount.toLocaleString("en-US")}`
-            : null;
-        const abstract = row.abstract_text
-          ? row.abstract_text.replace(/\s+/g, " ").trim().slice(0, 420)
-          : null;
-        const awardClass = reporterAwardClassSummary(row);
-        const raw_summary =
-          [awardClass, ic, org, amount, abstract]
-            .filter(Boolean)
-            .join(" · ")
-            .slice(0, 2000) || null;
-
-        built.push({
-          tracked_entity_id: opts.trackedEntityId,
-          title,
-          source_url: url,
-          source_domain: "reporter.nih.gov",
-          published_at: publishedAt(row),
-          raw_summary,
-          source_type: "reporter",
-          category: "funding",
-          nih_project_num: proj || undefined,
-        });
+        const candidate = reporterRowToDiscoveryCandidate(row, opts.trackedEntityId);
+        if (candidate) built.push(candidate);
       }
 
       if (rows.length < pageLimit) break;

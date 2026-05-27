@@ -236,18 +236,14 @@ export async function fetchXListTimeline(
   return { posts: mapXTweetsResponse(raw) };
 }
 
-/**
- * Recent posts mentioning the community handle (without @ in env).
- */
-export async function fetchXMentionSearch(
-  bearer: string,
-  communityHandle: string,
-): Promise<XResult> {
-  const handle = communityHandle.replace(/^@+/, "").trim();
-  if (!handle) return { posts: [], detail: "X mentions: set X_COMMUNITY_HANDLE" };
-  const query = `@${handle}`;
+const X_MENTION_QUERY_MAX_LEN = 512;
+
+/** Recent posts matching an X recent-search query (e.g. `@lab OR @program`). */
+export async function fetchXMentionSearchQuery(bearer: string, query: string): Promise<XResult> {
+  const q = query.trim();
+  if (!q) return { posts: [], detail: "X mentions: empty search query" };
   const params = new URLSearchParams({
-    query,
+    query: q.slice(0, X_MENTION_QUERY_MAX_LEN),
     max_results: "100",
     "tweet.fields":
       "created_at,author_id,attachments,referenced_tweets,conversation_id,public_metrics",
@@ -268,4 +264,63 @@ export async function fetchXMentionSearch(
     return { posts: [], detail: `X search: ${msg}` };
   }
   return { posts: mapXTweetsResponse(raw) };
+}
+
+/**
+ * Recent posts mentioning the community handle (without @ in env).
+ */
+export async function fetchXMentionSearch(
+  bearer: string,
+  communityHandle: string,
+): Promise<XResult> {
+  const handle = communityHandle.replace(/^@+/, "").trim();
+  if (!handle) return { posts: [], detail: "X mentions: set X_COMMUNITY_HANDLE" };
+  return fetchXMentionSearchQuery(bearer, `@${handle}`);
+}
+
+function chunkXMentionHandles(handles: string[]): string[][] {
+  const normalized = handles.map((h) => h.replace(/^@+/, "").trim()).filter(Boolean);
+  if (normalized.length === 0) return [];
+
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let queryLen = 0;
+
+  for (const handle of normalized) {
+    const token = `@${handle}`;
+    const added = current.length === 0 ? token.length : token.length + 4; // ` OR `
+    if (current.length > 0 && queryLen + added > X_MENTION_QUERY_MAX_LEN) {
+      chunks.push(current);
+      current = [handle];
+      queryLen = token.length;
+    } else {
+      current.push(handle);
+      queryLen += added;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+/** Mentions of the program handle plus watchlist investigator X handles. */
+export async function fetchXMentionSearchForHandles(
+  bearer: string,
+  handles: string[],
+): Promise<XResult> {
+  const chunks = chunkXMentionHandles(handles);
+  if (chunks.length === 0) {
+    return { posts: [], detail: "X mentions: no handles configured" };
+  }
+
+  const posts: SocialPost[] = [];
+  let detail: string | undefined;
+
+  for (const chunk of chunks) {
+    const query = chunk.map((h) => `@${h}`).join(" OR ");
+    const r = await fetchXMentionSearchQuery(bearer, query);
+    posts.push(...r.posts);
+    if (r.detail && !detail) detail = r.detail;
+  }
+
+  return { posts, detail };
 }

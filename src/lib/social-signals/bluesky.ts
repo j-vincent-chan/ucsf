@@ -257,6 +257,38 @@ export async function fetchBlueskyMentions(
   return { posts };
 }
 
+const BSKY_MENTION_SEARCH_GAP_MS = 350;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Mentions of the program Bluesky handle plus watchlist investigator handles. */
+export async function fetchBlueskyMentionsForHandles(
+  identifier: string,
+  appPassword: string,
+  mentionHandles: string[],
+): Promise<BskyResult> {
+  const handles = [
+    ...new Set(mentionHandles.map((h) => h.replace(/^@+/, "").trim().toLowerCase()).filter(Boolean)),
+  ];
+  if (handles.length === 0) {
+    return { posts: [], detail: "Bluesky mentions: no handles configured" };
+  }
+
+  const posts: SocialPost[] = [];
+  let detail: string | undefined;
+
+  for (let i = 0; i < handles.length; i++) {
+    const r = await fetchBlueskyMentions(identifier, appPassword, handles[i]!);
+    posts.push(...r.posts);
+    if (r.detail && !detail) detail = r.detail;
+    if (i + 1 < handles.length) await sleep(BSKY_MENTION_SEARCH_GAP_MS);
+  }
+
+  return { posts, detail };
+}
+
 async function resolveRepoDid(
   session: SessionRes & { accessJwt: string },
   identifier: string,
@@ -425,9 +457,15 @@ async function bskyRepoCreateRecord(
     uri?: string;
     message?: string;
     error?: string;
+    primary?: { message?: string };
   };
   if (!res.ok || !raw.uri) {
-    throw new Error(raw.message ?? raw.error ?? `Bluesky record failed (${res.status})`);
+    const detail =
+      raw.message ??
+      raw.primary?.message ??
+      raw.error ??
+      `Bluesky record failed (${res.status})`;
+    throw new Error(detail);
   }
   return { uri: raw.uri };
 }
@@ -579,24 +617,15 @@ export async function resolveBskyPostStrongRef(
 }
 
 /**
- * Like/repost/reply mutations must use the **current** record CID. Client-supplied `hintCid`
- * from feed/search can be stale; prefer {@link resolveBskyPostStrongRef} without a hint, then
- * fall back to the hint only when getPosts fails (e.g. transient errors).
+ * Like/repost/reply mutations must use the **current** record CID. Never trust feed/search
+ * hints alone — they go stale and cause createRecord validation failures on like.
  */
 export async function resolveBskyStrongRefForEngage(
   accessJwt: string,
   atUri: string,
-  hintCid?: string | null,
+  _hintCid?: string | null,
 ): Promise<BlueskyStrongRef> {
-  try {
-    return await resolveBskyPostStrongRef(accessJwt, atUri, null);
-  } catch (e) {
-    const h = hintCid?.trim();
-    if (h) {
-      return resolveBskyPostStrongRef(accessJwt, atUri, h);
-    }
-    throw e instanceof Error ? e : new Error("Could not resolve Bluesky post");
-  }
+  return resolveBskyPostStrongRef(accessJwt, atUri, null);
 }
 
 function bskyReplyThreadRefsForTarget(
@@ -771,7 +800,14 @@ export async function blueskyEngageReply(
 
 function isBlueskyDuplicateRecordError(message: string): boolean {
   const m = message.toLowerCase();
-  return m.includes("duplicate") || m.includes("already exists");
+  return (
+    m.includes("duplicate") ||
+    m.includes("already exists") ||
+    m.includes("recordexists") ||
+    m.includes("already been") ||
+    m.includes("already liked") ||
+    m.includes("already reposted")
+  );
 }
 
 /** Like; `{ applied: false }` when the account already liked this post. */

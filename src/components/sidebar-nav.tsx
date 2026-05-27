@@ -17,11 +17,14 @@ function DashboardIcon({ className, strokeWidth = "1.65" }: { className: string;
   );
 }
 
-function QueueIcon({ className, strokeWidth = "1.65" }: { className: string; strokeWidth?: string }) {
+/** Approval queue — clipboard + check (review items before publish). */
+function SignalsIcon({ className, strokeWidth = "1.65" }: { className: string; strokeWidth?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className}>
-      <rect x="4" y="4" width="16" height="16" rx="3" />
-      <path d="M8 9h8M8 12h8M8 15h5" />
+      <rect x="7.5" y="3.75" width="9" height="2.75" rx="1.1" strokeLinejoin="round" />
+      <rect x="5" y="5.5" width="14" height="14.5" rx="1.75" strokeLinejoin="round" />
+      <path d="M8 12.25l1.75 1.75 4.5-4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 16.75h8" strokeLinecap="round" />
     </svg>
   );
 }
@@ -35,11 +38,19 @@ function SubmitIcon({ className, strokeWidth = "1.65" }: { className: string; st
   );
 }
 
+/** Monthly digest — calendar month (distinct from Signals clipboard). */
 function DigestIcon({ className, strokeWidth = "1.65" }: { className: string; strokeWidth?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} className={className}>
-      <rect x="4" y="4" width="16" height="16" rx="3" />
-      <path d="M8 9h8M8 13h8M8 17h5" />
+      <path d="M8 4.25v2.25M16 4.25v2.25" strokeLinecap="round" />
+      <rect x="4.5" y="6.25" width="15" height="14" rx="2" strokeLinejoin="round" />
+      <path d="M4.5 10.25h15" strokeLinecap="round" />
+      <circle cx="9" cy="14" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="14" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="14" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="17.25" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="17.25" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="17.25" r="0.9" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -147,6 +158,7 @@ export function SidebarNav({
 
   const itemStack = collapsed ? "space-y-2" : "space-y-1.5";
   const railSectionTop = collapsed ? "mt-2.5" : "";
+  const latestDigestHref = digestMonths[0] ? `/digest/${digestMonths[0].ym}` : "/digest";
 
   return (
     <nav className={`flex min-w-0 flex-1 flex-col ${collapsed ? "mt-3 min-h-0" : ""}`}>
@@ -169,7 +181,7 @@ export function SidebarNav({
               title={collapsed ? "Signals" : undefined}
               aria-label="Signals"
             >
-              <QueueIcon className={navIconClass} strokeWidth={navStroke} />
+              <SignalsIcon className={navIconClass} strokeWidth={navStroke} />
               {!collapsed ? <span>Signals</span> : null}
             </Link>
             <Link
@@ -198,24 +210,30 @@ export function SidebarNav({
 
           {!collapsed ? <SectionLabel>Publish</SectionLabel> : null}
           <div className={`${railSectionTop} ${itemStack}`.trim()}>
-            <button
-              type="button"
-              onClick={() => setDigestOpen((o) => !o)}
-              className={`${collapsed ? `${linkClass(true, inDigest)} w-full min-w-0` : `${itemClass(inDigest)} w-full`}`}
-              aria-expanded={digestOpen}
-              aria-controls="sidebar-digest-months"
-              id="sidebar-digest-trigger"
-              title={collapsed ? "Digests" : undefined}
-              aria-label="Digests"
-            >
-              <DigestIcon className={navIconClass} strokeWidth={navStroke} />
-              {!collapsed ? (
-                <>
-                  <span className="min-w-0 flex-1 text-left">Digests</span>
-                  <ChevronDownIcon open={digestOpen} />
-                </>
-              ) : null}
-            </button>
+            {collapsed ? (
+              <Link
+                href={latestDigestHref}
+                className={linkClass(true, inDigest)}
+                title="Digests"
+                aria-label="Digests"
+              >
+                <DigestIcon className={navIconClass} strokeWidth={navStroke} />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDigestOpen((o) => !o)}
+                className={`${itemClass(inDigest)} w-full`}
+                aria-expanded={digestOpen}
+                aria-controls="sidebar-digest-months"
+                id="sidebar-digest-trigger"
+                aria-label="Digests"
+              >
+                <DigestIcon className={navIconClass} strokeWidth={navStroke} />
+                <span className="min-w-0 flex-1 text-left">Digests</span>
+                <ChevronDownIcon open={digestOpen} />
+              </button>
+            )}
             {digestOpen && !collapsed ? (
               <div
                 id="sidebar-digest-months"

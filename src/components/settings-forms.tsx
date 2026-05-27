@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { XOAuthSettings } from "@/components/x-oauth-settings";
+import type { XOAuthSetupDiagnostics } from "@/lib/x-oauth";
 
 function ActionMessage({ result }: { result: ActionResult | undefined }) {
   if (!result?.message) return null;
@@ -50,6 +51,7 @@ export function SettingsForms({
   socialSecretsPresent,
   xOAuthConnected,
   oauthFlash,
+  xOAuthDiagnostics,
 }: {
   email: string;
   fullName: string;
@@ -62,6 +64,7 @@ export function SettingsForms({
   socialSecretsPresent: { xBearerToken: boolean; blueskyAppPassword: boolean };
   xOAuthConnected: boolean;
   oauthFlash?: { ok: boolean; message: string };
+  xOAuthDiagnostics: XOAuthSetupDiagnostics;
 }) {
   const [profileState, profileAction] = useActionState(updateDisplayNameAction, undefined as ActionResult | undefined);
   const [workspaceState, workspaceAction] = useActionState(updateWorkspaceAction, undefined as ActionResult | undefined);
@@ -176,7 +179,7 @@ export function SettingsForms({
 
       <Card>
         <CardTitle>Post to X (OAuth 2.0)</CardTitle>
-        <XOAuthSettings connected={xOAuthConnected} flash={oauthFlash} />
+        <XOAuthSettings connected={xOAuthConnected} flash={oauthFlash} diagnostics={xOAuthDiagnostics} />
       </Card>
 
       <Card>

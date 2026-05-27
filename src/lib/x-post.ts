@@ -83,20 +83,28 @@ export async function ensureFreshUserAccessToken(
     throw err;
   }
 
-  const next = await refreshAccessToken(bundle.refresh_token);
-  const { error } = await admin
-    .from("profiles")
-    .update({
-      x_oauth: JSON.parse(JSON.stringify(next)) as Json,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", userId);
+  try {
+    const next = await refreshAccessToken(bundle.refresh_token);
+    const { error } = await admin
+      .from("profiles")
+      .update({
+        x_oauth: JSON.parse(JSON.stringify(next)) as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
 
-  if (error) {
-    throw new Error(`Could not save refreshed X tokens: ${error.message}`);
+    if (error) {
+      throw new Error(`Could not save refreshed X tokens: ${error.message}`);
+    }
+
+    return next;
+  } catch (e) {
+    // Refresh can fail while the access token is still within its lifetime — use it for this request.
+    if (bundle.expires_at !== undefined && Date.now() < bundle.expires_at) {
+      return bundle;
+    }
+    throw e;
   }
-
-  return next;
 }
 
 function normalizeMimeForXUpload(mime: string): string {
@@ -387,34 +395,71 @@ export async function xUnlikeTweet(accessToken: string, userId: string, tweetId:
   throw new Error(formatTweetCreateError(lastRaw, lastStatus));
 }
 
+const RETWEET_POST_URLS = [
+  `${X_API_V2_BASE}/users`,
+  "https://api.twitter.com/2/users",
+] as const;
+
 export async function xRetweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
-  const res = await fetch(`${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ tweet_id: tweetId }),
-  });
-  const raw = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(formatTweetCreateError(raw, res.status));
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  const body = JSON.stringify({ tweet_id: tweetId });
+
+  let lastRaw: unknown = {};
+  let lastStatus = 0;
+
+  for (let i = 0; i < RETWEET_POST_URLS.length; i++) {
+    const base = RETWEET_POST_URLS[i]!;
+    const res = await fetch(`${base}/${encodeURIComponent(userId)}/retweets`, {
+      method: "POST",
+      headers,
+      body,
+    });
+    const raw = await res.json().catch(() => ({}));
+
+    if (res.ok) return;
+
+    lastRaw = raw;
+    lastStatus = res.status;
+
+    const retryable = res.status === 403 || res.status === 401;
+    if (!retryable || i === RETWEET_POST_URLS.length - 1) {
+      break;
+    }
   }
+
+  throw new Error(formatTweetCreateError(lastRaw, lastStatus));
 }
 
 /** Undo repost (DELETE /2/users/:id/retweets/:source_tweet_id). Idempotent when not retweeted. */
 export async function xUnretweet(accessToken: string, userId: string, tweetId: string): Promise<void> {
-  const res = await fetch(
-    `${X_API_V2_BASE}/users/${encodeURIComponent(userId)}/retweets/${encodeURIComponent(tweetId)}`,
-    {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  const raw = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(formatTweetCreateError(raw, res.status));
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  let lastRaw: unknown = {};
+  let lastStatus = 0;
+
+  for (let i = 0; i < RETWEET_POST_URLS.length; i++) {
+    const base = RETWEET_POST_URLS[i]!;
+    const res = await fetch(
+      `${base}/${encodeURIComponent(userId)}/retweets/${encodeURIComponent(tweetId)}`,
+      { method: "DELETE", headers },
+    );
+    const raw = await res.json().catch(() => ({}));
+
+    if (res.ok) return;
+
+    lastRaw = raw;
+    lastStatus = res.status;
+
+    const retryable = res.status === 403 || res.status === 401;
+    if (!retryable || i === RETWEET_POST_URLS.length - 1) {
+      break;
+    }
   }
+
+  throw new Error(formatTweetCreateError(lastRaw, lastStatus));
 }
 
 /** Create a tweet with OAuth 2.0 user context (not app-only Bearer). */

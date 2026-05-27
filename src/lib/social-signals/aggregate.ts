@@ -1,16 +1,23 @@
 import type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
+import type { InvestigatorSocialDirectory } from "./ai-companion/investigator-directory";
 import type { AggregatedFeed, SocialFeedTab, SocialPost, SourceMeta } from "./types";
 import { dedupeSocialPostsById } from "./dedupe-posts";
 import {
   fetchBlueskyFollowing,
   fetchBlueskyListFeed,
-  fetchBlueskyMentions,
+  fetchBlueskyMentionsForHandles,
   fetchBlueskyProfileSummary,
 } from "./bluesky";
-import { fetchXListTimeline, fetchXMentionSearch, fetchXTweetsByIds, fetchXUserByUsername } from "./x";
+import { fetchXListTimeline, fetchXMentionSearchForHandles, fetchXTweetsByIds, fetchXUserByUsername } from "./x";
 import { missingXThreadRootTweetIds } from "./group-feed-rows";
+import { buildMentionSearchHandles } from "./mention-search-handles";
 
 export type { SocialFeedWorkspaceConfig } from "@/lib/workspace-social-settings";
+
+export type FetchSocialFeedOptions = {
+  /** Watchlist investigators with X / Bluesky handles — expands Mentions beyond the program account. */
+  investigatorDirectory?: InvestigatorSocialDirectory | null;
+};
 
 function sortPosts(posts: SocialPost[]): SocialPost[] {
   return [...posts].sort((a, b) => Date.parse(b.postedAt) - Date.parse(a.postedAt));
@@ -19,6 +26,7 @@ function sortPosts(posts: SocialPost[]): SocialPost[] {
 export async function fetchSocialFeed(
   tab: SocialFeedTab,
   workspaceCfg?: SocialFeedWorkspaceConfig | null,
+  options?: FetchSocialFeedOptions,
 ): Promise<AggregatedFeed> {
   const bearer = workspaceCfg?.xBearerToken?.trim();
   const listId = workspaceCfg?.listId?.trim();
@@ -27,19 +35,23 @@ export async function fetchSocialFeed(
 
   const bskyId = workspaceCfg?.blueskyIdentifier?.trim();
   const bskyPw = workspaceCfg?.blueskyAppPassword?.trim();
-  const bskyMention = workspaceCfg?.blueskyIdentifier?.trim();
   const bskyListUri = workspaceCfg?.blueskyListAtUri?.trim();
+
+  const mentionHandles =
+    tab === "mentions"
+      ? buildMentionSearchHandles(workspaceCfg, options?.investigatorDirectory)
+      : null;
 
   const xConfiguredForTab = Boolean(
     bearer &&
-      ((tab === "mentions" && xCommunityHandle) ||
+      ((tab === "mentions" && (mentionHandles?.xHandles.length ?? 0) > 0) ||
         ((tab === "following" || tab === "lists") && listId)),
   );
   const bskyConfiguredForTab = Boolean(
     bskyId &&
       bskyPw &&
       (tab === "following" ||
-        (tab === "mentions" && Boolean(bskyMention?.trim())) ||
+        (tab === "mentions" && (mentionHandles?.blueskyHandles.length ?? 0) > 0) ||
         (tab === "lists" && Boolean(bskyListUri?.trim()))),
   );
 
@@ -99,10 +111,13 @@ export async function fetchSocialFeed(
         if (detail) sourceMeta.x = { ...sourceMeta.x, detail };
       })(),
     );
-  } else if (bearer && xCommunityHandle && tab === "mentions") {
+  } else if (bearer && tab === "mentions" && (mentionHandles?.xHandles.length ?? 0) > 0) {
     tasks.push(
       (async () => {
-        const { posts, detail } = await fetchXMentionSearch(bearer, xCommunityHandle);
+        const { posts, detail } = await fetchXMentionSearchForHandles(
+          bearer,
+          mentionHandles!.xHandles,
+        );
         collected.push(...posts);
         if (detail) sourceMeta.x = { ...sourceMeta.x, detail };
       })(),
@@ -112,7 +127,7 @@ export async function fetchSocialFeed(
       configured: false,
       detail:
         tab === "mentions"
-          ? "X Mentions: save your program X handle under Settings → Social publishing."
+          ? "X Mentions: save your program X handle under Settings → Social publishing, and/or add X handles on watchlist investigators."
           : "X list: add the numeric List ID under Settings → Social publishing (investigator list).",
     };
   }
@@ -126,13 +141,13 @@ export async function fetchSocialFeed(
           if (detail) sourceMeta.bluesky = { ...sourceMeta.bluesky, detail };
         })(),
       );
-    } else if (tab === "mentions") {
+    } else if (tab === "mentions" && (mentionHandles?.blueskyHandles.length ?? 0) > 0) {
       tasks.push(
         (async () => {
-          const { posts, detail } = await fetchBlueskyMentions(
+          const { posts, detail } = await fetchBlueskyMentionsForHandles(
             bskyId,
             bskyPw,
-            bskyMention ?? "",
+            mentionHandles!.blueskyHandles,
           );
           collected.push(...posts);
           if (detail) sourceMeta.bluesky = { ...sourceMeta.bluesky, detail };

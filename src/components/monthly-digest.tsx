@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { ItemCategory, Json, SourceType, Summary, SummaryStyle } from "@/types/database";
 import { SummaryEditor } from "@/components/summary-editor";
+import { RenderingStatus } from "@/components/rendering-indicator";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,13 @@ import {
 } from "@/lib/item-category-ui";
 import { formatYearMonthLabel } from "@/lib/digest-month";
 import {
+  isNihContinuingSupportYear,
+  isNihFundingForDigestActiveDrafts,
+  nihFundingSupportYearLabel,
+  resolveNihProjectNumForItem,
+} from "@/lib/nih-project-num";
+import { digestDisplayInvestigators } from "@/lib/social-signals/resolve-investigators-for-post";
+import {
   DEFAULT_DIGEST_SUMMARY_TONE,
   DIGEST_SUMMARY_TONE_OPTIONS,
   type DigestSummaryTone,
@@ -42,7 +50,6 @@ import {
 } from "@/components/digest-studio-output-tabs";
 import { DigestIllustrationOverlays } from "@/components/digest-illustration-overlays";
 import { LinkedInvestigatorsFacepile } from "@/components/linked-investigators-facepile";
-import { WorkspaceHandleAvatarImg, type WorkspaceAccountAvatars } from "@/components/workspace-handle-avatar-img";
 import {
   DIGEST_CONTENT_STUDIO_OUTPUT_OPTIONS,
   DIGEST_CONTENT_STUDIO_STYLES,
@@ -322,7 +329,6 @@ function DigestQueueCategoryFilterIcon({
         </svg>
       );
     case "other":
-    default:
       return (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -338,6 +344,23 @@ function DigestQueueCategoryFilterIcon({
           <circle cx="7.5" cy="7.5" r="1.25" fill="currentColor" stroke="none" />
         </svg>
       );
+    case "completed":
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={common}
+          aria-hidden
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      );
+    default:
+      return null;
   }
 }
 
@@ -379,6 +402,108 @@ function DownloadIcon({ className = "" }: { className?: string }) {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+const digestMenuIconClass = "pointer-events-none size-4 shrink-0";
+
+function DigestMenuIconExternal({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${digestMenuIconClass} ${className}`}
+      aria-hidden
+    >
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
+  );
+}
+
+function DigestMenuIconSignalRecord({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${digestMenuIconClass} ${className}`}
+      aria-hidden
+    >
+      <path d="M14 3h7v7" />
+      <path d="M10 14 21 3" />
+      <path d="M5 5v14h14" />
+    </svg>
+  );
+}
+
+function DigestMenuIconLink({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${digestMenuIconClass} ${className}`}
+      aria-hidden
+    >
+      <path d="M10 13a5 5 0 0 0 7.54.54l2.12-2.12a5 5 0 0 0-7.07-7.07L11.3 5.64" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54L4.34 12.6a5 5 0 1 0 7.07 7.07l1.27-1.27" />
+    </svg>
+  );
+}
+
+/** Send back to Signals approval queue. */
+function DigestMenuIconReturnToApproval({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${digestMenuIconClass} ${className}`}
+      aria-hidden
+    >
+      <path d="M9 15 3 9m0 0 6 6M3 9h12a6 6 0 0 1 0 12h-3" />
+    </svg>
+  );
+}
+
+function DigestMenuIconArchive({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`${digestMenuIconClass} ${className}`}
+      aria-hidden
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" x2="10" y1="11" y2="17" />
+      <line x1="14" x2="14" y1="11" y2="17" />
     </svg>
   );
 }
@@ -521,6 +646,20 @@ function digestItemSignalDateLabel(item: DigestItemPayload): string {
     : `Found ${new Date(item.found_at).toLocaleDateString()} (no publish date)`;
 }
 
+function digestItemSignalDateTitle(item: DigestItemPayload): string {
+  if (item.category !== "funding") {
+    return "Publication or found date";
+  }
+  const proj = resolveNihProjectNumForItem({
+    nih_project_num: item.nih_project_num,
+    title: item.title,
+  });
+  if (isNihContinuingSupportYear(proj)) {
+    return "Award notice / budget period date (not the original project start)";
+  }
+  return "Publication or found date";
+}
+
 const digestMetaPillClass =
   "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[color:var(--border)]/90 bg-[color:var(--muted)]/55 px-3 py-1 text-xs font-semibold tracking-tight text-[color:var(--muted-foreground)]";
 
@@ -620,9 +759,18 @@ function DigestItemMetaStrip({
   const dateLabel = digestItemSignalDateLabel(item);
   const sourceLabel = sourceTypeDisplayLabel(item.source_type);
   const categoryLabel = categoryDisplayLabel(item.category);
+  const nihSupportLabel =
+    item.category === "funding"
+      ? nihFundingSupportYearLabel(
+          resolveNihProjectNumForItem({
+            nih_project_num: item.nih_project_num,
+            title: item.title,
+          }),
+        )
+      : null;
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-      <span className={`${digestMetaPillClass} normal-case tracking-normal`} title="Publication or found date">
+      <span className={`${digestMetaPillClass} normal-case tracking-normal`} title={digestItemSignalDateTitle(item)}>
         <DigestMetaIconCalendar className="h-3.5 w-3.5" />
         {dateLabel}
       </span>
@@ -634,6 +782,14 @@ function DigestItemMetaStrip({
         <DigestMetaIconCategory className="h-3.5 w-3.5" />
         {categoryLabel}
       </span>
+      {nihSupportLabel ? (
+        <span
+          className={`${digestMetaPillClass} normal-case tracking-normal`}
+          title="NIH support period from grant number (e.g. -02 = year 2)"
+        >
+          {nihSupportLabel}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -965,19 +1121,18 @@ function DigestSignalRow({
   selected,
   disabled,
   onToggle,
-  workspaceAccounts,
 }: {
   item: DigestItemPayload;
   selected: boolean;
   disabled: boolean;
   onToggle: () => void;
-  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const paperJournal = item.category === "paper" ? extractJournalFromRawSummary(item.raw_summary) : null;
   const dateLabel = new Date(item.published_at ?? item.found_at).toLocaleDateString();
+  const displayInvestigators = digestDisplayInvestigators(item);
   const investigatorLabel =
-    item.investigators.length > 0
-      ? `${item.investigators[0]!.name}${item.investigators.length > 1 ? ` +${item.investigators.length - 1}` : ""}`
+    displayInvestigators.length > 0
+      ? `${displayInvestigators[0]!.name}${displayInvestigators.length > 1 ? ` +${displayInvestigators.length - 1}` : ""}`
       : item.pi_name ?? "Unassigned";
 
   return (
@@ -996,15 +1151,6 @@ function DigestSignalRow({
           disabled={disabled}
           className="mt-1 shrink-0 rounded border-[color:var(--border)]"
         />
-        <div className="mt-0.5 shrink-0 self-start">
-          <WorkspaceHandleAvatarImg
-            postToX
-            postToBluesky
-            accounts={workspaceAccounts}
-            size="sm"
-            hideWhenEmpty
-          />
-        </div>
         <span className="min-w-0 flex-1">
           <Link
             href={`/items/${item.id}`}
@@ -1022,8 +1168,8 @@ function DigestSignalRow({
             <SourceTypeTag type={item.source_type} />
             <CategoryTag category={item.category} />
           </span>
-          {item.investigators.length > 0 ? (
-            <LinkedInvestigatorsFacepile variant="inline" investigators={item.investigators} maxVisible={3} />
+          {displayInvestigators.length > 0 ? (
+            <LinkedInvestigatorsFacepile variant="inline" investigators={displayInvestigators} maxVisible={3} />
           ) : null}
         </span>
         <span
@@ -1052,7 +1198,6 @@ function DigestCategoryCard({
   onSelectAll,
   onSelectNone,
   onGenerateCategory,
-  workspaceAccounts,
 }: {
   category: DigestRefCategory;
   expanded: boolean;
@@ -1065,7 +1210,6 @@ function DigestCategoryCard({
   onSelectAll: () => void;
   onSelectNone: () => void;
   onGenerateCategory: () => void;
-  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const allSelected = category.items.length > 0 && selectedCount === category.items.length;
   return (
@@ -1142,7 +1286,6 @@ function DigestCategoryCard({
                   selected={selectedIds.has(item.id)}
                   disabled={running}
                   onToggle={() => onToggleItem(item.id)}
-                  workspaceAccounts={workspaceAccounts}
                 />
               ))}
             </ul>
@@ -1165,6 +1308,7 @@ export type DigestItemPayload = {
   category: ItemCategory | null;
   source_type: SourceType;
   source_url: string | null;
+  nih_project_num: string | null;
   raw_summary: string | null;
   /** Primary + junction-linked watchlist investigators, sorted by name */
   investigators: {
@@ -1254,15 +1398,14 @@ function digestSummaryShareText(summary: Summary): string {
 function DigestCompletedSignalCard({
   item,
   model,
-  workspaceAccounts,
 }: {
   item: DigestItemPayload;
   model: string;
-  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const router = useRouter();
   const [expanded, setExpanded] = useState(false);
   const [reactivating, setReactivating] = useState(false);
+  const [returningToApproval, setReturningToApproval] = useState(false);
   const destLabels = useMemo(() => {
     const styles = new Set(
       item.summaries
@@ -1278,6 +1421,7 @@ function DigestCompletedSignalCard({
         year: "numeric",
       })
     : "—";
+  const displayInvestigators = digestDisplayInvestigators(item);
 
   async function reactivate() {
     setReactivating(true);
@@ -1298,6 +1442,32 @@ function DigestCompletedSignalCard({
     }
   }
 
+  async function returnToApproval() {
+    if (
+      !confirm(
+        "Return this signal to the Signals approval queue? It will leave this month's digest until you approve it again.",
+      )
+    ) {
+      return;
+    }
+    setReturningToApproval(true);
+    try {
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id, return_to_approval: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not return to approval");
+      toast.success("Returned to Signals for approval");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not return to approval");
+    } finally {
+      setReturningToApproval(false);
+    }
+  }
+
   if (expanded) {
     return (
       <li className="list-none">
@@ -1310,8 +1480,9 @@ function DigestCompletedSignalCard({
             onCollapse: () => setExpanded(false),
             onReactivate: () => void reactivate(),
             reactivating,
+            onReturnToApproval: () => void returnToApproval(),
+            returningToApproval,
           }}
-          workspaceAccounts={workspaceAccounts}
         />
       </li>
     );
@@ -1319,13 +1490,13 @@ function DigestCompletedSignalCard({
 
   return (
     <li className="list-none">
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="group w-full rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 px-3.5 py-3 text-left shadow-[0_6px_20px_-14px_rgba(45,35,28,0.45)] transition hover:border-[color:var(--border)]/80 hover:bg-[color:var(--muted)]/16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 flex-1 space-y-1.5">
+      <div className="group flex w-full items-stretch overflow-hidden rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/10 shadow-[0_6px_20px_-14px_rgba(45,35,28,0.45)] transition hover:border-[color:var(--border)]/80 hover:bg-[color:var(--muted)]/16">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="min-w-0 flex-1 px-3.5 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-inset"
+        >
+          <div className="space-y-1.5">
             <p className="line-clamp-2 text-sm font-semibold leading-snug text-[color:var(--foreground)]">
               {item.title}
             </p>
@@ -1334,10 +1505,10 @@ function DigestCompletedSignalCard({
               <span className="rounded-md border border-[color:var(--border)]/55 bg-[color:var(--card)]/75 px-2.5 py-1 text-[11px] font-medium text-[color:var(--muted-foreground)]">
                 Done {completedAt}
               </span>
-              {item.investigators.length > 0 ? (
+              {displayInvestigators.length > 0 ? (
                 <LinkedInvestigatorsFacepile
                   variant="inline"
-                  investigators={item.investigators}
+                  investigators={displayInvestigators}
                   maxVisible={4}
                   className="min-w-0"
                 />
@@ -1358,20 +1529,25 @@ function DigestCompletedSignalCard({
               )}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <WorkspaceHandleAvatarImg
-              postToX
-              postToBluesky
-              accounts={workspaceAccounts}
-              size="sm"
-              hideWhenEmpty
-            />
-            <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] opacity-70 transition group-hover:opacity-100">
-              Open
-            </span>
-          </div>
+        </button>
+        <div className="flex shrink-0 flex-col items-end justify-between gap-1.5 border-l border-[color:var(--border)]/40 px-3 py-3">
+          <button
+            type="button"
+            disabled={returningToApproval || reactivating}
+            onClick={() => void returnToApproval()}
+            className="text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] underline-offset-2 transition hover:text-[color:var(--foreground)] hover:underline disabled:opacity-50"
+          >
+            {returningToApproval ? "Returning…" : "Return to approval"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="text-[10px] font-medium uppercase tracking-[0.06em] text-[color:var(--muted-foreground)] opacity-70 transition hover:text-[color:var(--foreground)] hover:opacity-100"
+          >
+            Open
+          </button>
         </div>
-      </button>
+      </div>
     </li>
   );
 }
@@ -1383,7 +1559,6 @@ function DigestItemRow({
   onToggleExpanded,
   libraryPreviewMode,
   bulkSelect,
-  workspaceAccounts,
 }: {
   item: DigestItemPayload;
   model: string;
@@ -1393,10 +1568,11 @@ function DigestItemRow({
     onCollapse: () => void;
     onReactivate: () => void;
     reactivating: boolean;
+    onReturnToApproval: () => void;
+    returningToApproval: boolean;
   };
   /** When set, show a row checkbox for bulk “mark complete” in Active Drafts. */
   bulkSelect?: { selected: boolean; onToggle: () => void };
-  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const router = useRouter();
   const [summaries, setSummaries] = useState<Summary[]>(item.summaries);
@@ -1411,6 +1587,8 @@ function DigestItemRow({
   const [generating, setGenerating] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
+  const [returningToApproval, setReturningToApproval] = useState(false);
+  const [refreshingReporter, setRefreshingReporter] = useState(false);
   const [illustrating, setIllustrating] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   /** Button strip (Open / Collapse / More) — excluded from “click outside” menu dismissal. */
@@ -1554,12 +1732,12 @@ function DigestItemRow({
 
   const handleSelectDigestOutputTab = useCallback(
     (style: SummaryStyle) => {
-      const row = digestContentStudioSummaries.find((s) => s.style === style);
-      if (!row || !digestSummaryHasGeneratedText(row)) return;
-      setSelectedOutputId(row.id);
-      setPendingChannelStyle(null);
+      handleSelectChannelStyle(style);
+      if (DIGEST_CONTENT_STUDIO_STYLES.includes(style)) {
+        setOutputPreviewStyle(style);
+      }
     },
-    [digestContentStudioSummaries],
+    [handleSelectChannelStyle],
   );
 
   useEffect(() => {
@@ -1833,13 +2011,19 @@ function DigestItemRow({
     }
     setArchiving(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("source_items")
-        .update({ status: "archived", archive_reason: "other" })
-        .eq("id", item.id);
-      if (error) throw error;
-      toast.success("Signal archived");
+      const res = await fetch("/api/source-items/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id, archive_reason: "other" }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        usedFallback?: boolean;
+      };
+      if (!res.ok) throw new Error(data.error ?? "Could not archive item");
+      toast.success(
+        data.usedFallback ? "Signal archived (legacy archive reason applied)" : "Signal archived",
+      );
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not archive item");
@@ -1867,10 +2051,38 @@ function DigestItemRow({
     }
   }
 
+  async function returnToApproval() {
+    if (
+      !confirm(
+        "Return this signal to the Signals approval queue? It will leave this month's digest until you approve it again.",
+      )
+    ) {
+      return;
+    }
+    setReturningToApproval(true);
+    try {
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id, return_to_approval: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Could not return to approval");
+      toast.success("Returned to Signals for approval");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not return to approval");
+    } finally {
+      setReturningToApproval(false);
+    }
+  }
+
+  const displayInvestigators = useMemo(() => digestDisplayInvestigators(item), [item]);
+
   const piListedSeparately =
     Boolean(item.pi_name) &&
-    item.investigators.length > 0 &&
-    !item.investigators.some(
+    displayInvestigators.length > 0 &&
+    !displayInvestigators.some(
       (inv) => inv.name.trim().toLowerCase() === (item.pi_name ?? "").trim().toLowerCase(),
     );
 
@@ -1881,6 +2093,25 @@ function DigestItemRow({
       toast.success("Source link copied");
     } catch {
       toast.error("Copy failed");
+    }
+  }
+
+  async function syncReporterAward() {
+    setRefreshingReporter(true);
+    try {
+      const res = await fetch("/api/funding/refresh-reporter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_item_id: item.id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Sync failed");
+      toast.success("Award synced from RePORTER");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setRefreshingReporter(false);
     }
   }
 
@@ -2169,10 +2400,10 @@ function DigestItemRow({
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
               <DigestItemMetaStrip item={item} className="mb-0" />
-              {item.investigators.length > 0 ? (
+              {displayInvestigators.length > 0 ? (
                 <LinkedInvestigatorsFacepile
                   variant="inline"
-                  investigators={item.investigators}
+                  investigators={displayInvestigators}
                   maxVisible={4}
                   className="min-w-0"
                 />
@@ -2187,7 +2418,7 @@ function DigestItemRow({
             {item.paper_author_names && item.paper_author_names.length > 0 ? (
               <>
                 {item.paper_author_names.map((authLine, i) => {
-                  const inv = item.investigators.find((x) => pubmedAuthorLineMatchesInvestigator(authLine, x));
+                  const inv = displayInvestigators.find((x) => pubmedAuthorLineMatchesInvestigator(authLine, x));
                   const profileUrl = inv ? ucsfProfilesUrl(inv.first_name, inv.last_name) : null;
                   return (
                     <Fragment key={`${i}-${authLine.slice(0, 48)}`}>
@@ -2210,9 +2441,9 @@ function DigestItemRow({
                   );
                 })}
               </>
-            ) : item.investigators.length > 0 ? (
+            ) : displayInvestigators.length > 0 ? (
               <>
-                {item.investigators.map((inv, i) => {
+                {displayInvestigators.map((inv, i) => {
                   const profileUrl = ucsfProfilesUrl(inv.first_name, inv.last_name);
                   return (
                     <Fragment key={inv.id}>
@@ -2251,27 +2482,35 @@ function DigestItemRow({
           </p>
           </div>
           <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-end gap-2">
-            <WorkspaceHandleAvatarImg
-              postToX
-              postToBluesky
-              accounts={workspaceAccounts}
-              size="sm"
-              hideWhenEmpty
-            />
             {libraryPreviewMode ? (
-              <Button
-                type="button"
-                variant="secondary"
-                className="h-10 min-h-10 px-4 text-sm font-semibold"
-                disabled={libraryPreviewMode.reactivating}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  void libraryPreviewMode.onReactivate();
-                }}
-              >
-                {libraryPreviewMode.reactivating ? "Restoring…" : "Reactivate"}
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 min-h-10 px-4 text-sm font-semibold"
+                  disabled={libraryPreviewMode.reactivating || libraryPreviewMode.returningToApproval}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void libraryPreviewMode.onReturnToApproval();
+                  }}
+                >
+                  {libraryPreviewMode.returningToApproval ? "Returning…" : "Return to approval"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 min-h-10 px-4 text-sm font-semibold"
+                  disabled={libraryPreviewMode.reactivating || libraryPreviewMode.returningToApproval}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void libraryPreviewMode.onReactivate();
+                  }}
+                >
+                  {libraryPreviewMode.reactivating ? "Restoring…" : "Reactivate"}
+                </Button>
+              </>
             ) : null}
             <div
               ref={actionsToolbarRef}
@@ -2328,22 +2567,7 @@ function DigestItemRow({
                     className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
                     onClick={() => setActionsMenuOpen(false)}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M15 3h6v6" />
-                      <path d="M10 14 21 3" />
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                    </svg>
+                    <DigestMenuIconExternal />
                     Open source article
                   </a>
                 ) : (
@@ -2353,22 +2577,7 @@ function DigestItemRow({
                     className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
                     onClick={() => setActionsMenuOpen(false)}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M14 3h7v7" />
-                      <path d="M10 14 21 3" />
-                      <path d="M5 5v14h14" />
-                    </svg>
+                    <DigestMenuIconSignalRecord />
                     Open signal record
                   </Link>
                 )}
@@ -2381,24 +2590,47 @@ function DigestItemRow({
                   }}
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35"
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M10 13a5 5 0 0 0 7.54.54l2.12-2.12a5 5 0 0 0-7.07-7.07L11.3 5.64" />
-                    <path d="M14 11a5 5 0 0 0-7.54-.54L4.34 12.6a5 5 0 1 0 7.07 7.07l1.27-1.27" />
-                  </svg>
+                  <DigestMenuIconLink />
                   Copy source link
                 </button>
+                {item.source_type === "reporter" && item.category === "funding" ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      void syncReporterAward();
+                    }}
+                    disabled={
+                      refreshingReporter ||
+                      archiving ||
+                      generating ||
+                      illustrating ||
+                      markingComplete ||
+                      returningToApproval
+                    }
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {refreshingReporter ? "Syncing award…" : "Sync award from RePORTER"}
+                  </button>
+                ) : null}
                 {libraryPreviewMode ? null : (
+                  <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setActionsMenuOpen(false);
+                      void returnToApproval();
+                    }}
+                    disabled={
+                      archiving || generating || illustrating || markingComplete || returningToApproval
+                    }
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[color:var(--foreground)]/90 transition-colors hover:bg-[color:var(--muted)]/35 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <DigestMenuIconReturnToApproval />
+                    Return to approval
+                  </button>
                   <button
                     type="button"
                     role="menuitem"
@@ -2409,24 +2641,10 @@ function DigestItemRow({
                     disabled={archiving || generating || illustrating}
                     className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm text-[#8f4d45] transition-colors hover:bg-[#f2dfd9] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="15"
-                      height="15"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <path d="M3 6h18" />
-                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                    </svg>
+                    <DigestMenuIconArchive />
                     Archive signal
                   </button>
+                  </>
                 )}
               </div>
             ) : null}
@@ -2684,7 +2902,13 @@ function DigestItemRow({
                     type="button"
                     variant="secondary"
                     className="h-10 min-h-10 whitespace-nowrap px-4 text-sm font-semibold"
-                    disabled={markingComplete || archiving || generating || illustrating}
+                    disabled={
+                      markingComplete ||
+                      returningToApproval ||
+                      archiving ||
+                      generating ||
+                      illustrating
+                    }
                     onClick={() => void markDigestWorkflowComplete()}
                   >
                     {markingComplete ? "Saving…" : "Mark complete"}
@@ -2700,7 +2924,13 @@ function DigestItemRow({
                   type="button"
                   variant="secondary"
                   className="h-10 min-h-10 whitespace-nowrap px-4 text-sm font-semibold"
-                  disabled={markingComplete || archiving || generating || illustrating}
+                  disabled={
+                    markingComplete ||
+                    returningToApproval ||
+                    archiving ||
+                    generating ||
+                    illustrating
+                  }
                   onClick={() => void markDigestWorkflowComplete()}
                 >
                   {markingComplete ? "Saving…" : "Mark complete"}
@@ -2723,6 +2953,7 @@ function DigestItemRow({
                 tabs={studioOutputTabs}
                 activeStyle={contentStudioEditorSummary.style}
                 onSelectStyle={handleSelectDigestOutputTab}
+                lockEmptyChannels={false}
                 disabled={generating || archiving || illustrating || resetDigestBusy}
               />
             </div>
@@ -2779,8 +3010,13 @@ function DigestItemRow({
                 </p>
               </header>
               {item.digestCoverHasAsset && coverLoading && fetchedDigestCoverStore === null ? (
-                <div className="flex min-h-[8rem] flex-1 flex-col items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6 text-center text-sm text-[color:var(--muted-foreground)]">
-                  Loading visuals…
+                <div className="flex min-h-[8rem] flex-1 flex-col items-center justify-center rounded-xl border border-[color:var(--border)]/50 bg-[color:var(--muted)]/15 px-3 py-6">
+                  <RenderingStatus
+                    variant="compact"
+                    label="Loading visuals…"
+                    description={null}
+                    className="min-h-0 py-0"
+                  />
                 </div>
               ) : (
                 <DigestVisualPanel
@@ -2960,15 +3196,12 @@ export function MonthlyDigestView({
   selectedMonth,
   minMonth,
   maxMonth,
-  workspaceAccounts,
 }: {
   monthLabel: string;
   items: DigestItemPayload[];
   selectedMonth?: string;
   minMonth?: string;
   maxMonth?: string;
-  /** Connected X / Bluesky avatars for digest signal cards (X prioritized). */
-  workspaceAccounts?: WorkspaceAccountAvatars | null;
 }) {
   const router = useRouter();
   const [monthInput, setMonthInput] = useState(selectedMonth ?? "");
@@ -2977,12 +3210,10 @@ export function MonthlyDigestView({
   );
   const [queueFilter, setQueueFilter] = useState<DigestCategoryFilterChip>("all");
   const [activeDraftSortMode, setActiveDraftSortMode] = useState<"category" | "recent">("category");
-  const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() => {
-    const first = items.find((i) => i.digestMarkedCompleteAt == null);
-    return first ? new Set([first.id]) : new Set();
-  });
+  const [expandedDigestItemIds, setExpandedDigestItemIds] = useState<Set<string>>(() => new Set());
   const [bulkSelectedDigestIds, setBulkSelectedDigestIds] = useState<Set<string>>(() => new Set());
   const [bulkMarkingComplete, setBulkMarkingComplete] = useState(false);
+  const [bulkReturningToApproval, setBulkReturningToApproval] = useState(false);
   const bulkSelectAllInViewRef = useRef<HTMLInputElement>(null);
   const [numberedLines, setNumberedLines] = useState(true);
   /** When true, paper references show first 3 authors + et al.; when false, full PubMed author list. */
@@ -2997,7 +3228,17 @@ export function MonthlyDigestView({
   const paperItems = useMemo(() => items.filter((item) => item.category === "paper"), [items]);
   const fundingItems = useMemo(() => items.filter((item) => item.category === "funding"), [items]);
   const activeDigestItems = useMemo(
-    () => items.filter((item) => item.digestMarkedCompleteAt == null),
+    () =>
+      items.filter(
+        (item) =>
+          item.digestMarkedCompleteAt == null &&
+          isNihFundingForDigestActiveDrafts({
+            category: item.category,
+            source_type: item.source_type,
+            nih_project_num: item.nih_project_num,
+            title: item.title,
+          }),
+      ),
     [items],
   );
   const sortedActiveDigestItems = useMemo(() => {
@@ -3088,12 +3329,17 @@ export function MonthlyDigestView({
 
   const totalSelectedCount = selectedByCategory.papers.size + selectedByCategory.funding.size;
   const totalGeneratedCount = resultsByCategory.papers.length + resultsByCategory.funding.length;
-  const digestActiveCategoryCounts = useMemo(() => {
+  const digestWorkspaceItems = useMemo(
+    () => [...activeDigestItems, ...completedDigestItems],
+    [activeDigestItems, completedDigestItems],
+  );
+
+  const digestCategoryCounts = useMemo(() => {
     const m = new Map<DigestCategoryFilterChip, number>();
     for (const k of DIGEST_CATEGORY_FILTER_CHIPS) {
-      if (k !== "all") m.set(k, 0);
+      if (k !== "all" && k !== "completed") m.set(k, 0);
     }
-    for (const item of activeDigestItems) {
+    for (const item of digestWorkspaceItems) {
       const c = item.category;
       if (c === "media") m.set("news", (m.get("news") ?? 0) + 1);
       else if (c === "paper") m.set("paper", (m.get("paper") ?? 0) + 1);
@@ -3101,18 +3347,39 @@ export function MonthlyDigestView({
       else if (c === "funding") m.set("funding", (m.get("funding") ?? 0) + 1);
       else m.set("other", (m.get("other") ?? 0) + 1);
     }
+    m.set("completed", completedDigestItems.length);
     return m;
-  }, [activeDigestItems]);
+  }, [digestWorkspaceItems, completedDigestItems.length]);
 
-  const filteredDigestItems = useMemo(
+  type DigestListEntry =
+    | { kind: "active"; item: DigestItemPayload }
+    | { kind: "completed"; item: DigestItemPayload };
+
+  const filteredDigestListEntries = useMemo((): DigestListEntry[] => {
+    if (queueFilter === "completed") {
+      return completedDigestItems.map((item) => ({ kind: "completed", item }));
+    }
+    const active = sortedActiveDigestItems
+      .filter((item) => matchesDigestCategoryChip(item.category, queueFilter))
+      .map((item) => ({ kind: "active" as const, item }));
+    if (queueFilter === "all") return active;
+    const completed = completedDigestItems
+      .filter((item) => matchesDigestCategoryChip(item.category, queueFilter))
+      .map((item) => ({ kind: "completed" as const, item }));
+    return [...active, ...completed];
+  }, [sortedActiveDigestItems, completedDigestItems, queueFilter]);
+
+  const filteredActiveDigestItems = useMemo(
     () =>
-      sortedActiveDigestItems.filter((item) => matchesDigestCategoryChip(item.category, queueFilter)),
-    [sortedActiveDigestItems, queueFilter],
+      filteredDigestListEntries
+        .filter((e): e is DigestListEntry & { kind: "active" } => e.kind === "active")
+        .map((e) => e.item),
+    [filteredDigestListEntries],
   );
 
   const filteredDigestItemIds = useMemo(
-    () => filteredDigestItems.map((i) => i.id),
-    [filteredDigestItems],
+    () => filteredActiveDigestItems.map((i) => i.id),
+    [filteredActiveDigestItems],
   );
 
   const bulkSelectedInViewCount = useMemo(() => {
@@ -3190,23 +3457,54 @@ export function MonthlyDigestView({
     }
   }, [bulkSelectedDigestIds, filteredDigestItemIds, router]);
 
+  const markBulkReturnToApproval = useCallback(async () => {
+    const ids = [...new Set(filteredDigestItemIds.filter((id) => bulkSelectedDigestIds.has(id)))];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Return ${ids.length} ${ids.length === 1 ? "signal" : "signals"} to the Signals approval queue? They will leave this month's digest until approved again.`,
+      )
+    ) {
+      return;
+    }
+    setBulkReturningToApproval(true);
+    try {
+      const res = await fetch("/api/digest-workflow-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ source_item_ids: ids, return_to_approval: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        updated?: number;
+      };
+      if (!res.ok) {
+        toast.error(data.error ?? "Bulk return failed");
+        return;
+      }
+      const n = typeof data.updated === "number" ? data.updated : ids.length;
+      toast.success(`Returned ${n} ${n === 1 ? "signal" : "signals"} to approval`);
+      setBulkSelectedDigestIds(new Set());
+      startTransition(() => router.refresh());
+    } finally {
+      setBulkReturningToApproval(false);
+    }
+  }, [bulkSelectedDigestIds, filteredDigestItemIds, router]);
+
   useEffect(() => {
-    const visibleIds = new Set(filteredDigestItems.map((i) => i.id));
+    const visibleIds = new Set(filteredActiveDigestItems.map((i) => i.id));
     setExpandedDigestItemIds((prev) => {
-      if (filteredDigestItems.length === 0) {
+      if (filteredActiveDigestItems.length === 0) {
         return prev.size === 0 ? prev : new Set<string>();
       }
       const next = new Set([...prev].filter((id) => visibleIds.has(id)));
       if (next.size === prev.size && [...prev].every((id) => visibleIds.has(id))) {
         return prev;
       }
-      // If every expanded card dropped out of the filter, reopen the first visible row (match prior single-card behavior).
-      if (next.size === 0 && prev.size > 0) {
-        return new Set([filteredDigestItems[0]!.id]);
-      }
       return next;
     });
-  }, [filteredDigestItems]);
+  }, [filteredActiveDigestItems]);
 
   useEffect(() => {
     if (activeTab !== "copy_illustrator") return;
@@ -3522,10 +3820,12 @@ export function MonthlyDigestView({
                   Active Drafts
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                  Signals still being shaped, reviewed, edited, or prepared for release. Mark complete to tuck it into the Completed Library.
+                  New highlights still being shaped for release. NIH continuing awards (year 2+) stay under
+                  References → Funding; year-1 and unclassified grants stay here. Mark complete to tuck a card
+                  into the Completed Library.
                 </p>
               </div>
-              {activeDigestItems.length > 0 ? (
+              {digestWorkspaceItems.length > 0 ? (
                 <Card className={DIGEST_WORKSPACE_PANEL_CLASS}>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-snug">
                     <BrowseTypeSectionFilterIcon />
@@ -3537,7 +3837,8 @@ export function MonthlyDigestView({
                       aria-hidden
                     />
                     <span className="text-[color:var(--muted-foreground)]">
-                      Click a category to filter draft signals.
+                      Counts include active and completed signals. Category filters show both; Completed
+                      shows finished outputs only.
                     </span>
                   </div>
                   <div
@@ -3548,8 +3849,8 @@ export function MonthlyDigestView({
                     {DIGEST_CATEGORY_FILTER_CHIPS.map((f) => {
                       const count =
                         f === "all"
-                          ? activeDigestItems.length
-                          : digestActiveCategoryCounts.get(f) ?? 0;
+                          ? digestWorkspaceItems.length
+                          : digestCategoryCounts.get(f) ?? 0;
                       const isEmpty = f !== "all" && count === 0;
                       const selected = queueFilter === f;
                       const label =
@@ -3575,7 +3876,7 @@ export function MonthlyDigestView({
                           aria-pressed={selected}
                           title={
                             isEmpty
-                              ? `No signals in ${digestCategoryChipLabel(f)} for Active Drafts this month`
+                              ? `No ${digestCategoryChipLabel(f).toLowerCase()} signals for this month`
                               : undefined
                           }
                           onClick={() => {
@@ -3613,7 +3914,7 @@ export function MonthlyDigestView({
                       );
                     })}
                   </div>
-                  {filteredDigestItems.length > 0 ? (
+                  {filteredActiveDigestItems.length > 0 ? (
                     <div className="mt-3 border-t border-[color:var(--border)]/45 pt-3">
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                         <span className="inline-flex items-center gap-x-2 text-[11px] leading-snug">
@@ -3635,13 +3936,32 @@ export function MonthlyDigestView({
                         <Button
                           type="button"
                           variant="secondary"
-                          disabled={bulkSelectedInViewCount === 0 || bulkMarkingComplete}
+                          disabled={
+                            bulkSelectedInViewCount === 0 ||
+                            bulkMarkingComplete ||
+                            bulkReturningToApproval
+                          }
                           className="h-9 px-3 text-sm font-semibold"
                           onClick={() => void markBulkSelectedComplete()}
                         >
                           {bulkMarkingComplete
                             ? "Marking complete…"
                             : "Mark selected complete"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={
+                            bulkSelectedInViewCount === 0 ||
+                            bulkMarkingComplete ||
+                            bulkReturningToApproval
+                          }
+                          className="h-9 px-3 text-sm font-semibold text-[color:var(--foreground)]/85"
+                          onClick={() => void markBulkReturnToApproval()}
+                        >
+                          {bulkReturningToApproval
+                            ? "Returning…"
+                            : "Return selected to approval"}
                         </Button>
                         <div className="ml-auto mr-2 flex w-max max-w-full shrink-0 items-center gap-2 sm:mr-3">
                           <label
@@ -3666,14 +3986,13 @@ export function MonthlyDigestView({
                   ) : null}
                 </Card>
               ) : null}
-              {activeDigestItems.length === 0 ? (
+              {digestWorkspaceItems.length === 0 ? (
                 <Card className="rounded-2xl border-dashed border-[color:var(--border)]/70 bg-[color:var(--background)]/65 p-6 text-center">
                   <p className="text-sm text-[color:var(--muted-foreground)]">
-                    No active drafts for this month. When you mark signals complete, they appear in the Completed Library
-                    below.
+                    No signals for this month yet. Approved highlights appear here as you shape the digest.
                   </p>
                 </Card>
-              ) : filteredDigestItems.length === 0 ? (
+              ) : filteredDigestListEntries.length === 0 ? (
                 <Card className="rounded-2xl border-dashed border-[color:var(--border)]/70 bg-[color:var(--background)]/65 p-6 text-center">
                   <p className="text-sm text-[color:var(--muted-foreground)]">
                     No highlights match this filter for the selected month.
@@ -3681,37 +4000,42 @@ export function MonthlyDigestView({
                 </Card>
               ) : (
                 <ul className="space-y-4">
-                  {filteredDigestItems.map((item) => (
-                    <li key={item.id}>
-                      <DigestItemRow
-                        item={item}
-                        model=""
-                        expanded={expandedDigestItemIds.has(item.id)}
-                        onToggleExpanded={() =>
-                          setExpandedDigestItemIds((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(item.id)) next.delete(item.id);
-                            else next.add(item.id);
-                            return next;
-                          })
-                        }
-                        bulkSelect={{
-                          selected: bulkSelectedDigestIds.has(item.id),
-                          onToggle: () =>
-                            setBulkSelectedDigestIds((prev) => {
+                  {filteredDigestListEntries.map((entry) =>
+                    entry.kind === "completed" ? (
+                      <li key={entry.item.id}>
+                        <DigestCompletedSignalCard item={entry.item} model="" />
+                      </li>
+                    ) : (
+                      <li key={entry.item.id}>
+                        <DigestItemRow
+                          item={entry.item}
+                          model=""
+                          expanded={expandedDigestItemIds.has(entry.item.id)}
+                          onToggleExpanded={() =>
+                            setExpandedDigestItemIds((prev) => {
                               const next = new Set(prev);
-                              if (next.has(item.id)) next.delete(item.id);
-                              else next.add(item.id);
+                              if (next.has(entry.item.id)) next.delete(entry.item.id);
+                              else next.add(entry.item.id);
                               return next;
-                            }),
-                        }}
-                        workspaceAccounts={workspaceAccounts}
-                      />
-                    </li>
-                  ))}
+                            })
+                          }
+                          bulkSelect={{
+                            selected: bulkSelectedDigestIds.has(entry.item.id),
+                            onToggle: () =>
+                              setBulkSelectedDigestIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(entry.item.id)) next.delete(entry.item.id);
+                                else next.add(entry.item.id);
+                                return next;
+                              }),
+                          }}
+                        />
+                      </li>
+                    ),
+                  )}
                 </ul>
               )}
-              {completedDigestItems.length > 0 ? (
+              {completedDigestItems.length > 0 && queueFilter === "all" ? (
                 <details
                   className="scroll-mt-6 rounded-2xl border border-[color:var(--border)]/50 bg-[color:var(--background)]/70 open:border-[color:var(--border)]/65 open:shadow-[0_14px_44px_-32px_rgba(52,38,30,0.38)]"
                   open
@@ -3732,7 +4056,7 @@ export function MonthlyDigestView({
                   <div className="border-t border-[color:var(--border)]/45 px-3 pb-4 pt-3">
                     <ul className="space-y-2">
                       {completedDigestItems.map((item) => (
-                        <DigestCompletedSignalCard key={item.id} item={item} model="" workspaceAccounts={workspaceAccounts} />
+                        <DigestCompletedSignalCard key={item.id} item={item} model="" />
                       ))}
                     </ul>
                   </div>
@@ -3929,7 +4253,6 @@ export function MonthlyDigestView({
                         selectedCount={selectedByCategory[category.key].size}
                         running={runningCategory === category.key}
                         selectedIds={selectedByCategory[category.key]}
-                        workspaceAccounts={workspaceAccounts}
                         onExpand={() => {
                           setExpandedCategories((prev) => {
                             const next = new Set(prev);
