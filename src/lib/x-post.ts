@@ -463,21 +463,41 @@ export async function xUnretweet(accessToken: string, userId: string, tweetId: s
 }
 
 /** Create a tweet with OAuth 2.0 user context (not app-only Bearer). */
+export type XCreateTweetPoll = {
+  options: string[];
+  duration_minutes: number;
+};
+
 export async function createTweet(
   accessToken: string,
   text: string,
-  options?: { mediaIds?: string[]; reply?: { in_reply_to_tweet_id: string } },
+  options?: {
+    mediaIds?: string[];
+    reply?: { in_reply_to_tweet_id: string };
+    poll?: XCreateTweetPoll;
+  },
 ): Promise<XPostResult> {
+  if (options?.poll && options?.mediaIds?.length) {
+    throw new Error("X does not support polls with image or GIF attachments.");
+  }
+  if (options?.poll && options?.reply?.in_reply_to_tweet_id) {
+    throw new Error("X does not support polls on replies.");
+  }
+
   const payload: {
     text: string;
     media?: { media_ids: string[] };
     reply?: { in_reply_to_tweet_id: string };
+    poll?: XCreateTweetPoll;
   } = { text };
   if (options?.mediaIds?.length) {
     payload.media = { media_ids: options.mediaIds };
   }
   if (options?.reply?.in_reply_to_tweet_id) {
     payload.reply = { in_reply_to_tweet_id: options.reply.in_reply_to_tweet_id };
+  }
+  if (options?.poll) {
+    payload.poll = options.poll;
   }
 
   const body = JSON.stringify(payload);

@@ -14,6 +14,7 @@ import {
   resolvePublishVisualForSourceItem,
 } from "@/lib/publish-source-visual";
 import { substituteBlueskyHandlesForX } from "@/lib/x-mention-substitute";
+import { validateSocialPoll, type SocialPollDraft } from "@/lib/social-poll";
 
 const bodySchema = z.object({
   /** Tweet body (UTF-8); length limits depend on X account tier — we validate a safe upper bound. */
@@ -21,6 +22,12 @@ const bodySchema = z.object({
   /** When set, attach the item’s selected digest visual if resolvable (same community as the user). */
   source_item_id: z.string().uuid().optional(),
   attachment: z.enum(["digest_visual", "source_link"]).optional(),
+  poll: z
+    .object({
+      options: z.array(z.string()).min(2).max(4),
+      durationMinutes: z.number().int().min(5).max(10_080),
+    })
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -82,8 +89,24 @@ export async function POST(req: Request) {
 
   const attachment = parsed.data.attachment ?? "digest_visual";
 
+  let poll: { options: string[]; duration_minutes: number } | undefined;
+  if (parsed.data.poll) {
+    const checked = validateSocialPoll(parsed.data.poll as SocialPollDraft);
+    if (!checked.ok) {
+      return NextResponse.json({ error: checked.error }, { status: 400 });
+    }
+    poll = {
+      options: checked.options,
+      duration_minutes: Math.round(parsed.data.poll.durationMinutes),
+    };
+  }
+
   let tweetText = parsed.data.text;
   let mediaIds: string[] | undefined;
+
+  if (poll && parsed.data.source_item_id) {
+    return NextResponse.json({ error: "Polls cannot include digest visuals or link attachments." }, { status: 400 });
+  }
 
   if (attachment === "source_link") {
     if (!parsed.data.source_item_id) {
@@ -100,6 +123,8 @@ export async function POST(req: Request) {
       );
     }
     tweetText = tweetTextWithSourceLink(parsed.data.text, url).text;
+  } else if (poll) {
+    /* polls are text-only on X */
   } else if (parsed.data.source_item_id) {
     const visual = await resolvePublishVisualForSourceItem(
       admin,
@@ -138,6 +163,7 @@ export async function POST(req: Request) {
   try {
     const result = await createTweet(bundle.access_token, tweetText, {
       mediaIds,
+      poll,
     });
     return NextResponse.json(result);
   } catch (e) {

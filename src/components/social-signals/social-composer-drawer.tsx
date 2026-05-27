@@ -5,8 +5,10 @@ import { toast } from "sonner";
 import type { PublishPlatform } from "@/lib/social-signals/workspace-types";
 import { BLUESKY_CHAR_LIMIT, X_CHAR_LIMIT } from "@/lib/social-signals/workspace-types";
 import { WorkspaceHandleAvatarImg, type WorkspaceAccountAvatars } from "@/components/workspace-handle-avatar-img";
+import { emptyPollDraft, validateSocialPoll, type SocialPollDraft } from "@/lib/social-poll";
 import { EmojiTabPicker } from "./emoji-tab-picker";
 import { GiphyReplyPicker } from "./giphy-reply-picker";
+import { PollComposerPanel } from "./poll-composer-panel";
 import { PlatformBadge } from "./platform-badge";
 
 const COMPOSER_MEDIA_MAX_BYTES = 5 * 1024 * 1024;
@@ -37,14 +39,6 @@ function IconPoll({ className = "" }: { className?: string }) {
   return (
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h13M8 12h13M8 18h13M4 6h.01M4 12h.01M4 18h.01" />
-    </svg>
-  );
-}
-
-function IconList({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 6h12M9 12h12M9 18h12M5 6h.01M5 12h.01M5 18h.01" />
     </svg>
   );
 }
@@ -92,6 +86,7 @@ export function SocialComposerDrawer({
   const [gifPreviewUrl, setGifPreviewUrl] = useState<string | null>(null);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [pollDraft, setPollDraft] = useState<SocialPollDraft | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +97,11 @@ export function SocialComposerDrawer({
   const postingToBoth = effectivePostToX && effectivePostToBluesky;
   const postingToNone = !effectivePostToX && !effectivePostToBluesky;
   const hasAttachment = Boolean(mediaFile || gifUrl);
+  const hasPoll = pollDraft != null;
+  const pollValid = useMemo(
+    () => (pollDraft ? validateSocialPoll(pollDraft).ok : false),
+    [pollDraft],
+  );
   const overX = effectivePostToX ? text.length > X_CHAR_LIMIT : false;
   const overBluesky = effectivePostToBluesky ? text.length > BLUESKY_CHAR_LIMIT : false;
   const overAny = overX || overBluesky;
@@ -136,6 +136,16 @@ export function SocialComposerDrawer({
     setGifUrl(null);
     setGifPreviewUrl(null);
   }, []);
+
+  const clearPoll = useCallback(() => setPollDraft(null), []);
+
+  const openPoll = useCallback(() => {
+    if (hasAttachment) {
+      toast.message("Remove the image or GIF before adding a poll.");
+      return;
+    }
+    setPollDraft((prev) => prev ?? emptyPollDraft());
+  }, [hasAttachment]);
 
   const insertEmoji = useCallback(
     (emoji: string) => {
@@ -178,6 +188,7 @@ export function SocialComposerDrawer({
     }
     setGifUrl(null);
     setGifPreviewUrl(null);
+    setPollDraft(null);
     setMediaFile(file);
   }, []);
 
@@ -189,16 +200,80 @@ export function SocialComposerDrawer({
   }, [text.length, postingToNone, postingToBoth, effectivePostToX]);
 
   const canPost =
-    (Boolean(text.trim()) || hasAttachment) && !overAny && !postingToNone && !posting && !scheduling;
+    !overAny &&
+    !postingToNone &&
+    !posting &&
+    !scheduling &&
+    (hasPoll
+      ? pollValid && Boolean(text.trim()) && effectivePostToX
+      : Boolean(text.trim()) || hasAttachment);
 
   async function submitPost(): Promise<void> {
     const body = text.trim();
-    if ((!body && !hasAttachment) || overAny || postingToNone || posting) return;
+    if (overAny || postingToNone || posting) return;
+    if (hasPoll) {
+      const checked = validateSocialPoll(pollDraft ?? emptyPollDraft());
+      if (!pollDraft || !checked.ok) {
+        toast.error(!checked.ok ? checked.error : "Complete your poll choices.");
+        return;
+      }
+      if (!body) {
+        toast.error("Add a question above your poll choices.");
+        return;
+      }
+      if (!effectivePostToX) {
+        toast.error("Polls are only supported on X. Select X or remove the poll.");
+        return;
+      }
+    } else if (!body && !hasAttachment) {
+      return;
+    }
 
     setPosting(true);
     type Done = { platform: "x" | "bluesky"; ok: boolean; url?: string; error?: string };
 
     try {
+      if (hasPoll && pollDraft) {
+        const checked = validateSocialPoll(pollDraft);
+        if (!checked.ok) {
+          toast.error(checked.error);
+          return;
+        }
+        const fd = new FormData();
+        fd.append("text", body);
+        fd.append("postToX", effectivePostToX ? "1" : "0");
+        fd.append("postToBluesky", effectivePostToBluesky ? "1" : "0");
+        fd.append("pollOptions", JSON.stringify(checked.options));
+        fd.append("pollDurationMinutes", String(Math.round(pollDraft.durationMinutes)));
+
+        const res = await fetch("/api/social-signals/composer-post", {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          partial?: boolean;
+          error?: string;
+          urls?: { platform: string; url: string }[];
+        };
+
+        if (!res.ok || !data.ok) {
+          toast.error(typeof data.error === "string" ? data.error : "Posting failed.");
+          return;
+        }
+
+        const lines =
+          data.urls?.map((u) => `${u.platform === "x" ? "X" : "Bluesky"}: ${u.url}`).join("\n") ?? "";
+        toast.success(data.partial ? "Posted to some platforms." : "Poll posted on X.", {
+          description: lines || (effectivePostToBluesky ? "Bluesky does not support polls." : undefined),
+          duration: 6500,
+        });
+        setText("");
+        clearPoll();
+        return;
+      }
+
       if (hasAttachment) {
         const fd = new FormData();
         fd.append("text", body);
@@ -247,7 +322,7 @@ export function SocialComposerDrawer({
       };
 
       if (effectivePostToX) {
-        const r = await postJson("/api/x/post", { text: body });
+        const r = await postJson("/api/x/post", { text: body } as Record<string, string>);
         done.push({
           platform: "x",
           ok: Boolean(r.ok),
@@ -469,6 +544,15 @@ export function SocialComposerDrawer({
                 className="w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-relaxed text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)]/75 focus:outline-none focus:ring-0 sm:text-[1.05rem]"
               />
             </label>
+            {pollDraft ? (
+              <PollComposerPanel
+                draft={pollDraft}
+                onChange={setPollDraft}
+                onRemove={clearPoll}
+                disabled={posting || scheduling}
+                platformNote="X only"
+              />
+            ) : null}
             {attachmentPreviewSrc ? (
               <div className="relative mt-2 inline-block max-w-full overflow-hidden rounded-xl border border-[color:var(--border)]/55">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -499,9 +583,9 @@ export function SocialComposerDrawer({
           <div className="flex flex-wrap items-center gap-0.5">
             <button
               type="button"
-              disabled={posting || scheduling}
+              disabled={posting || scheduling || hasPoll}
               className={composerToolbarIcon}
-              title="Add image"
+              title={hasPoll ? "Remove poll to add an image" : "Add image"}
               aria-label="Add image"
               onClick={pickImage}
             >
@@ -509,11 +593,17 @@ export function SocialComposerDrawer({
             </button>
             <button
               type="button"
-              disabled={posting || scheduling}
+              disabled={posting || scheduling || hasPoll}
               className={`${composerToolbarIcon} font-bold`}
-              title="Search GIFs (Klipy)"
+              title={hasPoll ? "Remove poll to add a GIF" : "Search GIFs (Klipy)"}
               aria-label="Search GIFs"
-              onClick={() => setGifPickerOpen(true)}
+              onClick={() => {
+                if (hasPoll) {
+                  toast.message("Remove the poll before adding a GIF.");
+                  return;
+                }
+                setGifPickerOpen(true);
+              }}
             >
               <span className="flex h-6 min-w-[2rem] items-center justify-center rounded border border-current px-1 text-[10px] leading-none">
                 GIF
@@ -521,23 +611,14 @@ export function SocialComposerDrawer({
             </button>
             <button
               type="button"
-              disabled={posting || scheduling}
-              className={composerToolbarIcon}
-              title="Polls not supported yet"
-              aria-label="Poll"
-              onClick={() => toast.message("Polls aren’t supported in the composer yet.")}
+              disabled={posting || scheduling || hasPoll}
+              className={`${composerToolbarIcon}${hasPoll ? " opacity-50" : ""}`}
+              title={hasPoll ? "Poll added" : "Add poll (X only)"}
+              aria-label="Add poll"
+              aria-pressed={hasPoll}
+              onClick={openPoll}
             >
               <IconPoll className="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              disabled={posting || scheduling}
-              className={composerToolbarIcon}
-              title="Lists not supported yet"
-              aria-label="List"
-              onClick={() => toast.message("Lists aren’t supported in the composer yet.")}
-            >
-              <IconList className="h-5 w-5" />
             </button>
             <div className="relative" ref={emojiWrapRef}>
               <button
@@ -594,6 +675,7 @@ export function SocialComposerDrawer({
         onClose={() => setGifPickerOpen(false)}
         onPick={({ gifUrl: pickedGifUrl, previewUrl }) => {
           setMediaFile(null);
+          setPollDraft(null);
           setGifUrl(pickedGifUrl);
           setGifPreviewUrl(previewUrl);
         }}

@@ -11,6 +11,7 @@ import {
   uploadTwitterMedia,
 } from "@/lib/x-post";
 import { substituteBlueskyHandlesForX } from "@/lib/x-mention-substitute";
+import { parsePollFromFormData, validateSocialPoll } from "@/lib/social-poll";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Choose at least one platform." }, { status: 400 });
   }
 
+  const pollDraft = parsePollFromFormData(form);
+  let pollValidated: { options: string[]; durationMinutes: number } | null = null;
+  if (pollDraft) {
+    const checked = validateSocialPoll(pollDraft);
+    if (!checked.ok) {
+      return NextResponse.json({ error: checked.error }, { status: 400 });
+    }
+    pollValidated = {
+      options: checked.options,
+      durationMinutes: Math.round(pollDraft.durationMinutes),
+    };
+  }
+
   let media: { buffer: Buffer; mime: string } | null;
   try {
     media = await parseMedia(form);
@@ -74,8 +88,23 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!text && !media) {
-    return NextResponse.json({ error: "Add text or an attachment." }, { status: 400 });
+  if (pollValidated && media) {
+    return NextResponse.json({ error: "Remove the image or GIF to post a poll." }, { status: 400 });
+  }
+
+  if (pollValidated && !postToX) {
+    return NextResponse.json(
+      { error: "Polls are only supported on X. Select X as a platform or remove the poll." },
+      { status: 400 },
+    );
+  }
+
+  if (!text && !media && !pollValidated) {
+    return NextResponse.json({ error: "Add text, a poll, or an attachment." }, { status: 400 });
+  }
+
+  if (pollValidated && !text.trim()) {
+    return NextResponse.json({ error: "Add a question above your poll choices." }, { status: 400 });
   }
 
   const bodyText = text || (media ? "\u200c" : "");
@@ -123,7 +152,17 @@ export async function POST(req: Request) {
             }
           }
 
-          const result = await createTweet(bundle.access_token, tweetText, { mediaIds });
+          const result = await createTweet(bundle.access_token, tweetText, {
+            mediaIds,
+            ...(pollValidated
+              ? {
+                  poll: {
+                    options: pollValidated.options,
+                    duration_minutes: pollValidated.durationMinutes,
+                  },
+                }
+              : {}),
+          });
           done.push({ platform: "x", ok: true, url: result.url });
         }
       } catch (e) {
@@ -155,6 +194,13 @@ export async function POST(req: Request) {
           ok: false,
           error:
             "Bluesky is not configured for this workspace — save your Bluesky handle and app password under Settings → Social publishing.",
+        });
+      } else if (pollValidated) {
+        done.push({
+          platform: "bluesky",
+          ok: false,
+          error:
+            "Bluesky does not support polls — your poll was posted on X only. Turn off Bluesky or remove the poll to post there.",
         });
       } else {
         const result = await publishBlueskyText(bodyText, {

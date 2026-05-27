@@ -20,7 +20,7 @@ const DASH_ITEMS_PAGE = 1000;
 const DASH_ITEMS_HARD_CAP = 100_000;
 
 const SOURCE_ITEM_FIELDS =
-  "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id";
+  "id, title, category, status, source_url, source_type, source_domain, raw_summary, published_at, found_at, created_at, tracked_entity_id, nih_project_num";
 
 async function fetchAllCommunitySourceItemsForDashboard(
   supabase: SupabaseClient<Database>,

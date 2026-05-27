@@ -219,21 +219,39 @@ export async function fetchXTweetsByIds(bearer: string, ids: string[]): Promise<
  * X list timeline: watch a List the community curates (Bearer has access to the list).
  * Create a list in X, add accounts, put the list ID in X_LIST_ID.
  */
+const X_LIST_TIMELINE_MAX_PAGES = 4;
+
 export async function fetchXListTimeline(
   bearer: string,
   listId: string,
 ): Promise<XResult> {
-  const res = await fetch(`${BASE}/lists/${encodeURIComponent(listId)}/tweets?${X_TIMELINE_PARAMS}`, {
-    headers: authHeaders(bearer),
-  });
-  const raw = (await res.json().catch(() => ({}))) as Parameters<typeof mapXTweetsResponse>[0] & {
-    errors?: { detail?: string }[];
-  };
-  if (!res.ok) {
-    const msg = raw.errors?.[0]?.detail ?? res.statusText;
-    return { posts: [], detail: `X list timeline: ${msg}` };
+  const all: SocialPost[] = [];
+  let paginationToken: string | undefined;
+  let detail: string | undefined;
+
+  for (let page = 0; page < X_LIST_TIMELINE_MAX_PAGES; page++) {
+    const params = new URLSearchParams(X_TIMELINE_PARAMS);
+    if (paginationToken) params.set("pagination_token", paginationToken);
+
+    const res = await fetch(`${BASE}/lists/${encodeURIComponent(listId)}/tweets?${params}`, {
+      headers: authHeaders(bearer),
+    });
+    const raw = (await res.json().catch(() => ({}))) as Parameters<typeof mapXTweetsResponse>[0] & {
+      errors?: { detail?: string }[];
+      meta?: { next_token?: string };
+    };
+    if (!res.ok) {
+      const msg = raw.errors?.[0]?.detail ?? res.statusText;
+      detail = `X list timeline: ${msg}`;
+      break;
+    }
+    const batch = mapXTweetsResponse(raw);
+    all.push(...batch);
+    paginationToken = raw.meta?.next_token;
+    if (!paginationToken || batch.length === 0) break;
   }
-  return { posts: mapXTweetsResponse(raw) };
+
+  return { posts: all, detail };
 }
 
 const X_MENTION_QUERY_MAX_LEN = 512;

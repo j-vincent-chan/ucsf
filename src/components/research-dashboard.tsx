@@ -67,6 +67,7 @@ import {
   sumMonthlyKpis,
   topEntitiesInRange,
 } from "@/lib/dashboard-aggregate";
+import { nihFundingDashboardBucket } from "@/lib/nih-project-num";
 import { reporterFirstFactAfterAwardClass } from "@/lib/reporter-raw-summary-facts";
 
 const RANGES: { id: ChartRange; label: string }[] = [
@@ -81,7 +82,8 @@ const CAT_COLORS: Record<string, string> = {
   paper: "#7c8fa8",
   award: "#c9955b",
   media: "#a66b72",
-  funding: "#7b977f",
+  newFunding: "#7b977f",
+  activeGrants: "#5d8a6a",
   other: "#9a8d84",
 };
 
@@ -89,19 +91,39 @@ const CAT_LABEL: Record<string, string> = {
   paper: "Publications",
   award: "Awards",
   media: "News",
-  funding: "Funding",
+  newFunding: "New funding",
+  activeGrants: "Active grants",
   other: "Other",
 };
 
-const CATEGORY_DRILL_ORDER: readonly ItemCategory[] = [
+const CATEGORY_DRILL_ORDER: readonly (ItemCategory | "active_grants")[] = [
   "paper",
   "award",
   "media",
   "funding",
+  "active_grants",
   "other",
 ];
 
-function categoryDrillRank(category: ItemCategory | null): number {
+function categoryDrillRank(
+  category: ItemCategory | null,
+  item?: Pick<
+    DashboardPayload["itemsForVolume"][number],
+    "source_type" | "nih_project_num" | "title"
+  >,
+): number {
+  if (category === "funding" && item) {
+    const bucket = nihFundingDashboardBucket({
+      category: "funding",
+      source_type: item.source_type,
+      nih_project_num: item.nih_project_num,
+      title: item.title,
+    });
+    if (bucket === "active_grant") {
+      const i = CATEGORY_DRILL_ORDER.indexOf("active_grants");
+      return i >= 0 ? i : 99;
+    }
+  }
   const key: ItemCategory =
     category === "paper" ||
     category === "award" ||
@@ -431,7 +453,7 @@ export function ResearchDashboard({
       .filter((it) => !deletingIds.has(it.id))
       .filter((it) => effectiveMonthKey(it) === volumeDrillMonth)
       .sort((a, b) => {
-        const rc = categoryDrillRank(a.category) - categoryDrillRank(b.category);
+        const rc = categoryDrillRank(a.category, a) - categoryDrillRank(b.category, b);
         if (rc !== 0) return rc;
         const at = (a.title ?? "").trim();
         const bt = (b.title ?? "").trim();
@@ -512,7 +534,7 @@ export function ResearchDashboard({
   const grantMix = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of itemsInRange) {
-      if (item.source_type !== "reporter") continue;
+      if (item.category !== "funding" || item.source_type !== "reporter") continue;
       const agency = extractGrantAgency(item);
       counts.set(agency, (counts.get(agency) ?? 0) + 1);
     }
@@ -575,7 +597,7 @@ export function ResearchDashboard({
     if (!grantDrillAgency) return [];
     return itemsInRange
       .filter((it) => !deletingIds.has(it.id))
-      .filter((it) => it.source_type === "reporter")
+      .filter((it) => it.category === "funding" && it.source_type === "reporter")
       .filter((it) => extractGrantAgency(it) === grantDrillAgency)
       .sort((a, b) => (a.title ?? "").trim().localeCompare((b.title ?? "").trim()));
   }, [itemsInRange, grantDrillAgency, deletingIds]);
@@ -649,7 +671,18 @@ export function ResearchDashboard({
           href="/items?category=paper"
         />
         <KpiCard label="Awards" value={kpis.award} sub="In range" href="/items?category=award" />
-        <KpiCard label="Funding" value={kpis.funding} sub="In range" href="/items?category=funding" />
+        <KpiCard
+          label="New funding"
+          value={kpis.newFunding}
+          sub="NIH type 1 · yr 1"
+          href="/items?category=funding"
+        />
+        <KpiCard
+          label="Active grants"
+          value={kpis.activeGrants}
+          sub="Continuing NIH"
+          href="/items?category=funding&grant_type=active"
+        />
         <KpiCard label="News" value={kpis.media} sub="In range" href="/items?category=media" />
         <KpiCard label="Other" value={kpis.other} sub="In range" href="/items?category=other" />
         <KpiCard

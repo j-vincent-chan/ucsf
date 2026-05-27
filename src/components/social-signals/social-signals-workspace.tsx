@@ -163,11 +163,12 @@ export function SocialSignalsWorkspace({
               <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Live feed</h2>
             </div>
             <div className="grid min-w-0 grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(260px,32%)] xl:items-stretch 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-              <div className="flex min-h-0 min-w-0 flex-col [height:min(calc(100dvh-10rem),78rem)] sm:[height:min(calc(100dvh-11rem),84rem)] xl:[height:min(calc(100dvh-14rem),66rem)] 2xl:[height:min(calc((100dvh-15rem)*1.8),81rem)]">
+              <div className="flex min-h-0 min-w-0 flex-col [height:min(calc(100dvh-10rem),156rem)] sm:[height:min(calc(100dvh-11rem),168rem)] xl:[height:min(calc(100dvh-14rem),132rem)] 2xl:[height:min(calc((100dvh-15rem)*1.8),162rem)]">
                 <LiveListeningFeed
                   initialTab={initialLiveTab}
                   initialPosts={live.posts}
                   sourceMeta={live.sourceMeta}
+                  syncedAt={live.syncedAt}
                   onIngestSuccess={handleLiveIngest}
                   layout="full"
                   connectedAccounts={live.accounts}

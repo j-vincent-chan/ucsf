@@ -11,11 +11,11 @@ export function parseNihApplTypeCodeFromProjectNum(raw: string | null | undefine
   return m ? m[1]! : null;
 }
 
-/** Support year from trailing segment (e.g. `5R01HL178954-02` → 2). */
+/** Support year from trailing segment (e.g. `5R01HL178954-02` → 2, `2R01HL134183-09A1` → 9). */
 export function parseNihSupportYearFromProjectNum(raw: string | null | undefined): number | null {
   const s = formatNihProjectNumStored(raw ?? "");
   if (!s) return null;
-  const m = /-(\d{2})(?:S\d+)?$/i.exec(s);
+  const m = /-(\d{2})(?:[A-Z]\d*)?(?:S\d+)?$/i.exec(s);
   if (!m) return null;
   const n = Number.parseInt(m[1]!, 10);
   return n >= 1 && n <= 99 ? n : null;
@@ -42,7 +42,7 @@ export function nihFundingSupportYearLabel(projNum: string | null | undefined): 
   const sy = parseNihSupportYearFromProjectNum(projNum);
   if (sy == null) return null;
   const code = parseNihApplTypeCodeFromProjectNum(projNum);
-  if (code === "1" && sy === 1) return "Support year 1 · new award";
+  if (code === "1" && sy === 1) return "New award";
   if (code === "5" && sy >= 2) {
     return `Support year ${sy} · continuing award`;
   }
@@ -58,7 +58,31 @@ export function isNihContinuingSupportYear(projNum: string | null | undefined): 
   return (code === "5" && sy >= 2) || sy >= 2;
 }
 
-/** Signals approval queue: only new (type 1) year-1 NIH funding; continuing awards belong in Digest. */
+export type NihFundingDashboardBucket = "new_funding" | "active_grant";
+
+/** Dashboard KPIs / charts: new NIH awards (type 1, yr 1) vs continuing (type 5, yr 2+, etc.). */
+export function nihFundingDashboardBucket(input: {
+  category: string | null;
+  source_type: string | null;
+  nih_project_num?: string | null;
+  title?: string | null;
+}): NihFundingDashboardBucket | null {
+  if (input.category !== "funding") return null;
+  if (input.source_type !== "reporter") return "new_funding";
+  return isNihNewFundingForSignalsQueue(input) ? "new_funding" : "active_grant";
+}
+
+/** NIH continuing / non–year-1 funding (RePORTER type 5 and similar). */
+export function isNihActiveGrantForDashboard(input: {
+  category: string | null;
+  source_type: string | null;
+  nih_project_num?: string | null;
+  title?: string | null;
+}): boolean {
+  return nihFundingDashboardBucket(input) === "active_grant";
+}
+
+/** Signals approval queue: only new (type 1) year-1 NIH funding; continuing awards use grant_type=active on Signals. */
 export function isNihNewFundingForSignalsQueue(input: {
   category: string | null;
   source_type: string | null;
@@ -78,8 +102,8 @@ export function isNihNewFundingForSignalsQueue(input: {
 }
 
 /**
- * Digest Active Drafts: hide NIH continuing renewals (yr 2+); keep year-1 new awards and
- * grants we cannot classify from the project number (editors triage those manually).
+ * Digest Active Drafts: NIH new awards only (application type 1, support year 1).
+ * Competing renewals (type 2+), continuances (type 5 yr 2+), etc. are excluded.
  */
 export function isNihFundingForDigestActiveDrafts(input: {
   category: string | null;
@@ -96,9 +120,20 @@ export function isNihFundingForDigestActiveDrafts(input: {
   if (isNihContinuingSupportYear(proj)) return false;
   const code = parseNihApplTypeCodeFromProjectNum(proj);
   const sy = parseNihSupportYearFromProjectNum(proj);
-  if (code === "1" && (sy == null || sy === 1)) return true;
-  if (code == null || sy == null) return true;
-  return false;
+  return code === "1" && (sy == null || sy === 1);
+}
+
+/**
+ * Digest References → Funding: same as Active Drafts — new NIH (type 1, yr 1) and non-RePORTER grants only.
+ * Continuing / renewal awards (type 5 yr 2+, competing renewals, etc.) are excluded from the digest workspace.
+ */
+export function isNihFundingForDigestReferences(input: {
+  category: string | null;
+  source_type: string | null;
+  nih_project_num?: string | null;
+  title?: string | null;
+}): boolean {
+  return isNihFundingForDigestActiveDrafts(input);
 }
 
 /**

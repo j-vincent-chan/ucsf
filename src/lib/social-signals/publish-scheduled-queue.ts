@@ -19,6 +19,7 @@ import {
   uploadTwitterMedia,
 } from "@/lib/x-post";
 import { substituteBlueskyHandlesForX } from "@/lib/x-mention-substitute";
+import { updateReviewQueuePost } from "@/lib/social-signals/review-queue-db";
 
 type QueueRow = {
   id: string;
@@ -299,11 +300,15 @@ export async function runPublishScheduledQueuePosts(
       }
 
       const publishedAt = new Date().toISOString();
-      const { error: updErr } = await admin
-        .from("social_review_queue_posts")
-        .update({ status: "published", published_at: publishedAt, publish_error: null } as never)
-        .eq("id", row.id)
-        .eq("status", "scheduled");
+      const { error: updErr } = await updateReviewQueuePost(
+        (patch) =>
+          admin
+            .from("social_review_queue_posts")
+            .update(patch as never)
+            .eq("id", row.id)
+            .eq("status", "scheduled"),
+        { status: "published", published_at: publishedAt, publish_error: null },
+      );
 
       if (updErr) throw new Error(updErr.message ?? "Could not mark published");
       result.published++;
@@ -312,11 +317,15 @@ export async function runPublishScheduledQueuePosts(
       result.failed++;
       result.errors.push({ id: row.id, platform: row.platform, message });
 
-      await admin
-        .from("social_review_queue_posts")
-        .update({ status: "needs_review", publish_error: message.slice(0, 2000) } as never)
-        .eq("id", row.id)
-        .eq("status", "scheduled");
+      await updateReviewQueuePost(
+        (patch) =>
+          admin
+            .from("social_review_queue_posts")
+            .update(patch as never)
+            .eq("id", row.id)
+            .eq("status", "scheduled"),
+        { status: "needs_review", publish_error: message.slice(0, 2000) },
+      );
     }
   }
 

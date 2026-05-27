@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import type { PostStatus, PublishPlatform, WorkspaceSchedulerPost } from "@/lib/social-signals/workspace-types";
+import { selectReviewQueuePosts } from "@/lib/social-signals/review-queue-db";
 
 const bodySchema = z.object({
   source_item_id: z.string().uuid().optional(),
@@ -54,12 +55,24 @@ export async function POST(req: Request) {
     scheduled_at: scheduledAtIso,
   }));
 
-  const { data: inserted, error: insErr } = await supabase
-    .from("social_review_queue_posts")
-    .insert(rows)
-    .select(
-      "id, platform, status, text, image_url, source_url, created_at, scheduled_at, published_at, publish_error, source_item_id",
-    );
+  type InsertedRow = {
+    id: string;
+    source_item_id: string | null;
+    platform: string;
+    status: string;
+    text: string;
+    image_url: string | null;
+    source_url: string | null;
+    created_at: string;
+    scheduled_at: string | null;
+    published_at?: string | null;
+    publish_error?: string | null;
+  };
+
+  const { data: inserted, error: insErr } = await selectReviewQueuePosts<InsertedRow[]>(
+    (select) => supabase.from("social_review_queue_posts").insert(rows).select(select),
+    { sourceItemId: true },
+  );
 
   if (insErr) {
     return NextResponse.json({ error: insErr.message ?? "Could not create drafts" }, { status: 500 });

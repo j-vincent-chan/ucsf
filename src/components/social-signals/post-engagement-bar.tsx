@@ -888,11 +888,10 @@ export function PostEngagementBar({
                       </button>
                       <button
                         type="button"
-                        className={toolbarBtn}
-                        title="Poll"
-                        aria-label="Add poll"
-                        disabled={busy !== null}
-                        onClick={() => toast.message("Polls aren’t supported in Signal replies yet.")}
+                        className={`${toolbarBtn} opacity-40`}
+                        title="Polls are only available on new posts in the Composer (X does not support poll replies)"
+                        aria-label="Poll (not available on replies)"
+                        disabled
                       >
                         <IconPoll />
                       </button>

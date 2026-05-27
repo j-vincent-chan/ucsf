@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { updateReviewQueuePost } from "@/lib/social-signals/review-queue-db";
 
 const patchSchema = z.object({
   text: z.string().min(1).max(8000).optional(),
@@ -40,12 +41,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (body.image_url !== undefined) patch.image_url = body.image_url;
   if (body.source_url !== undefined) patch.source_url = body.source_url;
 
-  const { data: updated, error } = await supabase
-    .from("social_review_queue_posts")
-    .update(patch as never)
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
+  const { data: updated, error: updateErr } = await updateReviewQueuePost<{ id: string }>(
+    (p) =>
+      supabase
+        .from("social_review_queue_posts")
+        .update(p as never)
+        .eq("id", id)
+        .select("id")
+        .maybeSingle(),
+    patch,
+  );
+  const error = updateErr;
 
   if (error) {
     return NextResponse.json({ error: error.message ?? "Update failed" }, { status: 500 });

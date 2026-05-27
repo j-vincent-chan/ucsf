@@ -34,6 +34,7 @@ import { formatYearMonthLabel } from "@/lib/digest-month";
 import {
   isNihContinuingSupportYear,
   isNihFundingForDigestActiveDrafts,
+  isNihFundingForDigestReferences,
   nihFundingSupportYearLabel,
   resolveNihProjectNumForItem,
 } from "@/lib/nih-project-num";
@@ -3226,7 +3227,20 @@ export function MonthlyDigestView({
   const [runningCategory, setRunningCategory] = useState<RefCategoryKey | null>(null);
   const [statusLine, setStatusLine] = useState("");
   const paperItems = useMemo(() => items.filter((item) => item.category === "paper"), [items]);
-  const fundingItems = useMemo(() => items.filter((item) => item.category === "funding"), [items]);
+  const fundingItems = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          item.category === "funding" &&
+          isNihFundingForDigestReferences({
+            category: item.category,
+            source_type: item.source_type,
+            nih_project_num: item.nih_project_num,
+            title: item.title,
+          }),
+      ),
+    [items],
+  );
   const activeDigestItems = useMemo(
     () =>
       items.filter(
@@ -3272,7 +3286,24 @@ export function MonthlyDigestView({
     return arr;
   }, [activeDigestItems, activeDraftSortMode]);
   const completedDigestItems = useMemo(() => {
-    const done = items.filter((item) => item.digestMarkedCompleteAt != null);
+    const done = items.filter((item) => {
+      if (item.digestMarkedCompleteAt == null) return false;
+      if (item.category !== "funding") return true;
+      return (
+        isNihFundingForDigestActiveDrafts({
+          category: item.category,
+          source_type: item.source_type,
+          nih_project_num: item.nih_project_num,
+          title: item.title,
+        }) ||
+        isNihFundingForDigestReferences({
+          category: item.category,
+          source_type: item.source_type,
+          nih_project_num: item.nih_project_num,
+          title: item.title,
+        })
+      );
+    });
     done.sort(
       (a, b) =>
         new Date(b.digestMarkedCompleteAt!).getTime() -
@@ -3291,7 +3322,7 @@ export function MonthlyDigestView({
       {
         key: "funding",
         title: "Funding",
-        description: "Curate grants and awards for digest references.",
+        description: "New grants and non-NIH funding for citation lines (continuing NIH awards excluded).",
         items: fundingItems,
       },
     ],
@@ -3820,9 +3851,9 @@ export function MonthlyDigestView({
                   Active Drafts
                 </p>
                 <p className="mt-1 text-sm leading-relaxed text-[color:var(--muted-foreground)]">
-                  New highlights still being shaped for release. NIH continuing awards (year 2+) stay under
-                  References → Funding; year-1 and unclassified grants stay here. Mark complete to tuck a card
-                  into the Completed Library.
+                  New highlights still being shaped for release. NIH funding here is limited to new awards
+                  (type 1, year 1); continuing and renewal grants are excluded from the digest. Mark complete
+                  to tuck a card into the Completed Library.
                 </p>
               </div>
               {digestWorkspaceItems.length > 0 ? (

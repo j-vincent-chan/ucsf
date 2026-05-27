@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireTenantCommunity } from "@/lib/auth";
-import { isNihNewFundingForSignalsQueue } from "@/lib/nih-project-num";
+import {
+  isNihActiveGrantForDashboard,
+  isNihNewFundingForSignalsQueue,
+} from "@/lib/nih-project-num";
 import { ItemsQueue } from "./items-queue";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 import { redirect } from "next/navigation";
@@ -74,6 +77,7 @@ type Params = Promise<{
   entity?: string;
   from?: string;
   to?: string;
+  grant_type?: string;
 }>;
 
 export default async function ItemsPage({ searchParams }: { searchParams: Params }) {
@@ -94,6 +98,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
     if (sp.category?.trim()) p.set("category", sp.category.trim());
     if (sp.source_type?.trim()) p.set("source_type", sp.source_type.trim());
     if (sp.entity?.trim()) p.set("entity", sp.entity.trim());
+    if (sp.grant_type?.trim()) p.set("grant_type", sp.grant_type.trim());
     redirect(`/items?${p.toString()}`);
   }
 
@@ -103,6 +108,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
   const entityId = sp.entity?.trim() || undefined;
   const from = sp.from?.trim() || undefined;
   const to = sp.to?.trim() || undefined;
+  const grantType = sp.grant_type?.trim() === "active" ? "active" : undefined;
 
   const supabase = await createClient();
 
@@ -210,20 +216,25 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
     if (sp.source_type) p.set("source_type", sp.source_type);
     if (sp.from) p.set("from", sp.from);
     if (sp.to) p.set("to", sp.to);
+    if (sp.grant_type) p.set("grant_type", sp.grant_type);
     redirect(p.size ? `/items?${p}` : "/items");
   }
 
   const rawItems = itemsRes.data;
   const itemsErr = itemsRes.error;
 
-  const signalsQueueItems = (rawItems ?? []).filter((r) =>
-    isNihNewFundingForSignalsQueue({
+  const signalsQueueItems = (rawItems ?? []).filter((r) => {
+    const nihInput = {
       category: r.category,
       source_type: r.source_type,
       nih_project_num: r.nih_project_num,
       title: r.title,
-    }),
-  );
+    };
+    if (grantType === "active") {
+      return isNihActiveGrantForDashboard(nihInput);
+    }
+    return isNihNewFundingForSignalsQueue(nihInput);
+  });
 
   const items: ItemRow[] = signalsQueueItems.map((r) => {
     const te = r.tracked_entities;
@@ -271,9 +282,20 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Signals</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted-foreground)]">
-          The approval center for newly surfaced signals, where items are reviewed for relevance,
-          identity accuracy, and inclusion before entering the broader record. NIH funding here is
-          limited to new awards (support year 1); continuing grants are handled in Digest.
+          {grantType === "active" ? (
+            <>
+              NIH continuing and renewal awards (RePORTER type 5 and support year 2+). New grants
+              (type 1) are in the default funding view.
+            </>
+          ) : (
+            <>
+              The approval center for newly surfaced signals, where items are reviewed for relevance,
+              identity accuracy, and inclusion before entering the broader record. NIH funding here is
+              limited to new awards (support year 1); use{" "}
+              <span className="font-medium">Active grants</span> on the Dashboard or{" "}
+              <span className="font-medium">?grant_type=active</span> for continuing awards.
+            </>
+          )}
         </p>
       </div>
       {itemsErr ? (
@@ -287,6 +309,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Params
             sp.entity ?? "",
             sp.from ?? "",
             sp.to ?? "",
+            sp.grant_type ?? "",
           ].join("|")}
           initialItems={items}
           entities={entities}

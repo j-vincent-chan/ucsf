@@ -92,12 +92,10 @@ export function persistTabPosts(workspaceKey: string, tab: SocialFeedTab, posts:
 }
 
 /**
- * Merge API posts with the cached rolling window for this tab, persist, return the combined list.
+ * Persist the latest API ingest for this tab and return it (API is source of truth — no merge with older cache).
  */
 export function finalizeTabPosts(workspaceKey: string, tab: SocialFeedTab, apiPosts: SocialPost[]): SocialPost[] {
-  const cached = loadCachedPostsForTab(workspaceKey, tab);
-  const merged = mergePostsPreferringNewer(apiPosts, cached);
-  const windowed = postsWithinRollingWindow(merged, LIVE_FEED_RETENTION_MS, Date.now());
+  const windowed = postsWithinRollingWindow(apiPosts, LIVE_FEED_RETENTION_MS, Date.now());
   const sorted = sortPostsByDateDesc(windowed);
   const trimmed = trimToMaxPosts(sorted, LIVE_FEED_MAX_STORED);
   persistTabPosts(workspaceKey, tab, trimmed);

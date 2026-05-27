@@ -143,18 +143,28 @@ export async function fetchBlueskyFollowing(
   if (!session?.accessJwt) {
     return { posts: [], detail: "Bluesky: invalid credentials or session failed" };
   }
-  const params = new URLSearchParams({ limit: "100" });
-  const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getTimeline?${params}`, {
-    headers: { Authorization: `Bearer ${session.accessJwt}` },
-  });
-  const raw = (await res.json().catch(() => ({}))) as {
-    feed?: Array<Parameters<typeof mapBskyFeedViewPost>[0]>;
-    message?: string;
-  };
-  if (!res.ok) {
-    return { posts: [], detail: `Bluesky timeline: ${raw.message ?? res.statusText}` };
+  const posts: SocialPost[] = [];
+  let cursor: string | undefined;
+  const maxPages = 4;
+
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({ limit: "100" });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getTimeline?${params}`, {
+      headers: { Authorization: `Bearer ${session.accessJwt}` },
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      feed?: Array<Parameters<typeof mapBskyFeedViewPost>[0]>;
+      cursor?: string;
+      message?: string;
+    };
+    if (!res.ok) {
+      return { posts, detail: `Bluesky timeline: ${raw.message ?? res.statusText}` };
+    }
+    posts.push(...(raw.feed ?? []).map((item) => mapBskyFeedViewPost(item)));
+    cursor = raw.cursor;
+    if (!cursor) break;
   }
-  const posts: SocialPost[] = (raw.feed ?? []).map((item) => mapBskyFeedViewPost(item));
   return { posts };
 }
 
@@ -172,18 +182,28 @@ export async function fetchBlueskyListFeed(
   if (!list.startsWith("at://") || !list.includes("/app.bsky.graph.list/")) {
     return { posts: [], detail: "Bluesky list: expected an at://…/app.bsky.graph.list/… URI" };
   }
-  const params = new URLSearchParams({ list, limit: "100" });
-  const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getListFeed?${params}`, {
-    headers: { Authorization: `Bearer ${session.accessJwt}` },
-  });
-  const raw = (await res.json().catch(() => ({}))) as {
-    feed?: Array<Parameters<typeof mapBskyFeedViewPost>[0]>;
-    message?: string;
-  };
-  if (!res.ok) {
-    return { posts: [], detail: `Bluesky list feed: ${raw.message ?? res.statusText}` };
+  const posts: SocialPost[] = [];
+  let cursor: string | undefined;
+  const maxPages = 4;
+
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({ list, limit: "100" });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetch(`${HOST}/xrpc/app.bsky.feed.getListFeed?${params}`, {
+      headers: { Authorization: `Bearer ${session.accessJwt}` },
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      feed?: Array<Parameters<typeof mapBskyFeedViewPost>[0]>;
+      cursor?: string;
+      message?: string;
+    };
+    if (!res.ok) {
+      return { posts, detail: `Bluesky list feed: ${raw.message ?? res.statusText}` };
+    }
+    posts.push(...(raw.feed ?? []).map((item) => mapBskyFeedViewPost(item)));
+    cursor = raw.cursor;
+    if (!cursor) break;
   }
-  const posts: SocialPost[] = (raw.feed ?? []).map((item) => mapBskyFeedViewPost(item));
   return { posts };
 }
 
@@ -201,59 +221,70 @@ export async function fetchBlueskyMentions(
   if (!clean) {
     return { posts: [], detail: "Bluesky mentions: set BSKY_MENTION_HANDLE or use BSKY_IDENTIFIER" };
   }
-  const params = new URLSearchParams({
-    q: `mentions:${clean}`,
-    limit: "100",
-  });
-  const res = await fetch(`${HOST}/xrpc/app.bsky.feed.searchPosts?${params}`, {
-    headers: { Authorization: `Bearer ${session.accessJwt}` },
-  });
-  const raw = (await res.json().catch(() => ({}))) as {
-    posts?: {
-      uri: string;
-      indexedAt?: string;
-      embed?: unknown;
-      author: { displayName?: string; handle: string; avatar?: string };
-      record?: { text?: string; createdAt?: string };
-    }[];
-    message?: string;
-  };
-  if (!res.ok) {
-    return { posts: [], detail: `Bluesky search: ${raw.message ?? res.statusText}` };
+  const posts: SocialPost[] = [];
+  let cursor: string | undefined;
+  const maxPages = 3;
+
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({
+      q: `mentions:${clean}`,
+      limit: "100",
+    });
+    if (cursor) params.set("cursor", cursor);
+    const res = await fetch(`${HOST}/xrpc/app.bsky.feed.searchPosts?${params}`, {
+      headers: { Authorization: `Bearer ${session.accessJwt}` },
+    });
+    const raw = (await res.json().catch(() => ({}))) as {
+      posts?: {
+        uri: string;
+        indexedAt?: string;
+        embed?: unknown;
+        author: { displayName?: string; handle: string; avatar?: string };
+        record?: { text?: string; createdAt?: string };
+      }[];
+      cursor?: string;
+      message?: string;
+    };
+    if (!res.ok) {
+      return { posts, detail: `Bluesky search: ${raw.message ?? res.statusText}` };
+    }
+    const batch: SocialPost[] = (raw.posts ?? []).map((p) => {
+      const handle = p.author.handle;
+      const rkey = p.uri.split("/").pop() ?? "";
+      const mediaUrls = collectBskyImageUrls(p.embed);
+      const counts = p as {
+        cid?: string;
+        replyCount?: number;
+        repostCount?: number;
+        likeCount?: number;
+        viewer?: { repost?: string; like?: string };
+      };
+      return {
+        id: `bsky:${p.uri}`,
+        platform: "bluesky",
+        authorName: p.author.displayName ?? handle,
+        authorHandle: `@${handle}`,
+        authorAvatarUrl: p.author.avatar,
+        text: p.record?.text ?? "",
+        url: `https://bsky.app/profile/${handle}/post/${rkey}`,
+        postedAt: parseBskyTime(p.indexedAt ?? p.record?.createdAt),
+        mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+        replyCount: counts.replyCount,
+        repostCount: counts.repostCount,
+        likeCount: counts.likeCount,
+        ...(counts.cid ? { bskyRecordCid: counts.cid } : {}),
+        ...(typeof counts.viewer?.repost === "string" && counts.viewer.repost.startsWith("at://")
+          ? { viewerReposted: true as const, bskyViewerRepostUri: counts.viewer.repost }
+          : {}),
+        ...(typeof counts.viewer?.like === "string" && counts.viewer.like.startsWith("at://")
+          ? { viewerLiked: true as const, bskyViewerLikeUri: counts.viewer.like }
+          : {}),
+      };
+    });
+    posts.push(...batch);
+    cursor = raw.cursor;
+    if (!cursor) break;
   }
-  const posts: SocialPost[] = (raw.posts ?? []).map((p) => {
-    const handle = p.author.handle;
-    const rkey = p.uri.split("/").pop() ?? "";
-    const mediaUrls = collectBskyImageUrls(p.embed);
-    const counts = p as {
-      cid?: string;
-      replyCount?: number;
-      repostCount?: number;
-      likeCount?: number;
-      viewer?: { repost?: string; like?: string };
-    };
-    return {
-      id: `bsky:${p.uri}`,
-      platform: "bluesky",
-      authorName: p.author.displayName ?? handle,
-      authorHandle: `@${handle}`,
-      authorAvatarUrl: p.author.avatar,
-      text: p.record?.text ?? "",
-      url: `https://bsky.app/profile/${handle}/post/${rkey}`,
-      postedAt: parseBskyTime(p.indexedAt ?? p.record?.createdAt),
-      mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
-      replyCount: counts.replyCount,
-      repostCount: counts.repostCount,
-      likeCount: counts.likeCount,
-      ...(counts.cid ? { bskyRecordCid: counts.cid } : {}),
-      ...(typeof counts.viewer?.repost === "string" && counts.viewer.repost.startsWith("at://")
-        ? { viewerReposted: true as const, bskyViewerRepostUri: counts.viewer.repost }
-        : {}),
-      ...(typeof counts.viewer?.like === "string" && counts.viewer.like.startsWith("at://")
-        ? { viewerLiked: true as const, bskyViewerLikeUri: counts.viewer.like }
-        : {}),
-    };
-  });
   return { posts };
 }
 

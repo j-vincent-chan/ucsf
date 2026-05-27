@@ -8,6 +8,7 @@ import type { PostStatus, PublishPlatform, WorkspaceSchedulerPost } from "@/lib/
 import { investigatorsFromSourceItemRow } from "@/lib/source-item-investigators";
 import { createClient } from "@/lib/supabase/server";
 import { fetchInvestigatorSocialDirectoryForCommunity } from "@/lib/social-signals/fetch-investigator-social-directory";
+import { selectReviewQueuePosts } from "@/lib/social-signals/review-queue-db";
 
 const JUNCTION_CHUNK = 120;
 
@@ -41,13 +42,32 @@ export default async function SocialSignalsPage({ searchParams }: { searchParams
     investigatorDirectory,
   });
 
-  const { data: drafts } = await supabase
-    .from("social_review_queue_posts")
-    .select(
-      "id, source_item_id, platform, status, text, image_url, source_url, created_at, updated_at, scheduled_at, published_at, publish_error",
-    )
-    .order("created_at", { ascending: false })
-    .limit(200);
+  type ReviewQueueRow = {
+    id: string;
+    source_item_id: string | null;
+    platform: string;
+    status: string;
+    text: string;
+    image_url: string | null;
+    source_url: string | null;
+    created_at: string;
+    updated_at: string;
+    scheduled_at: string | null;
+    published_at?: string | null;
+    publish_error?: string | null;
+  };
+
+  const { data: drafts, error: draftsErr } = await selectReviewQueuePosts<ReviewQueueRow[]>((select) =>
+    supabase
+      .from("social_review_queue_posts")
+      .select(select)
+      .order("created_at", { ascending: false })
+      .limit(200),
+    { sourceItemId: true },
+  );
+  if (draftsErr) {
+    console.error("[social-signals] review queue load failed:", draftsErr.message);
+  }
 
   const sourceIds = Array.from(new Set((drafts ?? []).map((d) => d.source_item_id).filter(Boolean))) as string[];
 

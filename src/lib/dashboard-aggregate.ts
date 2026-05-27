@@ -1,3 +1,4 @@
+import { nihFundingDashboardBucket } from "@/lib/nih-project-num";
 import type { ItemCategory, ItemStatus, SourceType } from "@/types/database";
 
 export type ChartRange = "ytd" | "1y" | "2y" | "5y" | "max";
@@ -9,7 +10,10 @@ export type MonthlyPoint = {
   paper: number;
   award: number;
   media: number;
-  funding: number;
+  /** New grants (NIH type 1 / yr 1) and non-RePORTER funding. */
+  newFunding: number;
+  /** NIH continuing awards (type 5, yr 2+, competing renewals, etc.). */
+  activeGrants: number;
   /** Includes uncategorized, `other`, and deprecated `event` / `community_update`. */
   other: number;
   total: number;
@@ -55,6 +59,7 @@ export type DashboardPayload = {
     source_type: SourceType;
     source_domain: string | null;
     raw_summary: string | null;
+    nih_project_num: string | null;
     tracked_entity_id: string | null;
     /** All investigators on this signal (merged multi-PI); falls back to primary id when absent */
     tracked_entity_ids: string[];
@@ -92,6 +97,7 @@ export type RawItem = {
   found_at: string;
   created_at: string;
   tracked_entity_id: string | null;
+  nih_project_num?: string | null;
   /** Populated by dashboard loader from junction table */
   tracked_entity_ids?: string[];
 };
@@ -174,7 +180,8 @@ function emptyMonth(ym: string): MonthlyPoint {
     paper: 0,
     award: 0,
     media: 0,
-    funding: 0,
+    newFunding: 0,
+    activeGrants: 0,
     other: 0,
     total: 0,
     new: 0,
@@ -260,8 +267,16 @@ export function buildDashboardPayload(
     if (cat === "paper") row.paper += 1;
     else if (cat === "award") row.award += 1;
     else if (cat === "media") row.media += 1;
-    else if (cat === "funding") row.funding += 1;
-    else row.other += 1;
+    else if (cat === "funding") {
+      const bucket = nihFundingDashboardBucket({
+        category: item.category,
+        source_type: item.source_type,
+        nih_project_num: item.nih_project_num,
+        title: item.title,
+      });
+      if (bucket === "active_grant") row.activeGrants += 1;
+      else row.newFunding += 1;
+    } else row.other += 1;
 
     row.total += 1;
 
@@ -316,6 +331,7 @@ export function buildDashboardPayload(
       source_type: i.source_type,
       source_domain: i.source_domain,
       raw_summary: i.raw_summary,
+      nih_project_num: i.nih_project_num ?? null,
       tracked_entity_id: i.tracked_entity_id,
       tracked_entity_ids,
       published_at: i.published_at,
@@ -383,7 +399,8 @@ export function sumMonthlyKpis(rows: MonthlyPoint[]) {
       paper: acc.paper + r.paper,
       award: acc.award + r.award,
       media: acc.media + r.media,
-      funding: acc.funding + r.funding,
+      newFunding: acc.newFunding + r.newFunding,
+      activeGrants: acc.activeGrants + r.activeGrants,
       other: acc.other + r.other,
       approved: acc.approved + r.approved,
       pubmed: acc.pubmed + r.pubmed,
@@ -397,7 +414,8 @@ export function sumMonthlyKpis(rows: MonthlyPoint[]) {
       paper: 0,
       award: 0,
       media: 0,
-      funding: 0,
+      newFunding: 0,
+      activeGrants: 0,
       other: 0,
       approved: 0,
       pubmed: 0,

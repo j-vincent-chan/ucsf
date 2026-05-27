@@ -10,8 +10,8 @@ import { LinkifiedText } from "./linkified-text";
 import { PlatformBadge } from "./platform-badge";
 import { PostEngagementBar } from "./post-engagement-bar";
 
-/** Initial rows rendered; more load as you scroll (full merged monthly window stays in memory). */
-const LIVE_FEED_ROW_CHUNK = 28;
+/** Rows revealed per scroll step in compact (max-height) layout. Full Feed page renders the full list. */
+const LIVE_FEED_ROW_CHUNK = 32;
 
 function IconArrowPath({ className }: { className?: string }) {
   return (
@@ -454,10 +454,29 @@ function ThreadListItem({
   );
 }
 
+function formatFeedFreshness(syncedAt: string, posts: SocialPost[]): string {
+  const syncLabel = new Date(syncedAt).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  if (posts.length === 0) return `Last refreshed ${syncLabel} · no posts`;
+  const newest = posts.reduce((best, p) => {
+    const t = Date.parse(p.postedAt);
+    return t > best ? t : best;
+  }, 0);
+  if (!newest) return `Last refreshed ${syncLabel} · ${posts.length} posts`;
+  const newestLabel = new Date(newest).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  return `Last refreshed ${syncLabel} · ${posts.length} posts · newest ${newestLabel}`;
+}
+
 export function LiveListeningFeed({
   initialTab,
   initialPosts,
   sourceMeta,
+  syncedAt: syncedAtInitial,
   onIngestSuccess,
   layout = "default",
   headerActions,
@@ -469,6 +488,8 @@ export function LiveListeningFeed({
   initialPosts: SocialPost[];
   /** Server ingest diagnostics (empty feed + misconfigured env on Vercel, etc.). */
   sourceMeta: SourceMeta;
+  /** When the active tab was last fetched from X / Bluesky APIs. */
+  syncedAt: string;
   /** Updates parent so “Connected accounts” stays in sync after Refresh; includes active tab for AI Companion weighting. */
   onIngestSuccess?: (feed: AggregatedFeed & { tab: SocialFeedTab }) => void;
   /** `full` = taller list on the dedicated Feed page. */
@@ -484,17 +505,20 @@ export function LiveListeningFeed({
 }) {
   const [tab, setTab] = useState<SocialFeedTab>(initialTab);
   const [posts, setPosts] = useState<SocialPost[]>(() => dedupeSocialPostsById(initialPosts));
+  const [syncedAt, setSyncedAt] = useState(syncedAtInitial);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [highlightPostId, setHighlightPostId] = useState<string | null>(null);
 
   useEffect(() => {
     setPosts(dedupeSocialPostsById(initialPosts));
-  }, [initialPosts]);
+    setSyncedAt(syncedAtInitial);
+  }, [initialPosts, syncedAtInitial]);
 
   const displayPosts = useMemo(() => dedupeSocialPostsById(posts), [posts]);
   const displayRows = useMemo(() => groupPostsForFeedDisplay(displayPosts), [displayPosts]);
 
+  const density = layout === "full";
   const listRef = useRef<HTMLUListElement>(null);
   const loadMoreSentinelRef = useRef<HTMLLIElement>(null);
 
@@ -529,7 +553,7 @@ export function LiveListeningFeed({
           setVisibleRowCount((c) => Math.min(c + LIVE_FEED_ROW_CHUNK, displayRows.length));
         }
       },
-      { root, rootMargin: "280px 0px", threshold: 0 },
+      { root, rootMargin: "320px 0px", threshold: 0 },
     );
     io.observe(sentinel);
     return () => io.disconnect();
@@ -582,7 +606,6 @@ export function LiveListeningFeed({
     };
   }, [focusPostId, onFocusConsumed]);
 
-  const density = layout === "full";
   const cardClass = density
     ? "rounded-2xl p-2.5 sm:p-4 md:p-5"
     : "rounded-xl p-2.5 sm:p-3 md:p-4";
@@ -604,6 +627,7 @@ export function LiveListeningFeed({
       const nextPosts = dedupeSocialPostsById(data.posts ?? []);
       setPosts(nextPosts);
       setTab(next);
+      if (data.syncedAt) setSyncedAt(data.syncedAt);
       if (data.sourceMeta && data.syncedAt && data.accounts) {
         onIngestSuccess?.({
           posts: nextPosts,
@@ -641,9 +665,14 @@ export function LiveListeningFeed({
       }`}
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-          Live listening
-        </p>
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+            Live listening
+          </p>
+          <p className="mt-0.5 text-[10px] leading-snug text-[color:var(--muted-foreground)]">
+            {formatFeedFreshness(syncedAt, displayPosts)}
+          </p>
+        </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {headerActions}
           <button
@@ -692,12 +721,21 @@ export function LiveListeningFeed({
       <ul
         ref={listRef}
         className={`mt-4 overflow-y-auto pr-1 ${
-          density ? "min-h-0 flex-1 space-y-4" : "max-h-[35rem] space-y-3"
+          density ? "min-h-0 flex-1 space-y-4" : "max-h-[70rem] space-y-3"
         }`}
       >
         {displayRows.length === 0 ? (
           <li className="rounded-xl border border-dashed border-[color:var(--border)]/70 px-4 py-6 text-sm text-[color:var(--muted-foreground)]">
-            <p className="text-center">No live posts for this tab. Try another tab or Refresh.</p>
+            <p className="text-center">
+              No live posts for this tab. Try another tab or Refresh.
+              {tab === "lists" ? (
+                <>
+                  {" "}
+                  Investigators only shows posts from accounts on your configured X list and Bluesky list (Settings → Social
+                  publishing), not every post on the network.
+                </>
+              ) : null}
+            </p>
             <div className="mx-auto mt-4 max-w-lg rounded-xl border border-[color:var(--border)]/55 bg-[color:var(--muted)]/15 px-3 py-2.5 text-left text-xs text-[color:var(--foreground)]">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">
                 Ingest status
