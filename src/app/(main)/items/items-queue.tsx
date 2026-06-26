@@ -32,6 +32,7 @@ import {
   rangeForPublishedPreset,
   type PublishedRangePreset,
 } from "@/lib/published-date-presets";
+import { formatSignalPublishedDate } from "@/lib/signal-published-date";
 import { ucsfProfilesUrl } from "@/lib/ucsf-profiles-url";
 import {
   CategoryTag,
@@ -1006,7 +1007,7 @@ export function ItemsQueue({
                   </td>
                   <td className="p-2 text-[color:var(--muted-foreground)]">
                     {row.published_at
-                      ? new Date(row.published_at).toLocaleDateString()
+                      ? formatSignalPublishedDate(row.published_at)
                       : "—"}
                   </td>
                   <td className="p-2">

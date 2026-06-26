@@ -31,6 +31,7 @@ import {
   type DigestCategoryFilterChip,
 } from "@/lib/item-category-ui";
 import { formatYearMonthLabel } from "@/lib/digest-month";
+import { formatSignalPublishedDate } from "@/lib/signal-published-date";
 import {
   isNihContinuingSupportYear,
   isNihFundingForDigestActiveDrafts,
@@ -643,7 +644,7 @@ function StatusPill({ children, className = "" }: { children: ReactNode; classNa
 /** Publication / found date label for digest rows (matches former StatusPill date text). */
 function digestItemSignalDateLabel(item: DigestItemPayload): string {
   return item.published_at
-    ? new Date(item.published_at).toLocaleDateString()
+    ? formatSignalPublishedDate(item.published_at)
     : `Found ${new Date(item.found_at).toLocaleDateString()} (no publish date)`;
 }
 
@@ -1129,7 +1130,9 @@ function DigestSignalRow({
   onToggle: () => void;
 }) {
   const paperJournal = item.category === "paper" ? extractJournalFromRawSummary(item.raw_summary) : null;
-  const dateLabel = new Date(item.published_at ?? item.found_at).toLocaleDateString();
+  const dateLabel = item.published_at
+    ? formatSignalPublishedDate(item.published_at)
+    : new Date(item.found_at).toLocaleDateString();
   const displayInvestigators = digestDisplayInvestigators(item);
   const investigatorLabel =
     displayInvestigators.length > 0

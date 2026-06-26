@@ -69,6 +69,7 @@ import {
 } from "@/lib/dashboard-aggregate";
 import { nihFundingDashboardBucket } from "@/lib/nih-project-num";
 import { reporterFirstFactAfterAwardClass } from "@/lib/reporter-raw-summary-facts";
+import { formatSignalPublishedDate } from "@/lib/signal-published-date";
 
 const RANGES: { id: ChartRange; label: string }[] = [
   { id: "ytd", label: "YTD" },
@@ -1029,7 +1030,7 @@ export function ResearchDashboard({
                       <td className="py-2 pr-2 text-[color:var(--muted-foreground)]">{r.entityName}</td>
                       <td className="py-2 text-[color:var(--muted-foreground)]">
                         {r.published_at
-                          ? new Date(r.published_at).toLocaleDateString()
+                          ? formatSignalPublishedDate(r.published_at)
                           : "—"}
                       </td>
                     </tr>

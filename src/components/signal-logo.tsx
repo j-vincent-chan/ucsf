@@ -123,7 +123,7 @@ export function SignalLogo({
         </span>
       </div>
       {showSubtitle ? (
-        <p className="col-start-2 -mt-1 min-w-0 text-[11px] font-medium leading-none tracking-[0.02em] text-[color:var(--muted-foreground)]">
+        <p className="col-start-2 -mt-1 min-w-0 whitespace-nowrap text-[11px] font-medium leading-none tracking-[0.02em] text-[color:var(--muted-foreground)]">
           {SIGNAL_SUBTITLE}
         </p>
       ) : null}

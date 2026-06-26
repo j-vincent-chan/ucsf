@@ -21,6 +21,11 @@ import {
   normalizeCategoryForSelect,
   type SelectableItemCategory,
 } from "@/lib/item-category-ui";
+import {
+  dateInputValueToUtcMidnightIso,
+  formatSignalPublishedDate,
+  utcCalendarYmdFromIso,
+} from "@/lib/signal-published-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +67,7 @@ export function ItemDetail({
   const [title, setTitle] = useState(item.title);
   const [sourceUrl, setSourceUrl] = useState(item.source_url ?? "");
   const [publishedDate, setPublishedDate] = useState(() =>
-    isoTimestampToDateInputValue(item.published_at),
+    utcCalendarYmdFromIso(item.published_at),
   );
   const [savingMeta, setSavingMeta] = useState(false);
 
@@ -91,7 +96,7 @@ export function ItemDetail({
   }, [item.id, router]);
 
   useEffect(() => {
-    setPublishedDate(isoTimestampToDateInputValue(item.published_at));
+    setPublishedDate(utcCalendarYmdFromIso(item.published_at));
   }, [item.id, item.published_at]);
 
   useEffect(() => {
@@ -237,7 +242,7 @@ export function ItemDetail({
               )}{" "}
               · {sourceTypeDisplayLabel(item.source_type)}
               {item.published_at
-                ? ` · ${new Date(item.published_at).toLocaleDateString()}`
+                ? ` · ${formatSignalPublishedDate(item.published_at)}`
                 : ""}
             </p>
           </div>
@@ -460,23 +465,3 @@ function monthKeyForItem(item: SourceItem): string {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
-/** `YYYY-MM-DD` for a date input from a timestamptz ISO string. */
-function isoTimestampToDateInputValue(iso: string | null): string {
-  if (!iso || iso.length < 10) return "";
-  return iso.slice(0, 10);
-}
-
-/** Parse date input as midnight UTC so dashboard month keys match the chosen calendar day. */
-function dateInputValueToUtcMidnightIso(value: string): string | null {
-  const v = value.trim();
-  if (!v) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
-  const [ys, ms, ds] = v.split("-");
-  const y = Number(ys);
-  const m = Number(ms);
-  const d = Number(ds);
-  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
-  const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
-  return dt.toISOString();
-}

@@ -16,6 +16,7 @@ import SpriteText from "three-spritetext";
 import Link from "next/link";
 import { toast } from "sonner";
 import type { DashboardEntityMeta, DashboardPayload } from "@/lib/dashboard-aggregate";
+import { formatSignalPublishedDate } from "@/lib/signal-published-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -1783,7 +1784,7 @@ function InspectorPanel({
                   <p className="mt-0.5 text-[color:var(--muted-foreground)]">
                     {it.category ?? "—"}
                     {it.published_at
-                      ? ` · ${new Date(it.published_at).toLocaleDateString()}`
+                      ? ` · ${formatSignalPublishedDate(it.published_at)}`
                       : ""}
                   </p>
                 </li>

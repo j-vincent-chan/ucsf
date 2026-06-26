@@ -53,6 +53,49 @@ export function describeXPostPermissionError(
   return `${m} — In the X Developer Portal, confirm your app/project is enrolled for posting on your API product. In Settings, disconnect X and reconnect (tweet.write, like.write, media.write for images).`;
 }
 
+/** One refresh in flight per user — X rotates refresh tokens; parallel refresh can invalidate the session. */
+const refreshInFlight = new Map<string, Promise<XOAuthTokenBundle>>();
+
+async function refreshAndPersistUserAccessToken(
+  admin: SupabaseClient<Database>,
+  userId: string,
+  refreshToken: string,
+  fallback: XOAuthTokenBundle,
+): Promise<XOAuthTokenBundle> {
+  const existing = refreshInFlight.get(userId);
+  if (existing) return existing;
+
+  const work = (async () => {
+    try {
+      const next = await refreshAccessToken(refreshToken);
+      const { error } = await admin
+        .from("profiles")
+        .update({
+          x_oauth: JSON.parse(JSON.stringify(next)) as Json,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+
+      if (error) {
+        throw new Error(`Could not save refreshed X tokens: ${error.message}`);
+      }
+
+      return next;
+    } catch (e) {
+      // Refresh can fail while the access token is still within its lifetime — use it for this request.
+      if (fallback.expires_at !== undefined && Date.now() < fallback.expires_at) {
+        return fallback;
+      }
+      throw e;
+    } finally {
+      refreshInFlight.delete(userId);
+    }
+  })();
+
+  refreshInFlight.set(userId, work);
+  return work;
+}
+
 /**
  * Ensures a valid user access token, refreshing with `refresh_token` when near expiry
  * and persisting the new bundle to `profiles.x_oauth`.
@@ -61,6 +104,7 @@ export async function ensureFreshUserAccessToken(
   admin: SupabaseClient<Database>,
   userId: string,
   stored: Json | null,
+  options?: { forceRefresh?: boolean },
 ): Promise<XOAuthTokenBundle> {
   const bundle = bundleFromStored(stored);
   if (!bundle?.access_token) {
@@ -69,7 +113,8 @@ export async function ensureFreshUserAccessToken(
     throw err;
   }
 
-  if (!accessTokenLikelyExpired(bundle)) return bundle;
+  const needsRefresh = options?.forceRefresh || accessTokenLikelyExpired(bundle);
+  if (!needsRefresh) return bundle;
 
   if (!bundle.refresh_token) {
     const err = new Error("TOKEN_EXPIRED_RECONNECT");
@@ -83,28 +128,7 @@ export async function ensureFreshUserAccessToken(
     throw err;
   }
 
-  try {
-    const next = await refreshAccessToken(bundle.refresh_token);
-    const { error } = await admin
-      .from("profiles")
-      .update({
-        x_oauth: JSON.parse(JSON.stringify(next)) as Json,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-
-    if (error) {
-      throw new Error(`Could not save refreshed X tokens: ${error.message}`);
-    }
-
-    return next;
-  } catch (e) {
-    // Refresh can fail while the access token is still within its lifetime — use it for this request.
-    if (bundle.expires_at !== undefined && Date.now() < bundle.expires_at) {
-      return bundle;
-    }
-    throw e;
-  }
+  return refreshAndPersistUserAccessToken(admin, userId, bundle.refresh_token, bundle);
 }
 
 function normalizeMimeForXUpload(mime: string): string {

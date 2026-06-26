@@ -7,10 +7,12 @@ import type { XOAuthSetupDiagnostics } from "@/lib/x-oauth";
 
 export function XOAuthSettings({
   connected,
+  refreshFailed = false,
   flash,
   diagnostics,
 }: {
   connected: boolean;
+  refreshFailed?: boolean;
   flash?: { ok: boolean; message: string };
   diagnostics: XOAuthSetupDiagnostics;
 }) {
@@ -40,12 +42,19 @@ export function XOAuthSettings({
       ) : null}
       <p className="text-sm text-[color:var(--muted-foreground)]">
         Authorize Community Signal to post to X as your workspace account (OAuth 2.0), including photo uploads via X API
-        v2 (<span className="font-mono text-[11px]">media.write</span> scope). Uses the callback URL you registered in the
-        X Developer Portal — set{" "}
+        v2 (<span className="font-mono text-[11px]">media.write</span> scope). After you connect once, tokens are stored
+        in your profile and refreshed automatically when you post (access tokens expire about every two hours;{" "}
+        <span className="font-mono text-[11px]">offline.access</span> keeps a long-lived refresh token).
+      </p>
+      <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">
+        Uses the callback URL you registered in the X Developer Portal — set{" "}
         <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">X_OAUTH_REDIRECT_URI</code> or{" "}
         <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">NEXT_PUBLIC_SITE_URL</code> so
-        it matches exactly. If posting worked as text-only before, disconnect and connect again so your token picks up
-        current scopes.
+        it matches exactly. For local dev, set a stable{" "}
+        <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">X_OAUTH_STATE_SECRET</code> in{" "}
+        <code className="rounded bg-[color:var(--muted)]/45 px-1 py-0.5 font-mono text-xs">.env.local</code> so Connect
+        still works after restarting the dev server. Always open Settings on the same host you use for Connect (e.g.{" "}
+        <code className="font-mono text-[11px]">http://localhost:3000</code>, not a LAN IP).
       </p>
       <p className="mt-3 text-xs text-[color:var(--muted-foreground)]">
         The <span className="font-medium text-[color:var(--foreground)]/90">Access Token</span> on the Developer Portal is
@@ -81,6 +90,11 @@ export function XOAuthSettings({
         {connected ? (
           <>
             <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Connected for posting</span>
+            {refreshFailed ? (
+              <span className="text-sm text-amber-800 dark:text-amber-200">
+                Token refresh failed — try Disconnect, then Connect again.
+              </span>
+            ) : null}
             <Button type="button" variant="secondary" disabled={busy} onClick={() => void disconnect()}>
               {busy ? "Disconnecting…" : "Disconnect X"}
             </Button>

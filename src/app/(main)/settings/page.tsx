@@ -7,6 +7,7 @@ import {
 import { tryCreateAdminClient } from "@/lib/supabase/admin";
 import { SettingsForms } from "@/components/settings-forms";
 import { xOAuthSetupDiagnostics } from "@/lib/x-oauth";
+import { ensureFreshUserAccessToken } from "@/lib/x-post";
 import { headers } from "next/headers";
 
 export const metadata: Metadata = {
@@ -27,10 +28,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
   };
 
   let xOAuthConnected = false;
+  let xOAuthRefreshFailed = false;
   const admin = tryCreateAdminClient();
   if (admin) {
     const { data } = await admin.from("profiles").select("x_oauth").eq("id", profile.id).maybeSingle();
     xOAuthConnected = Boolean(data?.x_oauth);
+    if (data?.x_oauth) {
+      try {
+        await ensureFreshUserAccessToken(admin, profile.id, data.x_oauth);
+      } catch {
+        xOAuthRefreshFailed = true;
+      }
+    }
   }
 
   let oauthFlash: { ok: boolean; message: string } | undefined;
@@ -63,6 +72,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Sea
       social={social}
       socialSecretsPresent={socialSecretsPresent}
       xOAuthConnected={xOAuthConnected}
+      xOAuthRefreshFailed={xOAuthRefreshFailed}
       oauthFlash={oauthFlash}
       xOAuthDiagnostics={xOAuthDiagnostics}
     />

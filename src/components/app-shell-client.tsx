@@ -8,6 +8,9 @@ import { SignalLogo } from "@/components/signal-logo";
 import { signOut } from "@/app/actions/auth-actions";
 
 const STORAGE_KEY = "ui.sidebar.collapsed";
+/** Expanded / collapsed aside widths (Tailwind `w-*`). */
+const SIDEBAR_WIDTH_EXPANDED = "w-64";
+const SIDEBAR_WIDTH_COLLAPSED = "w-20";
 /** When viewport is in this inclusive width range (desktop `lg` layout), force icon rail so the main column wins space before we drop the Social sidebar. */
 const NAV_AUTO_COLLAPSE_MAX = 1399;
 
@@ -97,17 +100,20 @@ export function AppShellClient({
     }
   }, [collapsed, shellReady]);
 
-  const asideWidth = useMemo(() => (collapsed ? "w-20" : "w-80"), [collapsed]);
+  const asideWidth = useMemo(
+    () => (collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED),
+    [collapsed],
+  );
 
   if (!shellReady) {
     return (
       <div className="flex min-h-full bg-[radial-gradient(circle_at_top_left,rgba(201,125,99,0.12),transparent_24%),linear-gradient(180deg,color-mix(in_srgb,var(--background)_92%,white),var(--background))]">
         <aside
-          className={`${ASIDE_BASE} w-80`}
+          className={`${ASIDE_BASE} ${SIDEBAR_WIDTH_EXPANDED}`}
           aria-label="Sidebar"
         >
-          <div className="flex h-full min-w-0 flex-col p-5 lg:p-6" aria-hidden>
-            <div className="h-16 w-[min(100%,14rem)] max-w-full rounded-[1.6rem] bg-[color:var(--muted)]/35" />
+          <div className="flex h-full min-w-0 flex-col p-4 lg:p-5" aria-hidden>
+            <div className="h-16 w-[min(100%,12rem)] max-w-full rounded-[1.6rem] bg-[color:var(--muted)]/35" />
           </div>
         </aside>
         <main className="min-w-0 flex-1 p-3 sm:p-5 md:p-6 lg:p-8 xl:p-10">{children}</main>
@@ -122,7 +128,7 @@ export function AppShellClient({
         aria-label="Sidebar"
       >
         <div
-          className={`flex h-full min-w-0 flex-col ${collapsed ? "px-1.5 py-2 pt-2" : "p-5"}`}
+          className={`flex h-full min-w-0 flex-col ${collapsed ? "px-1.5 py-2 pt-2" : "p-4"}`}
         >
           <div
             className={`flex min-w-0 shrink-0 ${collapsed ? "flex-col items-center gap-2.5" : "w-full items-start gap-2"}`}

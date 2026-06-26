@@ -50,6 +50,7 @@ export function SettingsForms({
   social,
   socialSecretsPresent,
   xOAuthConnected,
+  xOAuthRefreshFailed = false,
   oauthFlash,
   xOAuthDiagnostics,
 }: {
@@ -63,6 +64,7 @@ export function SettingsForms({
   social: WorkspaceSocialSettings;
   socialSecretsPresent: { xBearerToken: boolean; blueskyAppPassword: boolean };
   xOAuthConnected: boolean;
+  xOAuthRefreshFailed?: boolean;
   oauthFlash?: { ok: boolean; message: string };
   xOAuthDiagnostics: XOAuthSetupDiagnostics;
 }) {
@@ -179,7 +181,12 @@ export function SettingsForms({
 
       <Card>
         <CardTitle>Post to X (OAuth 2.0)</CardTitle>
-        <XOAuthSettings connected={xOAuthConnected} flash={oauthFlash} diagnostics={xOAuthDiagnostics} />
+        <XOAuthSettings
+          connected={xOAuthConnected}
+          refreshFailed={xOAuthRefreshFailed}
+          flash={oauthFlash}
+          diagnostics={xOAuthDiagnostics}
+        />
       </Card>
 
       <Card>

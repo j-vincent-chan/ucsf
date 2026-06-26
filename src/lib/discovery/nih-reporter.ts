@@ -3,6 +3,7 @@ import {
   canonicalNihProjectNumForDedup,
   formatNihProjectNumStored,
 } from "@/lib/nih-project-num";
+import { parseCalendarDateUtcMidnightIso } from "@/lib/signal-published-date";
 
 const API = "https://api.reporter.nih.gov/v2/projects/search";
 
@@ -183,9 +184,9 @@ async function fetchParentProgramTitlesByProjectNums(
 }
 
 function parseApiDate(iso: string | null | undefined): Date | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const stored = parseCalendarDateUtcMidnightIso(iso);
+  if (!stored) return null;
+  return new Date(stored);
 }
 
 function formatReporterApiDate(d: Date): string {

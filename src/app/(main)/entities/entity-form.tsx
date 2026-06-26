@@ -4,11 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MemberStatus, TrackedEntity } from "@/types/database";
-import { slugify } from "@/lib/slug";
+import { facultySlugFromNames, slugify, uniqueEntitySlugInCommunity } from "@/lib/slug";
 import { tierFromMemberStatus } from "@/lib/member-tier";
 import {
   INVESTIGATOR_HEADSHOTS_BUCKET,
-  investigatorHeadshotObjectPath,
+  uploadInvestigatorHeadshotViaApi,
 } from "@/lib/investigator-headshots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,21 +101,26 @@ export function EntityForm({
 
   const avatarPreviewSrc = removeHeadshot ? null : (stagedObjectUrl ?? staticPreviewUrl);
 
-  function syncSlugFromNames(f: string, l: string) {
+  function syncSlugFromNames(f: string, m: string, l: string) {
     if (!slugTouched) {
-      const combined = `${l}-${f}`.trim();
-      setSlug(slugify(combined || "faculty"));
+      setSlug(facultySlugFromNames(f, l, m));
     }
   }
 
   function onFirstChange(v: string) {
     setFirstName(v);
-    syncSlugFromNames(v, lastName);
+    syncSlugFromNames(v, middleInitial, lastName);
   }
 
   function onLastChange(v: string) {
     setLastName(v);
-    syncSlugFromNames(firstName, v);
+    syncSlugFromNames(firstName, middleInitial, v);
+  }
+
+  function onMiddleChange(v: string) {
+    const mi = v.replace(/[^a-z]/gi, "").slice(0, 1).toUpperCase();
+    setMiddleInitial(mi);
+    syncSlugFromNames(firstName, mi, lastName);
   }
 
   function onHeadshotFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -140,7 +145,7 @@ export function EntityForm({
     const fn = firstName.trim();
     const mi = middleInitial.trim().slice(0, 1).toUpperCase();
     const ln = lastName.trim();
-    const slugVal = slug.trim() || slugify(`${ln}-${fn}`);
+    const slugVal = slug.trim() || facultySlugFromNames(fn, ln, mi);
     if (!fn) {
       toast.error("First name is required");
       return;
@@ -173,27 +178,61 @@ export function EntityForm({
     setLoading(true);
     const supabase = createClient();
     const stripSocial = (s: string) => s.replace(/^@+/u, "").trim();
-    const baseFields = {
-      first_name: fn,
-      middle_initial: mi,
-      last_name: ln,
-      member_status: memberStatus,
-      slug: slugVal,
-      entity_type: "faculty" as const,
-      institution: institution.trim() || null,
-      pubmed_url: pubmedUrl.trim() || null,
-      lab_website: labWebsite.trim() || null,
-      google_alert_query: googleAlertQuery.trim() || null,
-      nih_profile_id: nihRaw || null,
-      x_handle: stripSocial(xHandle) || null,
-      bluesky_handle: stripSocial(blueskyHandle) || null,
-      x_lab_handle: stripSocial(xLabHandle) || null,
-      bluesky_lab_handle: stripSocial(blueskyLabHandle) || null,
-      priority_tier: tier,
-      active,
-    };
 
     try {
+      let resolvedSlug: string;
+      try {
+        if (isEdit) {
+          resolvedSlug = await uniqueEntitySlugInCommunity(
+            supabase,
+            communityId,
+            slugVal,
+            initial!.id,
+          );
+          if (resolvedSlug !== slugify(slugVal) && slugTouched) {
+            toast.error(
+              `Slug "${slugVal}" is already used by another investigator. Choose a different slug.`,
+            );
+            return;
+          }
+        } else {
+          resolvedSlug = await uniqueEntitySlugInCommunity(supabase, communityId, slugVal);
+          if (resolvedSlug !== slugify(slugVal) && !slugTouched) {
+            toast.info(
+              `Slug adjusted to "${resolvedSlug}" (an investigator with a similar name already exists).`,
+            );
+          } else if (resolvedSlug !== slugify(slugVal) && slugTouched) {
+            toast.error(
+              `Slug "${slugVal}" is already used by another investigator. Try "${resolvedSlug}" or another value.`,
+            );
+            return;
+          }
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Could not validate slug");
+        return;
+      }
+
+      const baseFields = {
+        first_name: fn,
+        middle_initial: mi,
+        last_name: ln,
+        member_status: memberStatus,
+        slug: resolvedSlug,
+        entity_type: "faculty" as const,
+        institution: institution.trim() || null,
+        pubmed_url: pubmedUrl.trim() || null,
+        lab_website: labWebsite.trim() || null,
+        google_alert_query: googleAlertQuery.trim() || null,
+        nih_profile_id: nihRaw || null,
+        x_handle: stripSocial(xHandle) || null,
+        bluesky_handle: stripSocial(blueskyHandle) || null,
+        x_lab_handle: stripSocial(xLabHandle) || null,
+        bluesky_lab_handle: stripSocial(blueskyLabHandle) || null,
+        priority_tier: tier,
+        active,
+      };
+
       if (isEdit) {
         const id = initial!.id;
         let nextPath: string | null = initial?.headshot_storage_path?.trim() || null;
@@ -207,18 +246,12 @@ export function EntityForm({
           nextPath = null;
           nextUrl = null;
         } else if (headshotFile) {
-          const objectPath = investigatorHeadshotObjectPath(communityId, id);
-          const { error: upErr } = await supabase.storage
-            .from(INVESTIGATOR_HEADSHOTS_BUCKET)
-            .upload(objectPath, headshotFile, {
-              upsert: true,
-              contentType: headshotFile.type,
-            });
-          if (upErr) {
-            toast.error(upErr.message);
+          const uploaded = await uploadInvestigatorHeadshotViaApi(id, headshotFile);
+          if (!uploaded.ok) {
+            toast.error(uploaded.error);
             return;
           }
-          nextPath = objectPath;
+          nextPath = uploaded.path;
           nextUrl = null;
         } else if (urlTrim && nextPath) {
           await supabase.storage.from(INVESTIGATOR_HEADSHOTS_BUCKET).remove([nextPath]);
@@ -252,23 +285,9 @@ export function EntityForm({
           return;
         }
         if (headshotFile) {
-          const objectPath = investigatorHeadshotObjectPath(communityId, created.id);
-          const { error: upErr } = await supabase.storage
-            .from(INVESTIGATOR_HEADSHOTS_BUCKET)
-            .upload(objectPath, headshotFile, {
-              upsert: true,
-              contentType: headshotFile.type,
-            });
-          if (upErr) {
-            toast.error(upErr.message);
-            return;
-          }
-          const { error: upDb } = await supabase
-            .from("tracked_entities")
-            .update({ headshot_storage_path: objectPath, headshot_url: null })
-            .eq("id", created.id);
-          if (upDb) {
-            toast.error(upDb.message);
+          const uploaded = await uploadInvestigatorHeadshotViaApi(created.id, headshotFile);
+          if (!uploaded.ok) {
+            toast.error(uploaded.error);
             return;
           }
         }
@@ -300,9 +319,7 @@ export function EntityForm({
           <Input
             id="middle_initial"
             value={middleInitial}
-            onChange={(e) =>
-              setMiddleInitial(e.target.value.replace(/[^a-z]/gi, "").slice(0, 1).toUpperCase())
-            }
+            onChange={(e) => onMiddleChange(e.target.value.replace(/[^a-z]/gi, "").slice(0, 1))}
             maxLength={1}
             className="mt-1"
             placeholder="M"

@@ -19,7 +19,13 @@ export async function POST(req: Request) {
   }
 
   const profile = await getProfile();
-  if (!profile || profile.role !== "admin") {
+  if (!profile) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (profile.role === "admin" && !profile.community_id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (profile.role !== "admin" && profile.role !== "editor") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
