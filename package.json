@@ -16,7 +16,6 @@
     "immunox:apply-headshots": "tsx scripts/apply-immunox-directory-headshots.ts"
   },
   "dependencies": {
-    "@next/swc-darwin-arm64": "^16.2.2",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.102.1",
     "cfb": "^1.2.2",
@@ -24,7 +23,6 @@
     "exceljs": "^4.4.0",
     "graphology": "^0.26.0",
     "graphology-communities-louvain": "^2.0.2",
-    "lightningcss-darwin-arm64": "^1.32.0",
     "next": "16.2.2",
     "openai": "^6.33.0",
     "react": "19.2.4",
